@@ -54,7 +54,10 @@ function App() {
       <div>Results: {searchResults.length}</div>
       {Array.isArray(searchResults) &&
         searchResults.map((business, index) => (
-          <div key={index}>{business.name}</div>
+          <div key={index} style={{ marginBottom: '1rem' }}>
+            <div>{business.name}</div>
+            {business.website && <div>{business.website}</div>}
+          </div>
         ))
       }
     </div>
