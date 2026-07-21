@@ -64,6 +64,7 @@ function App() {
           }
           return (
             <div key={index} style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+              <hr style={{ border: 'none', borderTop: '1px solid #333', margin: '1.5rem 0' }} />
               <div><strong>{business.name}</strong></div>
               {business.website && (
                 <div>
