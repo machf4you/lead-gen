@@ -28,6 +28,12 @@ app.post('/api/url', (req, res) => {
     status: "Pending"
   };
   jobs.push(newJob);
+
+  // Auto-progression to Completed after 3 seconds
+  setTimeout(() => {
+    newJob.status = "Completed";
+  }, 3000);
+
   res.json({
     jobId: jobId,
     received: true

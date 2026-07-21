@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 function App() {
@@ -52,6 +52,13 @@ function App() {
       console.error(error)
     }
   }
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchJobs()
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div style={{
