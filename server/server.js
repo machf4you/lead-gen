@@ -29,10 +29,16 @@ app.post('/api/url', (req, res) => {
   };
   jobs.push(newJob);
 
-  // Auto-progression to Completed after 3 seconds
+  // Processing pipeline progression
   setTimeout(() => {
-    newJob.status = "Completed";
-  }, 3000);
+    newJob.status = "Fetching";
+    setTimeout(() => {
+      newJob.status = "Analysing";
+      setTimeout(() => {
+        newJob.status = "Completed";
+      }, 1000);
+    }, 1000);
+  }, 1000);
 
   res.json({
     jobId: jobId,
