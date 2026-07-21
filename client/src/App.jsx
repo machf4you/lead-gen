@@ -149,6 +149,19 @@ function App() {
               <p style={{ margin: '0.2rem 0' }}>Job ID: {job.jobId}</p>
               <p style={{ margin: '0.2rem 0' }}>URL: {job.url}</p>
               <p style={{ margin: '0.2rem 0' }}>Status: {job.status}</p>
+              {(job.status === 'Analysing' || job.status === 'Completed') && (
+                <div style={{ marginTop: '0.5rem' }}>
+                  {job.fetchResult && !job.fetchResult.success ? (
+                    <p style={{ margin: '0.2rem 0', color: '#f87171' }}>Fetch Failed</p>
+                  ) : job.fetchResult && job.fetchResult.success ? (
+                    <>
+                      <p style={{ margin: '0.2rem 0' }}>HTTP Status: {job.fetchResult.httpStatus}</p>
+                      <p style={{ margin: '0.2rem 0' }}>Final URL: {job.fetchResult.finalUrl}</p>
+                      <p style={{ margin: '0.2rem 0' }}>HTML Size: {job.fetchResult.htmlLength}</p>
+                    </>
+                  ) : null}
+                </div>
+              )}
             </div>
           ))}
         </div>

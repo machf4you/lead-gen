@@ -25,13 +25,37 @@ app.post('/api/url', (req, res) => {
   const newJob = {
     jobId: jobId,
     url: url,
-    status: "Pending"
+    status: "Pending",
+    fetchResult: null
   };
   jobs.push(newJob);
 
   // Processing pipeline progression
-  setTimeout(() => {
+  setTimeout(async () => {
     newJob.status = "Fetching";
+
+    try {
+      let fetchUrl = url;
+      if (!/^https?:\/\//i.test(fetchUrl)) {
+        fetchUrl = 'http://' + fetchUrl;
+      }
+      const response = await fetch(fetchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        redirect: 'follow'
+      });
+      const html = await response.text();
+      newJob.fetchResult = {
+        success: true,
+        httpStatus: response.status,
+        finalUrl: response.url,
+        htmlLength: html.length
+      };
+    } catch (error) {
+      newJob.fetchResult = {
+        success: false
+      };
+    }
+
     setTimeout(() => {
       newJob.status = "Analysing";
       setTimeout(() => {
