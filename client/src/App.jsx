@@ -25,6 +25,10 @@ function App() {
     }
   };
 
+  const handleAnalyse = (business) => {
+    console.log(business);
+  };
+
   return (
     <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
       <div style={{ marginBottom: '1rem' }}>
@@ -74,6 +78,9 @@ function App() {
               {business.phone && <div>Phone: {business.phone}</div>}
               {business.address && <div>Address: {business.address}</div>}
               {business.rating !== null && business.rating !== undefined && <div>Rating: {business.rating}</div>}
+              <button onClick={() => handleAnalyse(business)} style={{ marginTop: '0.5rem', cursor: 'pointer' }}>
+                Analyse
+              </button>
             </div>
           );
         })
