@@ -5,6 +5,7 @@ function App() {
   const [healthStatus, setHealthStatus] = useState(null)
   const [urlInput, setUrlInput] = useState('')
   const [jobId, setJobId] = useState(null)
+  const [jobs, setJobs] = useState([])
 
   const checkHealth = async () => {
     try {
@@ -40,13 +41,27 @@ function App() {
     }
   }
 
+  const fetchJobs = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/jobs')
+      if (response.ok) {
+        const data = await response.json()
+        setJobs(data)
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      height: '100vh',
+      minHeight: '100vh',
+      padding: '2rem 0',
+      boxSizing: 'border-box',
       fontFamily: 'Inter, system-ui, Avenir, Helvetica, Arial, sans-serif',
       backgroundColor: '#121212',
       color: '#ffffff',
@@ -105,6 +120,34 @@ function App() {
       )}
 
       <button 
+        onClick={fetchJobs}
+        style={{
+          padding: '0.5rem 1rem',
+          fontSize: '1rem',
+          cursor: 'pointer',
+          marginBottom: '1rem',
+          backgroundColor: '#8b5cf6',
+          color: '#ffffff',
+          border: 'none',
+          borderRadius: '4px'
+        }}
+      >
+        View Jobs
+      </button>
+
+      {jobs.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          {jobs.map((job) => (
+            <div key={job.jobId} style={{ marginBottom: '1rem', padding: '0.5rem', borderBottom: '1px solid #333' }}>
+              <p style={{ margin: '0.2rem 0' }}>Job ID: {job.jobId}</p>
+              <p style={{ margin: '0.2rem 0' }}>URL: {job.url}</p>
+              <p style={{ margin: '0.2rem 0' }}>Status: {job.status}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button 
         onClick={checkHealth}
         style={{
           padding: '0.5rem 1rem',
@@ -126,7 +169,7 @@ function App() {
         </p>
       )}
 
-      <p style={{ color: '#888', fontSize: '1rem' }}>
+      <p style={{ color: '#888', fontSize: '1rem', marginTop: '1rem' }}>
         React/Vite Frontend & Node.js/Express Backend Initialized
       </p>
     </div>
@@ -134,6 +177,7 @@ function App() {
 }
 
 export default App
+
 
 
 
