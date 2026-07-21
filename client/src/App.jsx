@@ -82,13 +82,8 @@ function App() {
       </div>
 
       {searchResults.map((business, index) => (
-        <div key={index} style={{ border: '1px solid #333', borderRadius: '4px', padding: '0.8rem', margin: '0.5rem 0', width: '320px', textAlign: 'left', backgroundColor: '#1a1a1a' }}>
-          <div><strong>{business.name}</strong></div>
-          {business.website && (
-            <div style={{ marginTop: '0.4rem', fontSize: '0.9rem', color: '#aaa' }}>
-              Website: <a href={business.website} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{business.website}</a>
-            </div>
-          )}
+        <div key={index}>
+          {business.name}
         </div>
       ))}
     </div>
