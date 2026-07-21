@@ -72,7 +72,7 @@ app.post('/api/search', async (req, res) => {
     
     const businesses = items.map(item => ({
       name: item.title || "",
-      website: item.website || "",
+      website: item.url || "",
       phone: item.phone || "",
       address: item.address || "",
       rating: item.rating?.value || null
