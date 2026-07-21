@@ -14,6 +14,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// POST URL endpoint
+app.post('/api/url', (req, res) => {
+  const { url } = req.body;
+  res.json({
+    received: true,
+    url: url
+  });
+});
+
 // Root check endpoint
 app.get('/', (req, res) => {
   res.send('Lead Gen Backend is running.');
