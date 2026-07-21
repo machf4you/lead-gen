@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,10 +17,10 @@ app.get('/api/health', (req, res) => {
 
 // POST URL endpoint
 app.post('/api/url', (req, res) => {
-  const { url } = req.body;
+  const jobId = crypto.randomUUID();
   res.json({
-    received: true,
-    url: url
+    jobId: jobId,
+    received: true
   });
 });
 

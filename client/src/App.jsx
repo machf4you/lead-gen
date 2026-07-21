@@ -4,7 +4,7 @@ import './App.css'
 function App() {
   const [healthStatus, setHealthStatus] = useState(null)
   const [urlInput, setUrlInput] = useState('')
-  const [submittedUrl, setSubmittedUrl] = useState(null)
+  const [jobId, setJobId] = useState(null)
 
   const checkHealth = async () => {
     try {
@@ -33,7 +33,7 @@ function App() {
       })
       if (response.ok) {
         const data = await response.json()
-        setSubmittedUrl(data.url)
+        setJobId(data.jobId)
       }
     } catch (error) {
       console.error(error)
@@ -97,9 +97,10 @@ function App() {
         Submit URL
       </button>
 
-      {submittedUrl && (
+      {jobId && (
         <p style={{ fontSize: '1rem', marginBottom: '1.5rem' }}>
-          Received: {submittedUrl}
+          Job ID:<br />
+          {jobId}
         </p>
       )}
 
