@@ -42,6 +42,11 @@ app.post('/api/search', async (req, res) => {
     const keyword = `${businessType} in ${location}`;
 
     const category = businessType.toLowerCase().trim().replace(/s$/, '').replace(/\s+/g, '_');
+    const normalizedLocation = location.trim()
+      .split(/\s+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
     const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
       method: 'POST',
       headers: {
@@ -52,7 +57,7 @@ app.post('/api/search', async (req, res) => {
         {
           categories: [category],
           filters: [
-            ["address_info.city", "=", location.trim()]
+            ["address_info.city", "=", normalizedLocation]
           ],
           limit: 20
         }
