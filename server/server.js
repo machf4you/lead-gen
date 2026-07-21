@@ -36,9 +36,9 @@ app.post('/api/url', (req, res) => {
       newJob.status = "Analysing";
       setTimeout(() => {
         newJob.status = "Completed";
-      }, 1000);
-    }, 1000);
-  }, 1000);
+      }, 5000);
+    }, 5000);
+  }, 5000);
 
   res.json({
     jobId: jobId,
