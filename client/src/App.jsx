@@ -53,15 +53,29 @@ function App() {
 
       <div>Results: {searchResults.length}</div>
       {Array.isArray(searchResults) &&
-        searchResults.map((business, index) => (
-          <div key={index} style={{ marginBottom: '1rem' }}>
-            <div>{business.name}</div>
-            {business.website && <div>{business.website}</div>}
-            {business.phone && <div>{business.phone}</div>}
-            {business.address && <div>{business.address}</div>}
-            {business.rating !== null && business.rating !== undefined && <div>Rating: {business.rating}</div>}
-          </div>
-        ))
+        searchResults.map((business, index) => {
+          let domain = '';
+          if (business.website) {
+            try {
+              domain = new URL(business.website).hostname.replace(/^www\./, '');
+            } catch (e) {
+              domain = business.website.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+            }
+          }
+          return (
+            <div key={index} style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+              <div><strong>{business.name}</strong></div>
+              {business.website && (
+                <div>
+                  Website: <a href={business.website} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{domain}</a>
+                </div>
+              )}
+              {business.phone && <div>Phone: {business.phone}</div>}
+              {business.address && <div>Address: {business.address}</div>}
+              {business.rating !== null && business.rating !== undefined && <div>Rating: {business.rating}</div>}
+            </div>
+          );
+        })
       }
     </div>
   )
