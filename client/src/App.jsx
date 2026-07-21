@@ -7,7 +7,40 @@ function App() {
   const [urlInput, setUrlInput] = useState('')
   const [jobId, setJobId] = useState(null)
   const [jobs, setJobs] = useState([])
+  const [businessType, setBusinessType] = useState('')
+  const [location, setLocation] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchError, setSearchError] = useState(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
   const emptyLead = createEmptyLead()
+
+  const handleSearch = async () => {
+    setIsSearching(true)
+    setSearchError(null)
+    setHasSearched(true)
+    try {
+      const response = await fetch('http://localhost:5000/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ businessType, location })
+      })
+      const data = await response.json()
+      if (response.ok) {
+        setSearchResults(data)
+      } else {
+        setSearchError(data.error || 'Failed to search businesses')
+        setSearchResults([])
+      }
+    } catch (error) {
+      setSearchError('Connection error: ' + error.message)
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }
 
   const checkHealth = async () => {
     try {
@@ -168,6 +201,97 @@ function App() {
           ))}
         </div>
       )}
+
+      <div style={{ marginTop: '2rem', marginBottom: '2rem', width: '320px', border: '1px solid #444', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#1a1a1a' }}>
+        <h3 style={{ margin: '0 0 1rem 0' }}>Search Businesses</h3>
+        
+        <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+          <label style={{ fontSize: '0.9rem', display: 'block', marginBottom: '0.2rem' }}>Business Type</label>
+          <input 
+            type="text" 
+            value={businessType}
+            onChange={(e) => setBusinessType(e.target.value)}
+            placeholder="e.g. dentist, restaurant"
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              boxSizing: 'border-box',
+              backgroundColor: '#222',
+              border: '1px solid #444',
+              color: '#fff',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem', textAlign: 'left' }}>
+          <label style={{ fontSize: '0.9rem', display: 'block', marginBottom: '0.2rem' }}>Location</label>
+          <input 
+            type="text" 
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="e.g. London, United Kingdom"
+            style={{
+              width: '100%',
+              padding: '0.5rem',
+              boxSizing: 'border-box',
+              backgroundColor: '#222',
+              border: '1px solid #444',
+              color: '#fff',
+              borderRadius: '4px'
+            }}
+          />
+        </div>
+
+        <button 
+          onClick={handleSearch}
+          disabled={isSearching}
+          style={{
+            width: '100%',
+            padding: '0.5rem',
+            backgroundColor: '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '1rem'
+          }}
+        >
+          {isSearching ? 'Searching...' : 'Search Businesses'}
+        </button>
+
+        {searchError && (
+          <p style={{ color: '#f87171', fontSize: '0.9rem', marginTop: '1rem' }}>
+            {searchError}
+          </p>
+        )}
+      </div>
+
+      {searchResults.length > 0 && (
+        <div style={{ width: '320px', textAlign: 'left', marginBottom: '2rem' }}>
+          <h4 style={{ textAlign: 'center', marginBottom: '1rem' }}>Search Results ({searchResults.length})</h4>
+          {searchResults.map((biz, idx) => (
+            <div key={idx} style={{ padding: '0.8rem', border: '1px solid #333', borderRadius: '6px', marginBottom: '0.5rem', backgroundColor: '#161616' }}>
+              <p style={{ margin: '0.2rem 0', fontWeight: 'bold' }}>{biz.name}</p>
+              <p style={{ margin: '0.2rem 0', fontSize: '0.9rem', color: '#aaa' }}>Website: {biz.website || 'N/A'}</p>
+              <p style={{ margin: '0.2rem 0', fontSize: '0.9rem', color: '#aaa' }}>Phone: {biz.phone || 'N/A'}</p>
+              <p style={{ margin: '0.2rem 0', fontSize: '0.9rem', color: '#aaa' }}>Address: {biz.address || 'N/A'}</p>
+              <p style={{ margin: '0.2rem 0', fontSize: '0.9rem', color: '#fbbf24' }}>
+                Rating: {biz.rating !== null ? biz.rating : 'N/A'}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasSearched && searchResults.length === 0 && !isSearching && !searchError && (
+        <div style={{ width: '320px', marginBottom: '2rem', padding: '1rem', backgroundColor: '#161616', border: '1px solid #333', borderRadius: '6px' }}>
+          <p style={{ color: '#aaa', fontSize: '0.9rem', margin: 0, textAlign: 'center' }}>
+            No businesses found matching your criteria.
+          </p>
+        </div>
+      )}
+
 
       <div style={{
         marginTop: '2rem',

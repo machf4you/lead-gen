@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -16,6 +17,69 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: "ok"
   });
+});
+
+// POST search endpoint (DataForSEO Integration)
+app.post('/api/search', async (req, res) => {
+  const login = process.env.DATAFORSEO_LOGIN;
+  const password = process.env.DATAFORSEO_PASSWORD;
+
+  if (!login || !password) {
+    return res.status(400).json({
+      error: "DataForSEO API credentials are not configured. Please set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in your environment."
+    });
+  }
+
+  const { businessType, location } = req.body;
+  if (!businessType || !location) {
+    return res.status(400).json({
+      error: "Business Type and Location are required."
+    });
+  }
+
+  try {
+    const auth = Buffer.from(`${login}:${password}`).toString('base64');
+    const keyword = `${businessType} in ${location}`;
+
+    const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify([
+        {
+          keyword: keyword,
+          limit: 20
+        }
+      ])
+    });
+
+    const data = await response.json();
+    const task = data?.tasks?.[0];
+
+    if (task?.status_code !== 20000) {
+      return res.status(500).json({
+        error: `DataForSEO API task failed: ${task?.status_message}`
+      });
+    }
+
+    const items = task?.result?.[0]?.items || [];
+    
+    const businesses = items.map(item => ({
+      name: item.title || "",
+      website: item.website || "",
+      phone: item.phone || "",
+      address: item.address || "",
+      rating: item.rating?.value || null
+    }));
+
+    res.json(businesses);
+  } catch (error) {
+    res.status(500).json({
+      error: `Failed to retrieve businesses: ${error.message}`
+    });
+  }
 });
 
 // POST URL endpoint
