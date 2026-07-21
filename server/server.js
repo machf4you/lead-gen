@@ -41,6 +41,7 @@ app.post('/api/search', async (req, res) => {
     const auth = Buffer.from(`${login}:${password}`).toString('base64');
     const keyword = `${businessType} in ${location}`;
 
+    const category = businessType.toLowerCase().trim().replace(/s$/, '').replace(/\s+/g, '_');
     const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
       method: 'POST',
       headers: {
@@ -49,7 +50,10 @@ app.post('/api/search', async (req, res) => {
       },
       body: JSON.stringify([
         {
-          keyword: keyword,
+          categories: [category],
+          filters: [
+            ["address_info.city", "=", location.trim()]
+          ],
           limit: 20
         }
       ])
