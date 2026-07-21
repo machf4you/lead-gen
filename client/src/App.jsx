@@ -57,6 +57,9 @@ function App() {
           <div key={index} style={{ marginBottom: '1rem' }}>
             <div>{business.name}</div>
             {business.website && <div>{business.website}</div>}
+            {business.phone && <div>{business.phone}</div>}
+            {business.address && <div>{business.address}</div>}
+            {business.rating !== null && business.rating !== undefined && <div>Rating: {business.rating}</div>}
           </div>
         ))
       }
