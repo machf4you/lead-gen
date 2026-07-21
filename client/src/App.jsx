@@ -16,6 +16,7 @@ function App() {
         body: JSON.stringify({ businessType, location })
       });
       const data = await response.json();
+      console.log(data);
       if (response.ok) {
         setSearchResults(data);
       }
@@ -50,11 +51,12 @@ function App() {
         Search
       </button>
 
-      {searchResults.map((business, index) => (
-        <div key={index} style={{ marginBottom: '0.5rem' }}>
-          {business.name}
-        </div>
-      ))}
+      <div>Results: {searchResults.length}</div>
+      {Array.isArray(searchResults) &&
+        searchResults.map((business, index) => (
+          <div key={index}>{business.name}</div>
+        ))
+      }
     </div>
   )
 }
