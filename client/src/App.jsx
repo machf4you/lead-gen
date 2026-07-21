@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createEmptyLead } from './models/Lead'
 import './App.css'
 
 function App() {
@@ -6,6 +7,7 @@ function App() {
   const [urlInput, setUrlInput] = useState('')
   const [jobId, setJobId] = useState(null)
   const [jobs, setJobs] = useState([])
+  const emptyLead = createEmptyLead()
 
   const checkHealth = async () => {
     try {
@@ -164,8 +166,36 @@ function App() {
               )}
             </div>
           ))}
-        </div>
       )}
+
+      <div style={{
+        marginTop: '2rem',
+        marginBottom: '2rem',
+        padding: '1.5rem',
+        border: '1px solid #444',
+        borderRadius: '8px',
+        backgroundColor: '#1a1a1a',
+        width: '320px',
+        textAlign: 'left'
+      }}>
+        <h3 style={{ margin: '0 0 1rem 0', textAlign: 'center', borderBottom: '1px solid #333', paddingBottom: '0.5rem' }}>
+          Lead Structure Verification
+        </h3>
+        <p style={{ margin: '0.4rem 0' }}><strong>Lead ID:</strong> {emptyLead.leadId || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Business Name:</strong> {emptyLead.businessName || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Business Type:</strong> {emptyLead.businessType || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Location:</strong> {emptyLead.location || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Website:</strong> {emptyLead.website || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Phone:</strong> {emptyLead.phone || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Email:</strong> {emptyLead.email || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Address:</strong> {emptyLead.address || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Opportunity Status:</strong> {emptyLead.opportunityStatus || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Opportunity Type:</strong> {emptyLead.opportunityType || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Opportunity Description:</strong> {emptyLead.opportunityDescription || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Email Status:</strong> {emptyLead.emailStatus || "(empty)"}</p>
+        <p style={{ margin: '0.4rem 0' }}><strong>Created Date:</strong> {emptyLead.createdDate || "(empty)"}</p>
+      </div>
+
 
       <button 
         onClick={checkHealth}
