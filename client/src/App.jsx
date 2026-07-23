@@ -1,5 +1,152 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
+
+// Helper to construct a natural UK English Contact Strategy summary (2-4 sentences)
+const getContactStrategySummary = (item) => {
+  const keyword = item.searchKeyword || 'your services';
+  const location = item.location || '';
+  const phrase = location ? `${keyword} in ${location}` : keyword;
+  const rank = parseInt(item.rank, 10);
+  const health = item.seoHealth;
+  const gbp = item.gbp;
+
+  let reasons = [];
+  if (health) {
+    if (!health.isHttps) reasons.push("critical security issues (missing HTTPS)");
+    if (!health.indexable) reasons.push("technical indexability blocks");
+    if (!health.titlePresent || !health.descriptionPresent || !health.h1Present) reasons.push("missing page title or meta tags");
+  }
+  if (gbp && gbp.status === 'Not Found') {
+    reasons.push("a missing Google Business Profile");
+  }
+
+  let summary = '';
+  const positionText = (!isNaN(rank) && rank > 0) ? `currently ranking at position #${rank} for "${phrase}"` : `ranking in search results for "${phrase}"`;
+  
+  if (reasons.length > 0) {
+    summary = `This business is an exceptional prospect ${positionText}. While they have established some search visibility, their growth is severely restricted by ${reasons.slice(0, 2).join(' and ')}. Resolving these high-impact visibility gaps represents an immediate opportunity to capture more local enquiries.`;
+  } else {
+    summary = `This business is a strong candidate for expansion ${positionText}. Since their basic technical SEO tags are optimized, they are prime for advanced local campaigns. Building high-intent local landing pages and boosting reviews represents their most immediate commercial growth path.`;
+  }
+  return summary;
+};
+
+// Helper to list key talking points based solely on analysis findings
+const getKeyTalkingPoints = (item) => {
+  const points = [];
+  const health = item.seoHealth;
+  const gbp = item.gbp;
+
+  if (health) {
+    if (!health.isHttps) {
+      points.push("Missing HTTPS encryption (non-secure)");
+    }
+    if (health.statusCode !== 200) {
+      points.push(`Critical response status code issue (${health.statusCode || 'Error'})`);
+    }
+    if (!health.indexable) {
+      points.push("Technical indexing issues (page flagged as noindex)");
+    }
+    if (!health.hasCanonical) {
+      points.push("Missing canonical URL tag");
+    }
+    if (!health.titlePresent) {
+      points.push("Missing Meta Title tag");
+    } else if (health.titleLength < 40 || health.titleLength > 70) {
+      points.push("Sub-optimal Meta Title length");
+    }
+    if (!health.descriptionPresent) {
+      points.push("Missing Meta Description tag");
+    } else if (health.descriptionLength < 100 || health.descriptionLength > 160) {
+      points.push("Missing or sub-optimal Meta Description");
+    }
+    if (!health.h1Present) {
+      points.push("Missing primary H1 Heading tag");
+    } else if (health.h1Count > 1) {
+      points.push("Multiple H1 headings (confuses search engines)");
+    }
+  }
+
+  if (gbp) {
+    if (gbp.status === 'Not Found') {
+      points.push("Weak Google Business Profile (missing listing)");
+    } else if (gbp.status === 'Multiple Matches') {
+      points.push("Conflicting Google Business Profile listings");
+    } else if (gbp.status === 'Found') {
+      const rating = parseFloat(gbp.rating);
+      const reviews = parseInt(gbp.reviewCount, 10);
+      if (!isNaN(rating) && rating < 4.0) {
+        points.push(`Weak Google Business Profile rating (${rating}★)`);
+      }
+      if (!isNaN(reviews) && reviews < 30) {
+        points.push(`Weak Google Business Profile (low review count: ${reviews})`);
+      }
+    }
+  }
+
+  if (points.length === 0) {
+    points.push("Quick SEO wins available");
+  }
+
+  return points;
+};
+
+// Helper to generate a conversational, personalised first-contact email
+const generateFirstEmail = (item) => {
+  const keyword = item.searchKeyword || 'your services';
+  const location = item.location || '';
+  const phrase = location ? `${keyword} in ${location}` : keyword;
+  const domain = item.domain || 'your website';
+  const gbp = item.gbp;
+  const health = item.seoHealth;
+
+  let issuesText = '';
+  const list = [];
+  if (health) {
+    if (!health.isHttps) {
+      list.push("your homepage currently loads as non-secure (HTTP)");
+    }
+    if (!health.titlePresent) {
+      list.push("the page title is missing");
+    }
+    if (!health.descriptionPresent) {
+      list.push("there is no meta description appearing in search results");
+    }
+    if (!health.h1Present) {
+      list.push("the primary H1 heading tag is missing");
+    }
+  }
+  if (gbp && gbp.status === 'Not Found') {
+    list.push("your business is missing its Google Business Profile listing");
+  }
+
+  if (list.length > 0) {
+    issuesText = `I noticed ${list.slice(0, 2).join(' and ')}. These elements are quite important for search engine rankings, but luckily they are straightforward to resolve.`;
+  } else {
+    issuesText = `I noticed a few easy wins to capture more local customers, like setting up dedicated landing pages and local search schemas.`;
+  }
+
+  const subject = `Quick question about visibility for ${domain}`;
+  
+  const email = `Subject: ${subject}
+
+Hi there,
+
+I was looking for local businesses online and came across ${domain} ranking at position #${item.rank || 'N/A'} for "${phrase}" in Google. 
+
+You have a fantastic business, but while reviewing the listing, ${issuesText}
+
+Resolving these search gaps will make it much easier for new clients to find you and click through to your site instead of your competitors.
+
+I've put together a brief, 2-minute checklist detailing the exact steps to optimize this. Would it be alright to send it over?
+
+Kind regards,
+
+[Your Name]
+[Your Company]`;
+
+  return email;
+};
 
 function App() {
   const [searchResults, setSearchResults] = useState([])
@@ -9,7 +156,7 @@ function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [searchMode, setSearchMode] = useState('local')
+  const [searchMode, setSearchMode] = useState('organic')
   const [excludedDomains, setExcludedDomains] = useState(() => {
     try {
       const saved = localStorage.getItem('tse_excluded_domains');
@@ -23,7 +170,20 @@ function App() {
   const [activeSearchId, setActiveSearchId] = useState(null)
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isBulkAnalysing, setIsBulkAnalysing] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
   const [analysisError, setAnalysisError] = useState(null)
+  const [outreachEmail, setOutreachEmail] = useState('')
+  const [sortColumn, setSortColumn] = useState(null)
+  const [sortDirection, setSortDirection] = useState('asc')
+
+  useEffect(() => {
+    if (activeAnalysisItem) {
+      setOutreachEmail(generateFirstEmail(activeAnalysisItem));
+    } else {
+      setOutreachEmail('');
+    }
+  }, [activeAnalysisItem]);
   const [recentAnalyses, setRecentAnalyses] = useState(() => {
     try {
       const saved = localStorage.getItem('tse_recent_analyses');
@@ -125,8 +285,53 @@ function App() {
           return !activeExclusions.includes(itemDomain);
         });
 
-        setSearchResults(filteredData);
+        const enrichedData = filteredData.map((item, idx) => {
+          const isOrganic = !item.name;
+          const url = isOrganic ? item.url : (item.website || '');
+          const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
+          
+          let existingAnalysis = null;
+          const recentMatch = recentAnalyses.find(a => 
+            (url && a.url === url) || 
+            (domain && a.domain === domain)
+          );
+          if (recentMatch) {
+            existingAnalysis = recentMatch.analysis;
+          } else {
+            for (const search of savedSearches) {
+              if (search.data) {
+                const match = search.data.find(subItem => {
+                  const subOrganic = !subItem.name;
+                  const subKey = subOrganic ? subItem.url : (subItem.website || subItem.name);
+                  return (url && subKey === url) || (domain && getDomain(subKey) === domain);
+                });
+                if (match && match.analysis) {
+                  existingAnalysis = match.analysis;
+                  break;
+                }
+              }
+            }
+          }
+
+          const rankVal = item.rank !== undefined && item.rank !== null ? item.rank : idx + 1;
+
+          if (existingAnalysis) {
+            return {
+              ...item,
+              rank: rankVal,
+              analysis: {
+                ...existingAnalysis,
+                rank: rankVal
+              }
+            };
+          }
+          return { ...item, rank: rankVal };
+        });
+
+        setSearchResults(enrichedData);
         setCurrentPage(1);
+        setSortColumn(null);
+        setSortDirection('asc');
         
         // Save search automatically
         setSavedSearches(prev => {
@@ -155,8 +360,8 @@ function App() {
             location: location.trim() || 'Anywhere',
             searchMode: searchMode,
             dateTime: new Date().toLocaleString(),
-            count: filteredData.length,
-            data: filteredData
+            count: enrichedData.length,
+            data: enrichedData
           };
           const updated = [newSearch, ...prev];
           localStorage.setItem('tse_saved_searches', JSON.stringify(updated));
@@ -176,8 +381,11 @@ function App() {
   const handleNewSearchNav = () => {
     setBusinessType('');
     setLocation('');
+    setSearchMode('organic');
     setSearchResults([]);
     setCurrentPage(1);
+    setSortColumn(null);
+    setSortDirection('asc');
     setActiveSearchId(null);
     setActiveAnalysisItem(null);
     setCurrentView('search');
@@ -203,8 +411,53 @@ function App() {
         return item;
       });
 
-    setSearchResults(filtered);
+    // Enrich with any existing cached analysis matching domain/URL
+    const enriched = filtered.map(item => {
+      if (item.analysis) return item;
+      
+      const isOrganic = !item.name;
+      const url = isOrganic ? item.url : (item.website || '');
+      const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
+      
+      let existingAnalysis = null;
+      const recentMatch = recentAnalyses.find(a => 
+        (url && a.url === url) || 
+        (domain && a.domain === domain)
+      );
+      if (recentMatch) {
+        existingAnalysis = recentMatch.analysis;
+      } else {
+        for (const search of savedSearches) {
+          if (search.data) {
+            const match = search.data.find(subItem => {
+              const subOrganic = !subItem.name;
+              const subKey = subOrganic ? subItem.url : (subItem.website || subItem.name);
+              return (url && subKey === url) || (domain && getDomain(subKey) === domain);
+            });
+            if (match && match.analysis) {
+              existingAnalysis = match.analysis;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (existingAnalysis) {
+        return { 
+          ...item, 
+          analysis: {
+            ...existingAnalysis,
+            rank: item.rank
+          } 
+        };
+      }
+      return item;
+    });
+
+    setSearchResults(enriched);
     setCurrentPage(1);
+    setSortColumn(null);
+    setSortDirection('asc');
     setCurrentView('search');
   };
 
@@ -278,54 +531,15 @@ function App() {
     });
   };
 
-  const handleAnalyse = async (item) => {
+  const analyseItem = async (item) => {
     const isOrganic = !item.name;
     const url = isOrganic ? item.url : (item.website || '');
     const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
-    const title = isOrganic ? item.title : (item.name || '');
     const itemKey = isOrganic ? item.url : (item.website || item.name);
 
     if (item.analysis) {
-      const analysisObj = {
-        ...item.analysis,
-        domain,
-        url,
-        searchId: activeSearchId || 'Not available',
-        searchType: isOrganic ? 'Organic' : 'GMB',
-        searchKeyword: businessType || 'Any',
-        location: location || 'Anywhere',
-        rank: item.rank || item.analysis?.rank || 0
-      };
-      setActiveAnalysisItem(analysisObj);
-      addToRecentAnalyses(analysisObj);
-      setCurrentView('analyse');
-      return;
+      return item.analysis;
     }
-
-    setIsAnalysing(true);
-    setAnalysisError(null);
-    setCurrentView('analyse');
-    
-    const initialObj = {
-      domain,
-      url,
-      rank: item.rank || 0,
-      searchId: activeSearchId || 'Not available',
-      searchType: isOrganic ? 'Organic' : 'GMB',
-      searchKeyword: businessType || 'Any',
-      location: location || 'Anywhere',
-      pageTitle: 'Loading...',
-      metaDescription: 'Loading...',
-      h1: 'Loading...',
-      httpStatus: 'Loading...',
-      canonicalUrl: 'Loading...',
-      indexable: 'Loading...',
-      lastAnalysed: 'Loading...',
-      seoHealth: null,
-      aiReport: null,
-      leadOpportunity: null
-    };
-    setActiveAnalysisItem(initialObj);
 
     try {
       const response = await fetch('http://localhost:5000/api/analyse', {
@@ -359,19 +573,7 @@ function App() {
       };
 
       updateItemAnalysis(itemKey, completedAnalysis);
-
-      const finalObj = {
-        ...completedAnalysis,
-        domain,
-        url,
-        searchId: activeSearchId || 'Not available',
-        searchType: isOrganic ? 'Organic' : 'GMB',
-        searchKeyword: businessType || 'Any',
-        location: location || 'Anywhere',
-        rank: item.rank || completedAnalysis.rank || 0
-      };
-      setActiveAnalysisItem(finalObj);
-      addToRecentAnalyses(finalObj);
+      return completedAnalysis;
     } catch (e) {
       console.error(e);
       const failedAnalysis = {
@@ -432,25 +634,152 @@ function App() {
           points: 5
         }
       };
-      
       updateItemAnalysis(itemKey, failedAnalysis);
-      
-      const finalFailedObj = {
-        ...failedAnalysis,
+      return failedAnalysis;
+    }
+  };
+
+  const handleAnalyseAll = async () => {
+    if (isBulkAnalysing || searchResults.length === 0) return;
+    
+    setIsBulkAnalysing(true);
+    const total = searchResults.length;
+    setBulkProgress({ current: 0, total });
+
+    for (let i = 0; i < total; i++) {
+      setBulkProgress({ current: i + 1, total });
+      const item = searchResults[i];
+      await analyseItem(item);
+    }
+
+    setIsBulkAnalysing(false);
+  };
+
+  const handleAnalyse = async (item) => {
+    const isOrganic = !item.name;
+    const url = isOrganic ? item.url : (item.website || '');
+    const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
+    const itemKey = isOrganic ? item.url : (item.website || item.name);
+
+    if (item.analysis) {
+      const analysisObj = {
+        ...item.analysis,
         domain,
         url,
         searchId: activeSearchId || 'Not available',
         searchType: isOrganic ? 'Organic' : 'GMB',
         searchKeyword: businessType || 'Any',
         location: location || 'Anywhere',
-        rank: item.rank || failedAnalysis.rank || 0
+        rank: item.rank || item.analysis?.rank || 0
       };
-      setActiveAnalysisItem(finalFailedObj);
-      addToRecentAnalyses(finalFailedObj);
-      setAnalysisError('Failed to fetch website: ' + e.message);
-    } finally {
-      setIsAnalysing(false);
+      setActiveAnalysisItem(analysisObj);
+      addToRecentAnalyses(analysisObj);
+      setCurrentView('analyse');
+      return;
     }
+
+    setIsAnalysing(true);
+    setAnalysisError(null);
+    setCurrentView('analyse');
+    
+    const initialObj = {
+      domain,
+      url,
+      rank: item.rank || 0,
+      searchId: activeSearchId || 'Not available',
+      searchType: isOrganic ? 'Organic' : 'GMB',
+      searchKeyword: businessType || 'Any',
+      location: location || 'Anywhere',
+      pageTitle: 'Loading...',
+      metaDescription: 'Loading...',
+      h1: 'Loading...',
+      httpStatus: 'Loading...',
+      canonicalUrl: 'Loading...',
+      indexable: 'Loading...',
+      lastAnalysed: 'Loading...',
+      seoHealth: null,
+      aiReport: null,
+      leadOpportunity: null
+    };
+    setActiveAnalysisItem(initialObj);
+
+    const completedAnalysis = await analyseItem(item);
+    
+    if (completedAnalysis.httpStatus === 'Connection Error') {
+      setAnalysisError('Failed to fetch website: Connection error while attempting to analyze site.');
+    }
+
+    const finalObj = {
+      ...completedAnalysis,
+      domain,
+      url,
+      searchId: activeSearchId || 'Not available',
+      searchType: isOrganic ? 'Organic' : 'GMB',
+      searchKeyword: businessType || 'Any',
+      location: location || 'Anywhere',
+      rank: item.rank || completedAnalysis.rank || 0
+    };
+    setActiveAnalysisItem(finalObj);
+    addToRecentAnalyses(finalObj);
+    setIsAnalysing(false);
+  };
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection(column === 'score' ? 'desc' : 'asc');
+    }
+  };
+
+  const renderSortIndicator = (column) => {
+    const isActive = sortColumn === column;
+    const isAsc = sortDirection === 'asc';
+    
+    return (
+      <span style={{ marginLeft: '6px', fontSize: '0.75rem', cursor: 'pointer', display: 'inline-flex', gap: '2px', verticalAlign: 'middle', userSelect: 'none' }}>
+        <span style={{ color: isActive && isAsc ? '#60a5fa' : '#475569' }}>▲</span>
+        <span style={{ color: isActive && !isAsc ? '#60a5fa' : '#475569' }}>▼</span>
+      </span>
+    );
+  };
+
+  const getSortedResults = () => {
+    if (!sortColumn) return searchResults;
+
+    const sorted = [...searchResults];
+    sorted.sort((a, b) => {
+      if (sortColumn === 'position') {
+        const valA = parseInt(a.rank, 10) || 999;
+        const valB = parseInt(b.rank, 10) || 999;
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+
+      if (sortColumn === 'rating') {
+        const valA = parseFloat(a.rating) || 0;
+        const valB = parseFloat(b.rating) || 0;
+        return sortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+
+      if (sortColumn === 'score') {
+        const scoreA = a.analysis?.leadOpportunityScore?.score ?? -1;
+        const scoreB = b.analysis?.leadOpportunityScore?.score ?? -1;
+        return sortDirection === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+      }
+
+      if (sortColumn === 'domain') {
+        const valA = (a.domain || a.url || a.website || a.name || '').toLowerCase();
+        const valB = (b.domain || b.url || b.website || b.name || '').toLowerCase();
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
+
+      return 0;
+    });
+
+    return sorted;
   };
 
   const renderTruncatedMetaValue = (val, maxLength = 80) => {
@@ -801,23 +1130,23 @@ function App() {
                   <input 
                     type="radio" 
                     name="searchMode" 
-                    value="local" 
-                    checked={searchMode === 'local'} 
-                    onChange={() => setSearchMode('local')}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  Local Business Listings
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: '600', color: '#cbd5e1' }}>
-                  <input 
-                    type="radio" 
-                    name="searchMode" 
                     value="organic" 
                     checked={searchMode === 'organic'} 
                     onChange={() => setSearchMode('organic')}
                     style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                   />
                   Google Organic SERP
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: '600', color: '#cbd5e1' }}>
+                  <input 
+                    type="radio" 
+                    name="searchMode" 
+                    value="local" 
+                    checked={searchMode === 'local'} 
+                    onChange={() => setSearchMode('local')}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  Local Business Listings
                 </label>
               </div>
 
@@ -888,22 +1217,38 @@ function App() {
                   )}
                 </div>
                 {searchResults.length > 0 && (
-                  <button 
-                    onClick={handleSearch} 
-                    className="search-btn" 
-                    style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
-                    disabled={isSearching}
-                  >
-                    {isSearching ? 'Refreshing...' : 'Refresh Live Data'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    {isBulkAnalysing ? (
+                      <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                        Analysing {bulkProgress.current} of {bulkProgress.total}...
+                      </span>
+                    ) : (
+                      <button 
+                        onClick={handleAnalyseAll}
+                        className="analyse-btn-green"
+                        style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+                      >
+                        Analyse All Results
+                      </button>
+                    )}
+                    <button 
+                      onClick={handleSearch} 
+                      className="search-btn" 
+                      style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
+                      disabled={isSearching}
+                    >
+                      {isSearching ? 'Refreshing...' : 'Refresh Live Data'}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
 
             {Array.isArray(searchResults) && searchResults.length > 0 && (() => {
               const ITEMS_PER_PAGE = 10;
-              const totalPages = Math.ceil(searchResults.length / ITEMS_PER_PAGE);
-              const paginatedResults = searchResults.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+              const sortedResults = getSortedResults();
+              const totalPages = Math.ceil(sortedResults.length / ITEMS_PER_PAGE);
+              const paginatedResults = sortedResults.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
               const isOrganicResult = searchMode === 'organic';
 
               return (
@@ -913,16 +1258,30 @@ function App() {
                     <thead>
                       {isOrganicResult ? (
                         <tr>
-                          <th>Position</th>
-                          <th>Domain/URL</th>
-                          <th>Description</th>
+                          <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Position {renderSortIndicator('position')}
+                          </th>
+                          <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Score {renderSortIndicator('score')}
+                          </th>
+                          <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Domain / URL {renderSortIndicator('domain')}
+                          </th>
+                          <th>Google Snippet</th>
                           <th className="action-cell">Action</th>
                         </tr>
                       ) : (
                         <tr>
-                          <th>Rating</th>
+                          <th onClick={() => handleSort('rating')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Rating {renderSortIndicator('rating')}
+                          </th>
+                          <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Score {renderSortIndicator('score')}
+                          </th>
                           <th>Business Name</th>
-                          <th>Website</th>
+                          <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Website {renderSortIndicator('domain')}
+                          </th>
                           <th>Phone</th>
                           <th>Address</th>
                           <th className="action-cell">Action</th>
@@ -935,6 +1294,23 @@ function App() {
                           return (
                             <tr key={index}>
                               <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
+                              <td>
+                                {item.analysis ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                    <span style={{ 
+                                      color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
+                                      marginRight: '6px',
+                                      fontSize: '1.1rem',
+                                      lineHeight: '1'
+                                    }}>●</span>
+                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                      {item.analysis.leadOpportunityScore?.score ?? 0}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#64748b' }}>-</span>
+                                )}
+                              </td>
                               <td className="domain-url-cell">
                                 <div>
                                   {item.url ? (
@@ -954,7 +1330,7 @@ function App() {
                                   className="analyse-btn-green" 
                                   style={{ marginRight: '8px' }}
                                 >
-                                  Analyse
+                                  {item.analysis ? 'View' : 'Analyse'}
                                 </button>
                                 <button 
                                   onClick={() => handleExcludeDomain(item.domain || item.url)}
@@ -980,6 +1356,23 @@ function App() {
                               <td>
                                 {item.rating !== null && item.rating !== undefined ? `⭐ ${item.rating}` : "Not available"}
                               </td>
+                              <td>
+                                {item.analysis ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                    <span style={{ 
+                                      color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
+                                      marginRight: '6px',
+                                      fontSize: '1.1rem',
+                                      lineHeight: '1'
+                                    }}>●</span>
+                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                      {item.analysis.leadOpportunityScore?.score ?? 0}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#64748b' }}>-</span>
+                                )}
+                              </td>
                               <td><strong>{item.name || "Not available"}</strong></td>
                               <td>
                                 {item.website ? (
@@ -998,7 +1391,7 @@ function App() {
                                   className="analyse-btn-green" 
                                   style={{ marginRight: '8px' }}
                                 >
-                                  Analyse
+                                  {item.analysis ? 'View' : 'Analyse'}
                                 </button>
                                 <button 
                                   onClick={() => handleExcludeDomain(domain || item.website)}
@@ -1439,31 +1832,31 @@ function App() {
                   <h3 style={{ margin: 0, border: 'none', padding: 0 }}>Outreach Strategy</h3>
                 </div>
 
+                {/* Contact Strategy */}
                 <div style={{ marginBottom: '1.5rem', backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '1rem' }}>Reason to Contact</h4>
-                  <p style={{ margin: 0, fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.6' }}>
-                    {activeAnalysisItem.leadOpportunity?.reasonToContact || 'No critical issues found to establish contact.'}
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Strategy</h4>
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.6' }}>
+                    {getContactStrategySummary(activeAnalysisItem)}
                   </p>
-                </div>
-
-                {/* Recommended Sales Angle */}
-                <div style={{ marginBottom: '1.5rem', backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#f59e0b', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recommended Sales Angle</h4>
-                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                    {getRecommendedSalesAngle(activeAnalysisItem).map((angle, index) => (
-                      <li key={index} style={{ fontSize: '0.95rem', color: '#cbd5e1', display: 'flex', alignItems: 'flex-start', gap: '0.5rem', lineHeight: '1.4' }}>
-                        <span style={{ color: '#f59e0b' }}>•</span>
-                        <span>{angle.replace(/^•\s*/, '')}</span>
-                      </li>
+                  
+                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem', fontWeight: 'bold' }}>Key Talking Points</h5>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', lineHeight: '1.4' }}>
+                    {getKeyTalkingPoints(activeAnalysisItem).map((point, index) => (
+                      <li key={index}>{point.replace(/^•\s*/, '')}</li>
                     ))}
                   </ul>
                 </div>
 
+                {/* Suggested First Email */}
                 <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1rem' }}>Suggested Email Angle</h4>
-                  <p style={{ margin: 0, fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.6' }}>
-                    {activeAnalysisItem.leadOpportunity?.suggestedEmailAngle || 'Suggest discussing potential business expansion.'}
-                  </p>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested First Email</h4>
+                  <textarea
+                    className="analysis-notes-area"
+                    style={{ height: '280px', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.5', marginTop: '0.5rem' }}
+                    value={outreachEmail}
+                    onChange={(e) => setOutreachEmail(e.target.value)}
+                    placeholder="Generating first contact email..."
+                  />
                 </div>
               </div>
 

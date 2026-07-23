@@ -903,6 +903,7 @@ app.post('/api/analyse', async (req, res) => {
     const gbp = await performGbpMatching(targetUrl, '', '', '', location);
     const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank);
     const leadPriority = getPriorityRating(fallbackHealth, gbp, rank);
+    const fallbackOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, targetUrl);
 
     return res.json({
       pageTitle: 'Not Found',
