@@ -8,9 +8,11 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "puppeteer": "^25.3.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
