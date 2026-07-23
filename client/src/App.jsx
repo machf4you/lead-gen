@@ -176,6 +176,19 @@ function App() {
   const [outreachEmail, setOutreachEmail] = useState('')
   const [sortColumn, setSortColumn] = useState(null)
   const [sortDirection, setSortDirection] = useState('asc')
+  const [milestones, setMilestones] = useState([])
+  const [isMilestonesLoading, setIsMilestonesLoading] = useState(false)
+  const [milestonesError, setMilestonesError] = useState(null)
+  const [expandedMilestones, setExpandedMilestones] = useState({})
+  const [newVersion, setNewVersion] = useState('')
+  const [newSummary, setNewSummary] = useState('')
+  const [newFeatures, setNewFeatures] = useState('')
+  const [newBugfixes, setNewBugfixes] = useState('')
+  const [newNotes, setNewNotes] = useState('')
+  const [newRollback, setNewRollback] = useState('')
+  const [isCreatingMilestone, setIsCreatingMilestone] = useState(false)
+  const [milestoneCreateError, setMilestoneCreateError] = useState(null)
+  const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
   useEffect(() => {
     if (activeAnalysisItem) {
@@ -184,6 +197,82 @@ function App() {
       setOutreachEmail('');
     }
   }, [activeAnalysisItem]);
+
+  const fetchMilestones = async () => {
+    setIsMilestonesLoading(true);
+    setMilestonesError(null);
+    try {
+      const response = await fetch('http://localhost:5000/api/milestones');
+      if (!response.ok) throw new Error('Failed to load milestones');
+      const data = await response.json();
+      setMilestones(data);
+    } catch (e) {
+      console.error(e);
+      setMilestonesError(e.message);
+    } finally {
+      setIsMilestonesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMilestones();
+  }, []);
+
+  const handleCreateMilestone = async (e) => {
+    e.preventDefault();
+    if (!newVersion || !newSummary) {
+      setMilestoneCreateError('Version and summary are required.');
+      return;
+    }
+    
+    setIsCreatingMilestone(true);
+    setMilestoneCreateError(null);
+    setMilestoneCreateSuccess(false);
+
+    try {
+      const response = await fetch('http://localhost:5000/api/milestones/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          version: newVersion.trim(),
+          summary: newSummary.trim(),
+          features: newFeatures.split('\n').map(s => s.trim()).filter(Boolean),
+          bugfixes: newBugfixes.split('\n').map(s => s.trim()).filter(Boolean),
+          notes: newNotes.trim(),
+          rollback: newRollback.trim(),
+          walkthroughPath: 'C:/Users/Admin/.gemini/antigravity/brain/373b4a05-e079-4b24-ab38-048b52cabd29/walkthrough.md'
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create milestone');
+      }
+
+      setMilestoneCreateSuccess(true);
+      setNewVersion('');
+      setNewSummary('');
+      setNewFeatures('');
+      setNewBugfixes('');
+      setNewNotes('');
+      setNewRollback('');
+      await fetchMilestones();
+    } catch (e) {
+      console.error(e);
+      setMilestoneCreateError(e.message);
+    } finally {
+      setIsCreatingMilestone(false);
+    }
+  };
+
+  const toggleMilestoneExpanded = (version) => {
+    setExpandedMilestones(prev => ({
+      ...prev,
+      [version]: !prev[version]
+    }));
+  };
   const [recentAnalyses, setRecentAnalyses] = useState(() => {
     try {
       const saved = localStorage.getItem('tse_recent_analyses');
@@ -1062,6 +1151,12 @@ function App() {
             >
               Manage Exclusions
             </button>
+            <button 
+              onClick={() => setCurrentView('settings')} 
+              className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
+            >
+              Settings
+            </button>
           </div>
 
           <div style={{ flexGrow: 1 }} className="sidebar-spacer" />
@@ -1549,6 +1644,230 @@ function App() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+        {currentView === 'settings' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', paddingBottom: '3rem' }}>
+            <div className="search-header-container" style={{ marginBottom: 0 }}>
+              <h1 className="header-title">Settings</h1>
+              <p className="header-subtitle">Configure application settings and track project release history.</p>
+            </div>
+
+            {/* Version History & Milestone Manager */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Version History & Milestone Manager</h2>
+              
+              {/* Current Version Panel */}
+              {(() => {
+                const currentMilestone = milestones[milestones.length - 1];
+                return (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                    border: '1px dashed #3b82f6',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    color: '#f8fafc'
+                  }}>
+                    <h3 style={{ margin: '0 0 0.75rem 0', color: '#60a5fa', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                      Current Active Release
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', fontSize: '0.9rem' }}>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Current Version</span>
+                        <strong>{currentMilestone?.version || 'N/A'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Git Tag</span>
+                        <code style={{ color: '#38bdf8' }}>{currentMilestone?.gitTag || 'N/A'}</code>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Commit Hash</span>
+                        <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }} title={currentMilestone?.commitHash}>
+                          {currentMilestone?.commitHash ? currentMilestone.commitHash.substring(0, 8) : 'N/A'}
+                        </code>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Date</span>
+                        <span>{currentMilestone ? formatLastAnalysed(currentMilestone.date) : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Status</span>
+                        <span style={{ 
+                          color: '#10b981',
+                          fontWeight: 'bold', 
+                          display: 'inline-block', 
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                          padding: '0.1rem 0.5rem', 
+                          borderRadius: '4px',
+                          fontSize: '0.8rem'
+                        }}>
+                          {currentMilestone?.status || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Milestones History Table */}
+              <div>
+                <h3 style={{ margin: '1rem 0 0.75rem 0', color: '#f1f5f9', fontSize: '1.1rem' }}>Historical Milestones</h3>
+                <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: '6px' }}>
+                  <table className="results-table" style={{ border: 'none', margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px' }}></th>
+                        <th>Version</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Git Tag</th>
+                        <th>Commit Hash</th>
+                        <th>Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isMilestonesLoading && milestones.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                            Loading version history...
+                          </td>
+                        </tr>
+                      ) : milestonesError ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
+                            Error loading milestones: {milestonesError}
+                          </td>
+                        </tr>
+                      ) : (
+                        milestones.map((m) => {
+                          const isExpanded = !!expandedMilestones[m.version];
+                          return (
+                            <React.Fragment key={m.version}>
+                              <tr 
+                                onClick={() => toggleMilestoneExpanded(m.version)}
+                                style={{ cursor: 'pointer', transition: 'background-color 0.2s' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <td style={{ textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </td>
+                                <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>{m.version}</td>
+                                <td>{formatLastAnalysed(m.date)}</td>
+                                <td>
+                                  <span style={{ 
+                                    color: '#34d399', 
+                                    backgroundColor: 'rgba(52, 211, 153, 0.1)', 
+                                    padding: '0.1rem 0.5rem', 
+                                    borderRadius: '4px',
+                                    fontSize: '0.85rem'
+                                  }}>
+                                    {m.status}
+                                  </span>
+                                </td>
+                                <td><code style={{ color: '#cbd5e1' }}>{m.gitTag}</code></td>
+                                <td>
+                                  <code style={{ color: '#94a3b8', fontSize: '0.8rem' }} title={m.commitHash}>
+                                    {m.commitHash ? m.commitHash.substring(0, 8) : 'PENDING'}
+                                  </code>
+                                </td>
+                                <td style={{ color: '#e2e8f0' }}>{m.summary}</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan="7" style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderBottom: '1px solid #334155' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#38bdf8', fontSize: '0.95rem' }}>Features Completed</h4>
+                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                            {m.features.map((f, i) => (
+                                              <li key={i}>{f}</li>
+                                            ))}
+                                            {m.features.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
+                                          </ul>
+                                        </div>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f43f5e', fontSize: '0.95rem' }}>Bug Fixes</h4>
+                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                            {m.bugfixes.map((b, i) => (
+                                              <li key={i}>{b}</li>
+                                            ))}
+                                            {m.bugfixes.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
+                                          </ul>
+                                        </div>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2e8f0', fontSize: '0.95rem' }}>Developer Notes</h4>
+                                          <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-line' }}>
+                                            {m.notes || 'No developer notes provided.'}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem' }}>Rollback Information</h4>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Git Tag:</span>
+                                              <code style={{ color: '#38bdf8' }}>{m.gitTag}</code>
+                                            </div>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Commit Hash:</span>
+                                              <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }}>{m.commitHash}</code>
+                                            </div>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.25rem' }}>Rollback Command:</span>
+                                              <div style={{
+                                                backgroundColor: '#1e293b',
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid #334155',
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.8rem',
+                                                color: '#f8fafc',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                              }}>
+                                                <code>git checkout {m.gitTag}</code>
+                                                <button 
+                                                  type="button"
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(`git checkout ${m.gitTag}`);
+                                                    alert('Rollback command copied!');
+                                                  }}
+                                                  style={{
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    color: '#38bdf8',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    textDecoration: 'underline'
+                                                  }}
+                                                >
+                                                  Copy
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 

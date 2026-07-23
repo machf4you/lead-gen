@@ -1,0 +1,43 @@
+[
+  {
+    "version": "v1.0",
+    "date": "2026-07-23T06:00:00Z",
+    "status": "Released",
+    "gitTag": "v1.0-lead-opportunity-dashboard",
+    "commitHash": "649e72dd1bde6edab8330a25fdf8ff4b64d57f18",
+    "summary": "Baseline release of Lead Opportunity Dashboard",
+    "features": [
+      "Executive Summary cards displaying lead overview, priority stars, GBP status, and organic rank.",
+      "Deterministic Opportunity Score (0-100) and weighted rating algorithms.",
+      "Google Business Profile matching engine with domain matching and city proximity filtering.",
+      "Technical Analysis consolidation of HTTPS, response status, canonical tags, and title/description metadata.",
+      "Outreach Strategy angles, Suggested First Email draft copy, and persistent manual annotations."
+    ],
+    "bugfixes": [
+      "Added Cloudflare challenge interstitial title detection and Puppeteer browser fallback parser."
+    ],
+    "notes": "Version 1.0 serves as the baseline dashboard release separating technical insights from business opportunities.",
+    "rollback": "git checkout v1.0-lead-opportunity-dashboard"
+  },
+  {
+    "version": "v1.1",
+    "date": "2026-07-23T06:50:00Z",
+    "status": "Released",
+    "gitTag": "v1.1-search-results-dashboard",
+    "commitHash": "894a4c08e1bedb65315684fffec331953a6eeacb",
+    "summary": "Bulk analysis workflow and search results layout refinements",
+    "features": [
+      "Added Analyse All Results bulk sequence execution engine.",
+      "Sequential analysis queue with live progressive progress indicators (e.g. Analysing 4 of 25...).",
+      "Smart caching and auto-restoration of Opportunity Score and View Analysis states on search refreshes.",
+      "Reordered Search Results table placing numeric Score column immediately after Position/Rating.",
+      "Subtle colored status indicators (Red/Orange/Green) for commercial opportunity levels.",
+      "Enabled client-side interactive sorting for Position/Rating, Score, and Domain/URL columns."
+    ],
+    "bugfixes": [
+      "Fixed ReferenceError for fallbackOpportunity inside catch block when scraping fails."
+    ],
+    "notes": "Version 1.1 focuses on search dashboard usability, sorting, and bulk auditing productivity gains.",
+    "rollback": "git checkout v1.1-search-results-dashboard"
+  }
+]

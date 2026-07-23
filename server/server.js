@@ -4,6 +4,14 @@ import cors from 'cors';
 import crypto from 'crypto';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import util from 'util';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to detect temporary/interstitial placeholder titles
 function isPlaceholderTitle(title) {
@@ -984,6 +992,97 @@ app.get('/api/jobs', (req, res) => {
 // Root check endpoint
 app.get('/', (req, res) => {
   res.send('Lead Gen Backend is running.');
+});
+
+const execPromise = util.promisify(exec);
+
+// GET milestones endpoint
+app.get('/api/milestones', async (req, res) => {
+  try {
+    const data = await fs.readFile(path.join(__dirname, 'milestones.json'), 'utf8');
+    res.json(JSON.parse(data));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST milestones create endpoint
+app.post('/api/milestones/create', async (req, res) => {
+  const { version, summary, features, bugfixes, notes, rollback, walkthroughPath } = req.body;
+  
+  if (!version || !summary) {
+    return res.status(400).json({ error: 'Version and summary are required' });
+  }
+
+  const milestonesFilePath = path.join(__dirname, 'milestones.json');
+  
+  try {
+    let milestones = [];
+    try {
+      const fileData = await fs.readFile(milestonesFilePath, 'utf8');
+      milestones = JSON.parse(fileData);
+    } catch (e) {
+      // Start empty if not found
+    }
+
+    if (milestones.some(m => m.version.toLowerCase() === version.toLowerCase())) {
+      return res.status(400).json({ error: `Version ${version} already exists` });
+    }
+
+    const gitTag = `${version.toLowerCase()}`;
+    const dateStr = new Date().toISOString();
+    
+    const newMilestone = {
+      version,
+      date: dateStr,
+      status: 'Released',
+      gitTag,
+      commitHash: 'PENDING',
+      summary,
+      features: Array.isArray(features) ? features : (features ? [features] : []),
+      bugfixes: Array.isArray(bugfixes) ? bugfixes : (bugfixes ? [bugfixes] : []),
+      notes: notes || '',
+      rollback: rollback || `git checkout ${gitTag}`
+    };
+
+    milestones.push(newMilestone);
+    await fs.writeFile(milestonesFilePath, JSON.stringify(milestones, null, 2), 'utf8');
+
+    // 1. Stage and commit
+    await execPromise('git add .');
+    await execPromise(`git commit -m "feat: complete ${version} milestone"`);
+    
+    // 2. Get commit hash
+    const { stdout: hashStdout } = await execPromise('git rev-parse HEAD');
+    const commitHash = hashStdout.trim();
+    
+    // 3. Update internal JSON with the correct hash
+    newMilestone.commitHash = commitHash;
+    milestones[milestones.length - 1] = newMilestone;
+    await fs.writeFile(milestonesFilePath, JSON.stringify(milestones, null, 2), 'utf8');
+    
+    // Amend commit to incorporate hash inside milestones.json
+    await execPromise('git add milestones.json');
+    await execPromise('git commit --amend --no-edit');
+    
+    // 4. Push commit
+    await execPromise('git push');
+
+    // 5. Create tag and push tag
+    await execPromise(`git tag ${gitTag}`);
+    await execPromise(`git push origin ${gitTag}`);
+
+    // 6. Update walkthrough.md
+    if (walkthroughPath) {
+      const walkContent = `\n\n# Milestone: ${version} ${summary}\n\nThis section documents the features and bug fixes completed in version ${version} released on ${new Date(dateStr).toLocaleDateString()}.\n\n## Features Completed\n${newMilestone.features.map(f => `- ${f}`).join('\n')}\n\n## Bug Fixes\n${newMilestone.bugfixes.map(b => `- ${b}`).join('\n')}\n\n## Developer Notes\n${newMilestone.notes || 'None.'}\n`;
+      await fs.appendFile(walkthroughPath, walkContent, 'utf8');
+    }
+
+    res.json({ success: true, milestone: newMilestone });
+  } catch (error) {
+    console.error('Milestone creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {
