@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import util from 'util';
+import { getDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -987,6 +988,52 @@ app.post('/api/url', (req, res) => {
 // GET jobs endpoint
 app.get('/api/jobs', (req, res) => {
   res.json(jobs);
+});
+
+// GET saved searches
+app.get('/api/saved-searches', async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM saved_searches ORDER BY id DESC');
+    const searches = rows.map(row => ({
+      ...row,
+      data: JSON.parse(row.data)
+    }));
+    res.json(searches);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST save/update search
+app.post('/api/saved-searches', async (req, res) => {
+  try {
+    const { id, searchId, searchType, businessType, location, searchMode, dateTime, count, data } = req.body;
+    if (!id || !searchId || !searchType || !dateTime || !data) {
+      return res.status(400).json({ error: 'Missing required search fields' });
+    }
+    const db = await getDb();
+    await db.run(
+      `INSERT OR REPLACE INTO saved_searches (id, searchId, searchType, businessType, location, searchMode, dateTime, count, data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, searchId, searchType, businessType, location, searchMode, dateTime, count, JSON.stringify(data)]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE saved search
+app.delete('/api/saved-searches/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDb();
+    await db.run('DELETE FROM saved_searches WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Root check endpoint

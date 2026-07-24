@@ -214,8 +214,46 @@ function App() {
     }
   };
 
+  const fetchSavedSearches = async () => {
+    try {
+      const localSaved = localStorage.getItem('tse_saved_searches');
+      if (localSaved) {
+        try {
+          const searchesToMigrate = JSON.parse(localSaved);
+          if (Array.isArray(searchesToMigrate) && searchesToMigrate.length > 0) {
+            console.log(`Migrating ${searchesToMigrate.length} saved searches to the backend database...`);
+            for (const search of searchesToMigrate) {
+              if (!search.searchId) {
+                search.searchId = `SR${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+              }
+              if (!search.searchType) {
+                search.searchType = search.searchMode === 'organic' ? 'Organic' : 'GMB';
+              }
+              await fetch('http://localhost:5000/api/saved-searches', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(search)
+              });
+            }
+          }
+        } catch (migrationErr) {
+          console.error("Migration error:", migrationErr);
+        }
+        localStorage.removeItem('tse_saved_searches');
+      }
+
+      const response = await fetch('http://localhost:5000/api/saved-searches');
+      if (!response.ok) throw new Error('Failed to load saved searches');
+      const data = await response.json();
+      setSavedSearches(data);
+    } catch (e) {
+      console.error("Error loading saved searches:", e);
+    }
+  };
+
   useEffect(() => {
     fetchMilestones();
+    fetchSavedSearches();
   }, []);
 
   const handleCreateMilestone = async (e) => {
@@ -300,49 +338,7 @@ function App() {
     });
   };
   
-  const [savedSearches, setSavedSearches] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tse_saved_searches');
-      let searches = saved ? JSON.parse(saved) : [];
-      let modified = false;
-      let currentIdNum = 1;
-      
-      // First pass: find max existing ID number
-      for (let i = searches.length - 1; i >= 0; i--) {
-        if (searches[i].searchId) {
-          const match = searches[i].searchId.match(/SR(\d+)/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num >= currentIdNum) {
-              currentIdNum = num + 1;
-            }
-          }
-        }
-      }
-      
-      // Second pass: assign IDs and search types to those that lack them (oldest to newest)
-      for (let i = searches.length - 1; i >= 0; i--) {
-        if (!searches[i].searchId) {
-          const idStr = `SR${String(currentIdNum).padStart(4, '0')}`;
-          searches[i].searchId = idStr;
-          currentIdNum++;
-          modified = true;
-        }
-        if (!searches[i].searchType) {
-          searches[i].searchType = searches[i].searchMode === 'organic' ? 'Organic' : 'GMB';
-          modified = true;
-        }
-      }
-      
-      if (modified) {
-        localStorage.setItem('tse_saved_searches', JSON.stringify(searches));
-      }
-      return searches;
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
-  });
+  const [savedSearches, setSavedSearches] = useState([]);
 
   const getDomain = (url) => {
     if (!url) return '';
@@ -423,39 +419,43 @@ function App() {
         setSortDirection('asc');
         
         // Save search automatically
-        setSavedSearches(prev => {
-          let maxIdNum = 0;
-          prev.forEach(s => {
-            if (s.searchId) {
-              const match = s.searchId.match(/SR(\d+)/);
-              if (match) {
-                const num = parseInt(match[1], 10);
-                if (num > maxIdNum) {
-                  maxIdNum = num;
-                }
+        let maxIdNum = 0;
+        savedSearches.forEach(s => {
+          if (s.searchId) {
+            const match = s.searchId.match(/SR(\d+)/);
+            if (match) {
+              const num = parseInt(match[1], 10);
+              if (num > maxIdNum) {
+                maxIdNum = num;
               }
             }
-          });
-          const nextIdNum = maxIdNum + 1;
-          const nextIdStr = `SR${String(nextIdNum).padStart(4, '0')}`;
-          
-          setActiveSearchId(nextIdStr);
-
-          const newSearch = {
-            id: Date.now().toString(),
-            searchId: nextIdStr,
-            searchType: searchMode === 'organic' ? 'Organic' : 'GMB',
-            businessType: businessType.trim() || 'Any',
-            location: location.trim() || 'Anywhere',
-            searchMode: searchMode,
-            dateTime: new Date().toLocaleString(),
-            count: enrichedData.length,
-            data: enrichedData
-          };
-          const updated = [newSearch, ...prev];
-          localStorage.setItem('tse_saved_searches', JSON.stringify(updated));
-          return updated;
+          }
         });
+        const nextIdNum = maxIdNum + 1;
+        const nextIdStr = `SR${String(nextIdNum).padStart(4, '0')}`;
+        
+        setActiveSearchId(nextIdStr);
+
+        const newSearch = {
+          id: Date.now().toString(),
+          searchId: nextIdStr,
+          searchType: searchMode === 'organic' ? 'Organic' : 'GMB',
+          businessType: businessType.trim() || 'Any',
+          location: location.trim() || 'Anywhere',
+          searchMode: searchMode,
+          dateTime: new Date().toLocaleString(),
+          count: enrichedData.length,
+          data: enrichedData
+        };
+
+        // Save to backend database
+        fetch('http://localhost:5000/api/saved-searches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSearch)
+        }).catch(err => console.error("Error saving search:", err));
+
+        setSavedSearches(prev => [newSearch, ...prev]);
       } else {
         setSearchError(data.error || 'Search failed');
       }
@@ -551,11 +551,12 @@ function App() {
   };
 
   const handleDeleteSavedSearch = (id) => {
-    setSavedSearches(prev => {
-      const updated = prev.filter(s => s.id !== id);
-      localStorage.setItem('tse_saved_searches', JSON.stringify(updated));
-      return updated;
-    });
+    // Delete from backend database
+    fetch(`http://localhost:5000/api/saved-searches/${id}`, {
+      method: 'DELETE'
+    }).catch(err => console.error("Error deleting search:", err));
+
+    setSavedSearches(prev => prev.filter(s => s.id !== id));
   };
 
   const addToRecentAnalyses = (analysisObj) => {
@@ -599,7 +600,7 @@ function App() {
       return item;
     }));
 
-    // 2. Update savedSearches state and localStorage
+    // 2. Update savedSearches state
     setSavedSearches(prev => {
       const updated = prev.map(saved => {
         if (saved.searchId === activeSearchId) {
@@ -611,11 +612,19 @@ function App() {
             }
             return item;
           });
-          return { ...saved, data: updatedData };
+          const updatedSearch = { ...saved, data: updatedData };
+
+          // Save updated search to backend database
+          fetch('http://localhost:5000/api/saved-searches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedSearch)
+          }).catch(err => console.error("Error updating search in database:", err));
+
+          return updatedSearch;
         }
         return saved;
       });
-      localStorage.setItem('tse_saved_searches', JSON.stringify(updated));
       return updated;
     });
   };
