@@ -216,36 +216,53 @@ function App() {
 
   const fetchSavedSearches = async () => {
     try {
-      const localSaved = localStorage.getItem('tse_saved_searches');
-      if (localSaved) {
-        try {
-          const searchesToMigrate = JSON.parse(localSaved);
-          if (Array.isArray(searchesToMigrate) && searchesToMigrate.length > 0) {
-            console.log(`Migrating ${searchesToMigrate.length} saved searches to the backend database...`);
-            for (const search of searchesToMigrate) {
-              if (!search.searchId) {
-                search.searchId = `SR${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-              }
-              if (!search.searchType) {
-                search.searchType = search.searchMode === 'organic' ? 'Organic' : 'GMB';
-              }
-              await fetch('http://localhost:5000/api/saved-searches', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(search)
-              });
-            }
-          }
-        } catch (migrationErr) {
-          console.error("Migration error:", migrationErr);
-        }
-        localStorage.removeItem('tse_saved_searches');
-      }
-
+      // 1. Fetch current list from the backend database
       const response = await fetch('http://localhost:5000/api/saved-searches');
       if (!response.ok) throw new Error('Failed to load saved searches');
-      const data = await response.json();
-      setSavedSearches(data);
+      let dbSearches = await response.json();
+
+      // 2. Check if one-time migration has been completed
+      const migrationCompleted = localStorage.getItem('tse_saved_searches_migrated') === 'true';
+      if (!migrationCompleted) {
+        // If the database is empty, perform the import from localStorage
+        if (dbSearches.length === 0) {
+          const localSaved = localStorage.getItem('tse_saved_searches');
+          if (localSaved) {
+            try {
+              const searchesToMigrate = JSON.parse(localSaved);
+              if (Array.isArray(searchesToMigrate) && searchesToMigrate.length > 0) {
+                console.log(`Migrating ${searchesToMigrate.length} saved searches from localStorage to backend database...`);
+                for (const search of searchesToMigrate) {
+                  // Preserve all fields and legacy fields if missing
+                  if (!search.searchId) {
+                    search.searchId = `SR${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+                  }
+                  if (!search.searchType) {
+                    search.searchType = search.searchMode === 'organic' ? 'Organic' : 'GMB';
+                  }
+                  await fetch('http://localhost:5000/api/saved-searches', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(search)
+                  });
+                }
+                
+                // Refresh list from the database after successful migration
+                const refreshedResponse = await fetch('http://localhost:5000/api/saved-searches');
+                if (refreshedResponse.ok) {
+                  dbSearches = await refreshedResponse.json();
+                }
+              }
+            } catch (migrationErr) {
+              console.error("Migration error:", migrationErr);
+            }
+          }
+        }
+        // Mark migration as completed so it never runs again
+        localStorage.setItem('tse_saved_searches_migrated', 'true');
+      }
+
+      setSavedSearches(dbSearches);
     } catch (e) {
       console.error("Error loading saved searches:", e);
     }
