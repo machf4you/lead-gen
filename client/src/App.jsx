@@ -148,6 +148,8 @@ Kind regards,
   return email;
 };
 
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
+
 function App() {
   const [searchResults, setSearchResults] = useState([])
   const [businessType, setBusinessType] = useState('')
@@ -202,7 +204,7 @@ function App() {
     setIsMilestonesLoading(true);
     setMilestonesError(null);
     try {
-      const response = await fetch('http://localhost:5000/api/milestones');
+      const response = await fetch(`${API_BASE}/api/milestones`);
       if (!response.ok) throw new Error('Failed to load milestones');
       const data = await response.json();
       setMilestones(data);
@@ -217,7 +219,7 @@ function App() {
   const fetchSavedSearches = async () => {
     try {
       // 1. Fetch current list from the backend database
-      const response = await fetch('http://localhost:5000/api/saved-searches');
+      const response = await fetch(`${API_BASE}/api/saved-searches`);
       if (!response.ok) throw new Error('Failed to load saved searches');
       let dbSearches = await response.json();
 
@@ -240,7 +242,7 @@ function App() {
                   if (!search.searchType) {
                     search.searchType = search.searchMode === 'organic' ? 'Organic' : 'GMB';
                   }
-                  await fetch('http://localhost:5000/api/saved-searches', {
+                  await fetch(`${API_BASE}/api/saved-searches`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(search)
@@ -248,7 +250,7 @@ function App() {
                 }
                 
                 // Refresh list from the database after successful migration
-                const refreshedResponse = await fetch('http://localhost:5000/api/saved-searches');
+                const refreshedResponse = await fetch(`${API_BASE}/api/saved-searches`);
                 if (refreshedResponse.ok) {
                   dbSearches = await refreshedResponse.json();
                 }
@@ -285,7 +287,7 @@ function App() {
     setMilestoneCreateSuccess(false);
 
     try {
-      const response = await fetch('http://localhost:5000/api/milestones/create', {
+      const response = await fetch(`${API_BASE}/api/milestones/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -370,7 +372,7 @@ function App() {
     setIsSearching(true);
     setSearchError(null);
     try {
-      const response = await fetch('http://localhost:5000/api/search', {
+      const response = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -448,7 +450,7 @@ function App() {
                 };
 
                 // Save/Overwrite the updated search in the backend database
-                fetch('http://localhost:5000/api/saved-searches', {
+                fetch(`${API_BASE}/api/saved-searches`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(updatedSearch)
@@ -491,7 +493,7 @@ function App() {
           };
 
           // Save to backend database as a new entry
-          fetch('http://localhost:5000/api/saved-searches', {
+          fetch(`${API_BASE}/api/saved-searches`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newSearch)
@@ -595,7 +597,7 @@ function App() {
 
   const handleDeleteSavedSearch = (id) => {
     // Delete from backend database
-    fetch(`http://localhost:5000/api/saved-searches/${id}`, {
+    fetch(`${API_BASE}/api/saved-searches/${id}`, {
       method: 'DELETE'
     }).catch(err => console.error("Error deleting search:", err));
 
@@ -658,7 +660,7 @@ function App() {
           const updatedSearch = { ...saved, data: updatedData };
 
           // Save updated search to backend database
-          fetch('http://localhost:5000/api/saved-searches', {
+          fetch(`${API_BASE}/api/saved-searches`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedSearch)
@@ -683,7 +685,7 @@ function App() {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/analyse', {
+      const response = await fetch(`${API_BASE}/api/analyse`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -978,7 +980,7 @@ function App() {
     setIsRefreshing(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/analyse', {
+      const response = await fetch(`${API_BASE}/api/analyse`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
