@@ -435,44 +435,70 @@ function App() {
         setSortColumn(null);
         setSortDirection('asc');
         
-        // Save search automatically
-        let maxIdNum = 0;
-        savedSearches.forEach(s => {
-          if (s.searchId) {
-            const match = s.searchId.match(/SR(\d+)/);
-            if (match) {
-              const num = parseInt(match[1], 10);
-              if (num > maxIdNum) {
-                maxIdNum = num;
+        // Save search automatically or update if refreshing
+        if (activeSearchId) {
+          setSavedSearches(prev => {
+            const updated = prev.map(saved => {
+              if (saved.searchId === activeSearchId) {
+                const updatedSearch = {
+                  ...saved,
+                  count: enrichedData.length,
+                  data: enrichedData,
+                  dateTime: new Date().toLocaleString()
+                };
+
+                // Save/Overwrite the updated search in the backend database
+                fetch('http://localhost:5000/api/saved-searches', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(updatedSearch)
+                }).catch(err => console.error("Error updating search during refresh:", err));
+
+                return updatedSearch;
+              }
+              return saved;
+            });
+            return updated;
+          });
+        } else {
+          let maxIdNum = 0;
+          savedSearches.forEach(s => {
+            if (s.searchId) {
+              const match = s.searchId.match(/SR(\d+)/);
+              if (match) {
+                const num = parseInt(match[1], 10);
+                if (num > maxIdNum) {
+                  maxIdNum = num;
+                }
               }
             }
-          }
-        });
-        const nextIdNum = maxIdNum + 1;
-        const nextIdStr = `SR${String(nextIdNum).padStart(4, '0')}`;
-        
-        setActiveSearchId(nextIdStr);
+          });
+          const nextIdNum = maxIdNum + 1;
+          const nextIdStr = `SR${String(nextIdNum).padStart(4, '0')}`;
+          
+          setActiveSearchId(nextIdStr);
 
-        const newSearch = {
-          id: Date.now().toString(),
-          searchId: nextIdStr,
-          searchType: searchMode === 'organic' ? 'Organic' : 'GMB',
-          businessType: businessType.trim() || 'Any',
-          location: location.trim() || 'Anywhere',
-          searchMode: searchMode,
-          dateTime: new Date().toLocaleString(),
-          count: enrichedData.length,
-          data: enrichedData
-        };
+          const newSearch = {
+            id: Date.now().toString(),
+            searchId: nextIdStr,
+            searchType: searchMode === 'organic' ? 'Organic' : 'GMB',
+            businessType: businessType.trim() || 'Any',
+            location: location.trim() || 'Anywhere',
+            searchMode: searchMode,
+            dateTime: new Date().toLocaleString(),
+            count: enrichedData.length,
+            data: enrichedData
+          };
 
-        // Save to backend database
-        fetch('http://localhost:5000/api/saved-searches', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSearch)
-        }).catch(err => console.error("Error saving search:", err));
+          // Save to backend database as a new entry
+          fetch('http://localhost:5000/api/saved-searches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newSearch)
+          }).catch(err => console.error("Error saving search:", err));
 
-        setSavedSearches(prev => [newSearch, ...prev]);
+          setSavedSearches(prev => [newSearch, ...prev]);
+        }
       } else {
         setSearchError(data.error || 'Search failed');
       }
