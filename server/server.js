@@ -1013,11 +1013,21 @@ app.post('/api/saved-searches', async (req, res) => {
       return res.status(400).json({ error: 'Missing required search fields' });
     }
     const db = await getDb();
-    await db.run(
-      `INSERT OR REPLACE INTO saved_searches (id, searchId, searchType, businessType, location, searchMode, dateTime, count, data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, searchId, searchType, businessType, location, searchMode, dateTime, count, JSON.stringify(data)]
-    );
+    const existing = await db.get("SELECT id FROM saved_searches WHERE searchId = ?", [searchId]);
+    if (existing) {
+      await db.run(
+        `UPDATE saved_searches 
+         SET searchType = ?, businessType = ?, location = ?, searchMode = ?, dateTime = ?, count = ?, data = ?
+         WHERE searchId = ?`,
+        [searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data), searchId]
+      );
+    } else {
+      await db.run(
+        `INSERT INTO saved_searches (id, searchId, searchType, businessType, location, searchMode, dateTime, count, data)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, searchId, searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data)]
+      );
+    }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
