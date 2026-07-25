@@ -462,6 +462,7 @@ function App() {
             });
             return updated;
           });
+          return;
         } else {
           let maxIdNum = 0;
           savedSearches.forEach(s => {
