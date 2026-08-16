@@ -159,15 +159,52 @@ function App() {
   const [searchError, setSearchError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [searchMode, setSearchMode] = useState('organic')
-  const [excludedDomains, setExcludedDomains] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tse_excluded_domains');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error(e);
-      return [];
-    }
-  });
+  const [excludedDomains, setExcludedDomains] = useState([]);
+
+  // Initial load: Fetch server exclusions & perform one-time migration of legacy localStorage exclusions if present
+  useEffect(() => {
+    const initExclusions = async () => {
+      try {
+        let legacyDomains = [];
+        try {
+          const saved = localStorage.getItem('tse_excluded_domains');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              legacyDomains = parsed;
+            }
+          }
+        } catch (e) {
+          console.error('Error reading legacy localStorage exclusions:', e);
+        }
+
+        if (legacyDomains.length > 0) {
+          console.log(`[Migration] Migrating ${legacyDomains.length} legacy exclusions from localStorage to SQLite...`);
+          const res = await fetch(`${API_BASE}/api/exclusions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domains: legacyDomains })
+          });
+          if (res.ok) {
+            const updated = await res.json();
+            setExcludedDomains(updated);
+            localStorage.removeItem('tse_excluded_domains');
+            console.log('[Migration] Migration complete. tse_excluded_domains removed from localStorage.');
+            return;
+          }
+        }
+
+        const res = await fetch(`${API_BASE}/api/exclusions`);
+        if (res.ok) {
+          const data = await res.json();
+          setExcludedDomains(data);
+        }
+      } catch (err) {
+        console.error('Failed to initialize server exclusions:', err);
+      }
+    };
+    initExclusions();
+  }, []);
   const [activeAnalysisItem, setActiveAnalysisItem] = useState(null)
   const [activeSearchId, setActiveSearchId] = useState(null)
   const [isAnalysing, setIsAnalysing] = useState(false)
@@ -382,11 +419,10 @@ function App() {
       const data = await response.json();
       console.log(data);
       if (response.ok) {
-        // Filter out excluded domains
-        const activeExclusions = JSON.parse(localStorage.getItem('tse_excluded_domains') || '[]');
+        // Filter out excluded domains (using server-backed excludedDomains state)
         const filteredData = data.filter(item => {
           const itemDomain = item.domain || getDomain(item.website || item.url);
-          return !activeExclusions.includes(itemDomain);
+          return !excludedDomains.includes(itemDomain);
         });
 
         const enrichedData = filteredData.map((item, idx) => {
@@ -532,12 +568,11 @@ function App() {
     setSearchMode(saved.searchMode || 'local');
     setActiveSearchId(saved.searchId || null);
     
-    // Filter stored results against current exclusions dynamically
-    const activeExclusions = JSON.parse(localStorage.getItem('tse_excluded_domains') || '[]');
+    // Filter stored results against current exclusions dynamically (using server-backed excludedDomains state)
     const filtered = saved.data
       .filter(item => {
         const itemDomain = item.domain || getDomain(item.website || item.url);
-        return !activeExclusions.includes(itemDomain);
+        return !excludedDomains.includes(itemDomain);
       })
       .map((item, idx) => {
         if (item.rank === undefined || item.rank === null) {
@@ -1150,7 +1185,7 @@ function App() {
     }
   };
 
-  const handleExcludeDomain = (urlOrDomain) => {
+  const handleExcludeDomain = async (urlOrDomain) => {
     if (!urlOrDomain) return;
     let domain = urlOrDomain;
     if (domain.includes('://')) {
@@ -1158,26 +1193,40 @@ function App() {
     }
     if (!domain) return;
     
-    setExcludedDomains(prev => {
-      if (prev.includes(domain)) return prev;
-      const updated = [...prev, domain];
-      localStorage.setItem('tse_excluded_domains', JSON.stringify(updated));
-      return updated;
-    });
-
     // Immediately remove from currently displayed results
     setSearchResults(prev => prev.filter(item => {
       const itemDomain = item.domain || getDomain(item.website || item.url);
       return itemDomain !== domain;
     }));
+
+    try {
+      const response = await fetch(`${API_BASE}/api/exclusions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain })
+      });
+      if (response.ok) {
+        const updatedList = await response.json();
+        setExcludedDomains(updatedList);
+      }
+    } catch (e) {
+      console.error('Error adding server exclusion:', e);
+    }
   };
 
-  const handleRemoveExclusion = (domain) => {
-    setExcludedDomains(prev => {
-      const updated = prev.filter(d => d !== domain);
-      localStorage.setItem('tse_excluded_domains', JSON.stringify(updated));
-      return updated;
-    });
+  const handleRemoveExclusion = async (domain) => {
+    if (!domain) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/exclusions/${encodeURIComponent(domain)}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const updatedList = await response.json();
+        setExcludedDomains(updatedList);
+      }
+    } catch (e) {
+      console.error('Error removing server exclusion:', e);
+    }
   };
 
   return (

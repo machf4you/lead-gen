@@ -1046,6 +1046,77 @@ app.delete('/api/saved-searches/:id', async (req, res) => {
   }
 });
 
+// Normalize domain string
+function normalizeDomain(urlOrDomain) {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0];
+  }
+  return str.replace(/^www\./i, '').toLowerCase().trim();
+}
+
+// GET excluded domains
+app.get('/api/exclusions', async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    res.json(rows.map(r => r.domain));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST excluded domain(s) - supports single domain or array of domains for migration
+app.post('/api/exclusions', async (req, res) => {
+  try {
+    const db = await getDb();
+    const createdAt = new Date().toISOString();
+    const rawDomains = req.body.domains || (req.body.domain ? [req.body.domain] : []);
+    
+    if (!Array.isArray(rawDomains) || rawDomains.length === 0) {
+      return res.status(400).json({ error: 'No domain provided' });
+    }
+
+    for (const raw of rawDomains) {
+      const dom = normalizeDomain(raw);
+      if (dom) {
+        await db.run(
+          `INSERT OR IGNORE INTO excluded_domains (domain, createdAt) VALUES (?, ?)`,
+          [dom, createdAt]
+        );
+      }
+    }
+
+    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    res.json(rows.map(r => r.domain));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE excluded domain
+app.delete('/api/exclusions/:domain', async (req, res) => {
+  try {
+    const { domain } = req.params;
+    const dom = normalizeDomain(decodeURIComponent(domain));
+    const db = await getDb();
+    if (dom) {
+      await db.run('DELETE FROM excluded_domains WHERE domain = ?', [dom]);
+    }
+    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    res.json(rows.map(r => r.domain));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Root check endpoint
 app.get('/', (req, res) => {
   res.send('Lead Gen Backend is running.');

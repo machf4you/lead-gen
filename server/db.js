@@ -28,7 +28,12 @@ export async function getDb() {
       dateTime TEXT NOT NULL,
       count INTEGER NOT NULL,
       data TEXT NOT NULL
-    )
+    );
+
+    CREATE TABLE IF NOT EXISTS excluded_domains (
+      domain TEXT PRIMARY KEY,
+      createdAt TEXT NOT NULL
+    );
   `);
   
   return db;
