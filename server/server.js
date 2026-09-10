@@ -1052,6 +1052,42 @@ app.get('/api/saved-searches/:searchId', async (req, res) => {
   }
 });
 
+// POST atomic item analysis update to a saved search
+app.post('/api/saved-searches/:searchId/item-analysis', async (req, res) => {
+  try {
+    const { searchId } = req.params;
+    const { url, website, name, rank, analysis } = req.body;
+    if (!analysis) {
+      return res.status(400).json({ error: 'Analysis data is required' });
+    }
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM saved_searches WHERE searchId = ? OR id = ?', [searchId, searchId]);
+    if (!row) {
+      return res.status(404).json({ error: 'Search not found' });
+    }
+    const data = JSON.parse(row.data);
+    let updated = false;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const isMatch = (url && item.url === url) ||
+                      (rank !== undefined && rank !== null && item.rank === rank) ||
+                      (website && item.website === website) ||
+                      (name && item.name === name);
+      if (isMatch) {
+        data[i].analysis = analysis;
+        updated = true;
+        break;
+      }
+    }
+    if (updated) {
+      await db.run('UPDATE saved_searches SET data = ? WHERE id = ?', [JSON.stringify(data), row.id]);
+    }
+    res.json({ success: true, updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST save/update search
 app.post('/api/saved-searches', async (req, res) => {
   try {

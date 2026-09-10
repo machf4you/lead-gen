@@ -819,46 +819,53 @@ function App() {
     } catch (e) {}
   };
 
-  const updateItemAnalysis = (urlOrName, analysisData, targetSearchId) => {
+  const updateItemAnalysis = (urlOrName, analysisData, targetSearchId, rank) => {
     const currentSearchId = targetSearchId || activeSearchId;
 
     // 1. Update searchResults state
     setSearchResults(prev => prev.map(item => {
       const isOrganic = !item.name;
       const key = isOrganic ? item.url : (item.website || item.name);
-      if (key === urlOrName) {
+      const isRankMatch = rank !== undefined && rank !== null && item.rank === rank;
+      if (key === urlOrName || isRankMatch) {
         return { ...item, analysis: analysisData };
       }
       return item;
     }));
 
-    // 2. Update savedSearches state
+    // 2. Update savedSearches state in memory
     setSavedSearches(prev => {
-      const updated = prev.map(saved => {
+      return prev.map(saved => {
         if (saved.searchId === currentSearchId) {
           const updatedData = saved.data.map(item => {
             const isOrganic = !item.name;
             const key = isOrganic ? item.url : (item.website || item.name);
-            if (key === urlOrName) {
+            const isRankMatch = rank !== undefined && rank !== null && item.rank === rank;
+            if (key === urlOrName || isRankMatch) {
               return { ...item, analysis: analysisData };
             }
             return item;
           });
-          const updatedSearch = { ...saved, data: updatedData };
-
-          // Save updated search to backend database
-          fetch(`${API_BASE}/api/saved-searches`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedSearch)
-          }).catch(err => console.error("Error updating search in database:", err));
-
-          return updatedSearch;
+          return { ...saved, data: updatedData };
         }
         return saved;
       });
-      return updated;
     });
+
+    // 3. Atomically update backend database for this single item
+    if (currentSearchId) {
+      fetch(`${API_BASE}/api/saved-searches/${encodeURIComponent(currentSearchId)}/item-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: urlOrName && urlOrName.startsWith('http') ? urlOrName : undefined,
+          website: urlOrName,
+          name: urlOrName,
+          rank: rank,
+          analysis: analysisData
+        })
+      }).catch(err => console.error("Error updating item analysis in database:", err));
+    }
   };
 
   const analyseItem = async (item, targetSearchId, searchLocation) => {
@@ -903,7 +910,7 @@ function App() {
         leadPriority: data.leadPriority || null
       };
 
-      updateItemAnalysis(itemKey, completedAnalysis, targetSearchId);
+      updateItemAnalysis(itemKey, completedAnalysis, targetSearchId, item.rank);
       return completedAnalysis;
     } catch (e) {
       console.error(e);
@@ -963,7 +970,7 @@ function App() {
           points: 0
         }
       };
-      updateItemAnalysis(itemKey, failedAnalysis, targetSearchId);
+      updateItemAnalysis(itemKey, failedAnalysis, targetSearchId, item.rank);
       return failedAnalysis;
     }
   };
@@ -996,6 +1003,21 @@ function App() {
 
     const workers = Array.from({ length: Math.min(CONCURRENCY, itemsToAnalyse.length) }, () => worker());
     await Promise.all(workers);
+
+    // Final full sync of current searchResults to backend to guarantee 100% database consistency
+    if (targetSearchId) {
+      setSavedSearches(prev => {
+        const currentSaved = prev.find(s => s.searchId === targetSearchId);
+        if (currentSaved) {
+          fetch(`${API_BASE}/api/saved-searches`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentSaved)
+          }).catch(err => console.error("Error in final search sync:", err));
+        }
+        return prev;
+      });
+    }
 
     setIsBulkAnalysing(false);
   };
