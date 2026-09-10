@@ -508,6 +508,8 @@ function App() {
         setSortColumn(null);
         setSortDirection('asc');
         
+        let targetSearchId = activeSearchId;
+
         // Save search automatically or update if refreshing
         if (activeSearchId) {
           setSavedSearches(prev => {
@@ -533,7 +535,6 @@ function App() {
             });
             return updated;
           });
-          return;
         } else {
           let maxIdNum = 0;
           savedSearches.forEach(s => {
@@ -550,6 +551,7 @@ function App() {
           const nextIdNum = maxIdNum + 1;
           const nextIdStr = `SR${String(nextIdNum).padStart(4, '0')}`;
           
+          targetSearchId = nextIdStr;
           setActiveSearchId(nextIdStr);
 
           const newSearch = {
@@ -573,6 +575,9 @@ function App() {
 
           setSavedSearches(prev => [newSearch, ...prev]);
         }
+
+        // Automatically start bulk scoring of discovered prospects
+        runBulkAnalysis(enrichedData, targetSearchId, location.trim() || 'Anywhere');
       } else {
         setSearchError(data.error || 'Search failed');
       }
@@ -705,7 +710,9 @@ function App() {
     setCurrentView('analyse');
   };
 
-  const updateItemAnalysis = (urlOrName, analysisData) => {
+  const updateItemAnalysis = (urlOrName, analysisData, targetSearchId) => {
+    const currentSearchId = targetSearchId || activeSearchId;
+
     // 1. Update searchResults state
     setSearchResults(prev => prev.map(item => {
       const isOrganic = !item.name;
@@ -719,7 +726,7 @@ function App() {
     // 2. Update savedSearches state
     setSavedSearches(prev => {
       const updated = prev.map(saved => {
-        if (saved.searchId === activeSearchId) {
+        if (saved.searchId === currentSearchId) {
           const updatedData = saved.data.map(item => {
             const isOrganic = !item.name;
             const key = isOrganic ? item.url : (item.website || item.name);
@@ -745,11 +752,12 @@ function App() {
     });
   };
 
-  const analyseItem = async (item) => {
+  const analyseItem = async (item, targetSearchId, searchLocation) => {
     const isOrganic = !item.name;
     const url = isOrganic ? item.url : (item.website || '');
     const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
     const itemKey = isOrganic ? item.url : (item.website || item.name);
+    const searchLoc = searchLocation || location || 'Anywhere';
 
     if (item.analysis) {
       return item.analysis;
@@ -765,7 +773,7 @@ function App() {
           url: url || domain,
           searchType: isOrganic ? 'Organic' : 'GMB',
           rank: item.rank || 0,
-          location: location || 'Anywhere'
+          location: searchLoc
         })
       });
       const data = await response.json();
@@ -786,7 +794,7 @@ function App() {
         leadPriority: data.leadPriority || null
       };
 
-      updateItemAnalysis(itemKey, completedAnalysis);
+      updateItemAnalysis(itemKey, completedAnalysis, targetSearchId);
       return completedAnalysis;
     } catch (e) {
       console.error(e);
@@ -848,25 +856,46 @@ function App() {
           points: 5
         }
       };
-      updateItemAnalysis(itemKey, failedAnalysis);
+      updateItemAnalysis(itemKey, failedAnalysis, targetSearchId);
       return failedAnalysis;
     }
   };
 
-  const handleAnalyseAll = async () => {
-    if (isBulkAnalysing || searchResults.length === 0) return;
+  const runBulkAnalysis = async (itemsToAnalyse, targetSearchId, searchLocation) => {
+    if (!itemsToAnalyse || itemsToAnalyse.length === 0) return;
     
     setIsBulkAnalysing(true);
-    const total = searchResults.length;
+    const total = itemsToAnalyse.length;
+    let completedCount = 0;
     setBulkProgress({ current: 0, total });
 
-    for (let i = 0; i < total; i++) {
-      setBulkProgress({ current: i + 1, total });
-      const item = searchResults[i];
-      await analyseItem(item);
-    }
+    const CONCURRENCY = 3;
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < itemsToAnalyse.length) {
+        const currentIndex = nextIndex++;
+        const item = itemsToAnalyse[currentIndex];
+        try {
+          await analyseItem(item, targetSearchId, searchLocation);
+        } catch (e) {
+          console.error("Analysis worker error:", e);
+        } finally {
+          completedCount++;
+          setBulkProgress({ current: Math.min(completedCount, total), total });
+        }
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(CONCURRENCY, itemsToAnalyse.length) }, () => worker());
+    await Promise.all(workers);
 
     setIsBulkAnalysing(false);
+  };
+
+  const handleAnalyseAll = () => {
+    if (isBulkAnalysing || searchResults.length === 0) return;
+    runBulkAnalysis(searchResults, activeSearchId, location.trim() || 'Anywhere');
   };
 
   const handleAnalyse = async (item) => {
