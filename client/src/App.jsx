@@ -412,6 +412,11 @@ function App() {
     }
   };
 
+  const toTitleCase = (str) => {
+    if (!str) return '';
+    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+  };
+
   const handleOpenCreatePackModal = () => {
     const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
     const phrases = [...new Set(selectedProspects.map(p => (p.searchPhrase || p.searchKeyword || '').trim()).filter(Boolean))];
@@ -419,9 +424,13 @@ function App() {
 
     let defaultName = '';
     if (phrases.length === 1 && locations.length === 1 && locations[0] !== 'Anywhere') {
-      defaultName = `${phrases[0]} ${locations[0]}`.trim();
+      if (phrases[0].toLowerCase().includes(locations[0].toLowerCase())) {
+        defaultName = toTitleCase(phrases[0].trim());
+      } else {
+        defaultName = `${toTitleCase(phrases[0].trim())} ${toTitleCase(locations[0].trim())}`.trim();
+      }
     } else if (phrases.length === 1) {
-      defaultName = phrases[0].trim();
+      defaultName = toTitleCase(phrases[0].trim());
     } else {
       defaultName = `Outreach Pack - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
@@ -736,6 +745,36 @@ function App() {
         sentAt: latest.sentAt
       };
     }
+    return null;
+  };
+
+  const getProspectAssignedPack = (item) => {
+    if (!item) return null;
+    const itemDomain = normalizeDomain(item.domain || item.url || '');
+    const itemId = item.id;
+
+    // First check across all loaded outreachPacks
+    for (const pack of outreachPacks) {
+      if (pack.prospects && Array.isArray(pack.prospects)) {
+        const found = pack.prospects.some(p => {
+          const pDomain = normalizeDomain(p.domain || p.url || '');
+          return (pDomain && pDomain === itemDomain) || (itemId && p.id === itemId);
+        });
+        if (found) {
+          return pack;
+        }
+      }
+    }
+
+    // Fallback check in contactHistory
+    if (contactHistory && contactHistory.length) {
+      const hist = contactHistory.find(h => normalizeDomain(h.domain) === itemDomain);
+      if (hist) {
+        const matchedPack = outreachPacks.find(p => p.packId === hist.packId);
+        return matchedPack || { packId: hist.packId, status: hist.status };
+      }
+    }
+
     return null;
   };
 
@@ -2847,114 +2886,178 @@ function App() {
             )}
 
             {/* Sub-view 1: Shortlisted Prospects */}
-            {outreachSubView === 'shortlist' && (
-              <div className="results-table-container">
-                <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
-                  </div>
-                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    {selectedShortlistIds.size > 0 && (
-                      <button
-                        onClick={() => setSelectedShortlistIds(new Set())}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
-                      >
-                        Deselect All
-                      </button>
-                    )}
-                    <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                      {outreachList.length} shortlisted {outreachList.length === 1 ? 'prospect' : 'prospects'}
-                    </span>
-                  </div>
-                </div>
+            {outreachSubView === 'shortlist' && (() => {
+              const unassignedProspects = outreachList.filter(item => !getProspectAssignedPack(item));
+              const unassignedCount = unassignedProspects.length;
+              const assignedCount = outreachList.length - unassignedCount;
 
-                <table className="results-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px', textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={outreachList.length > 0 && selectedShortlistIds.size === outreachList.length}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedShortlistIds(new Set(outreachList.map(item => item.id || item.domain)));
-                            } else {
-                              setSelectedShortlistIds(new Set());
-                            }
+              return (
+                <div className="results-table-container">
+                  <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {unassignedCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedShortlistIds(new Set(unassignedProspects.map(item => item.id || item.domain)));
                           }}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                        />
-                      </th>
-                      <th>Business / Domain</th>
-                      <th>Search ID</th>
-                      <th>Search Phrase</th>
-                      <th>Location</th>
-                      <th>Rank</th>
-                      <th>Opportunity Score</th>
-                      <th>Commercial Strength</th>
-                      <th>GBP Match</th>
-                      <th>Date Shortlisted</th>
-                      <th className="action-cell">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isOutreachLoading && outreachList.length === 0 ? (
-                      <tr>
-                        <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                          Loading outreach shortlist...
-                        </td>
-                      </tr>
-                    ) : outreachList.length === 0 ? (
-                      <tr>
-                        <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                          <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
-                          <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      outreachList.map((item, idx) => {
-                        const score = item.opportunityScore;
-                        const gbpStatus = item.gbpStatus || 'No Profile Matched';
-                        const itemKey = item.id || item.domain;
-                        const isSelected = selectedShortlistIds.has(itemKey);
-                        const warning = getContactHistoryWarning(item.domain);
+                          className="table-btn"
+                          style={{
+                            backgroundColor: '#1e293b',
+                            border: '1px solid #10b981',
+                            color: '#34d399',
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.85rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Select Unassigned ({unassignedCount})
+                        </button>
+                      )}
+                      {selectedShortlistIds.size > 0 && (
+                        <button
+                          onClick={() => setSelectedShortlistIds(new Set())}
+                          style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
+                        >
+                          Deselect All
+                        </button>
+                      )}
+                      <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                        {outreachList.length} shortlisted ({unassignedCount} unassigned, {assignedCount} in packs)
+                      </span>
+                    </div>
+                  </div>
 
-                        return (
-                          <tr key={item.id || idx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
-                            <td style={{ textAlign: 'center' }}>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={(e) => {
-                                  const next = new Set(selectedShortlistIds);
-                                  if (e.target.checked) next.add(itemKey);
-                                  else next.delete(itemKey);
-                                  setSelectedShortlistIds(next);
-                                }}
-                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                              />
-                            </td>
-                            <td>
-                              <div>
-                                {item.url ? (
-                                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
-                                    {item.domain || item.url}
-                                  </a>
-                                ) : (
-                                  <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={outreachList.length > 0 && selectedShortlistIds.size === outreachList.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedShortlistIds(new Set(outreachList.map(item => item.id || item.domain)));
+                              } else {
+                                setSelectedShortlistIds(new Set());
+                              }
+                            }}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                        </th>
+                        <th>Business / Domain</th>
+                        <th>Pack Status</th>
+                        <th>Search ID</th>
+                        <th>Search Phrase</th>
+                        <th>Location</th>
+                        <th>Rank</th>
+                        <th>Opportunity Score</th>
+                        <th>Commercial Strength</th>
+                        <th>GBP Match</th>
+                        <th>Date Shortlisted</th>
+                        <th className="action-cell">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isOutreachLoading && outreachList.length === 0 ? (
+                        <tr>
+                          <td colSpan="12" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                            Loading outreach shortlist...
+                          </td>
+                        </tr>
+                      ) : outreachList.length === 0 ? (
+                        <tr>
+                          <td colSpan="12" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                            <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
+                            <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        outreachList.map((item, idx) => {
+                          const score = item.opportunityScore;
+                          const gbpStatus = item.gbpStatus || 'No Profile Matched';
+                          const itemKey = item.id || item.domain;
+                          const isSelected = selectedShortlistIds.has(itemKey);
+                          const assignedPack = getProspectAssignedPack(item);
+
+                          return (
+                            <tr key={item.id || idx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
+                              <td style={{ textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    const next = new Set(selectedShortlistIds);
+                                    if (e.target.checked) next.add(itemKey);
+                                    else next.delete(itemKey);
+                                    setSelectedShortlistIds(next);
+                                  }}
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td>
+                                <div>
+                                  {item.url ? (
+                                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
+                                      {item.domain || item.url}
+                                    </a>
+                                  ) : (
+                                    <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
+                                  )}
+                                </div>
+                                {item.businessName && item.businessName !== item.domain && (
+                                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                                    {item.businessName}
+                                  </div>
                                 )}
-                                {warning && (
-                                  <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }} title={`Already in Pack ${warning.packId}`}>
-                                    ⚠️ In {warning.packId}
+                              </td>
+                              <td>
+                                {assignedPack ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPack(assignedPack)}
+                                    className="table-btn"
+                                    style={{
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                      color: '#60a5fa',
+                                      border: '1px solid #3b82f6',
+                                      padding: '0.2rem 0.6rem',
+                                      borderRadius: '4px',
+                                      fontWeight: 'bold',
+                                      fontSize: '0.85rem',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem'
+                                    }}
+                                    title={`Assigned to Outreach Pack ${assignedPack.packId} — click to view pack`}
+                                  >
+                                    <span>📦</span> In {assignedPack.packId}
+                                  </button>
+                                ) : (
+                                  <span
+                                    style={{
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                      color: '#34d399',
+                                      border: '1px solid #10b981',
+                                      padding: '0.2rem 0.6rem',
+                                      borderRadius: '4px',
+                                      fontWeight: 'bold',
+                                      fontSize: '0.85rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem'
+                                    }}
+                                    title="Not yet assigned to any outreach pack"
+                                  >
+                                    <span>✨</span> Ready for Pack
                                   </span>
                                 )}
-                              </div>
-                              {item.businessName && item.businessName !== item.domain && (
-                                <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                                  {item.businessName}
-                                </div>
-                              )}
-                            </td>
+                              </td>
                             <td>
                               {item.searchId ? (
                                 <span style={{ 
@@ -3055,7 +3158,8 @@ function App() {
                   </tbody>
                 </table>
               </div>
-            )}
+            );
+          })()}
 
             {/* Sub-view 2: Outreach Packs / History Table */}
             {outreachSubView === 'packs' && (

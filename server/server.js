@@ -1904,10 +1904,16 @@ app.post('/api/outreach-packs', async (req, res) => {
     if (!defaultName) {
       const phrases = [...new Set(processedProspects.map(p => (p.searchPhrase || '').trim()).filter(Boolean))];
       const locations = [...new Set(processedProspects.map(p => (p.location || '').trim()).filter(Boolean))];
+      const toTitleCase = (str) => str ? str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()) : '';
+
       if (phrases.length === 1 && locations.length === 1 && locations[0] !== 'Anywhere') {
-        defaultName = `${phrases[0]} ${locations[0]}`;
+        if (phrases[0].toLowerCase().includes(locations[0].toLowerCase())) {
+          defaultName = toTitleCase(phrases[0].trim());
+        } else {
+          defaultName = `${toTitleCase(phrases[0].trim())} ${toTitleCase(locations[0].trim())}`.trim();
+        }
       } else if (phrases.length === 1) {
-        defaultName = phrases[0];
+        defaultName = toTitleCase(phrases[0].trim());
       } else {
         defaultName = `Outreach Pack ${nextPackId}`;
       }
