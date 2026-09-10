@@ -11,8 +11,10 @@ let db = null;
 export async function getDb() {
   if (db) return db;
   
+  const dbPath = process.env.DB_PATH || path.join(__dirname, 'database.db');
+  
   db = await open({
-    filename: path.join(__dirname, 'database.db'),
+    filename: dbPath,
     driver: sqlite3.Database
   });
   

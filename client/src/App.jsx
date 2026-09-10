@@ -1403,44 +1403,46 @@ function App() {
                 </div>
               )}
 
-              <div className="results-header-row">
-                <div className="results-count-text">
-                  {searchMode === 'organic' ? (
-                    searchResults.length < 50 ? (
-                      `Search exhausted – ${searchResults.length} organic results found.`
+              {!searchError && (searchResults.length > 0 || activeSearchId) && (
+                <div className="results-header-row">
+                  <div className="results-count-text">
+                    {searchMode === 'organic' ? (
+                      searchResults.length < 50 ? (
+                        `Search exhausted – ${searchResults.length} organic results found.`
+                      ) : (
+                        `Results: ${searchResults.length} organic results found.`
+                      )
                     ) : (
-                      `Results: ${searchResults.length} organic results found.`
-                    )
-                  ) : (
-                    `Results: ${searchResults.length} businesses found`
+                      `Results: ${searchResults.length} businesses found`
+                    )}
+                  </div>
+                  {searchResults.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      {isBulkAnalysing ? (
+                        <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                          Analysing {bulkProgress.current} of {bulkProgress.total}...
+                        </span>
+                      ) : (
+                        <button 
+                          onClick={handleAnalyseAll}
+                          className="analyse-btn-green"
+                          style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+                        >
+                          Analyse All Results
+                        </button>
+                      )}
+                      <button 
+                        onClick={handleSearch} 
+                        className="search-btn" 
+                        style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
+                        disabled={isSearching}
+                      >
+                        {isSearching ? 'Refreshing...' : 'Refresh Live Data'}
+                      </button>
+                    </div>
                   )}
                 </div>
-                {searchResults.length > 0 && (
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    {isBulkAnalysing ? (
-                      <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                        Analysing {bulkProgress.current} of {bulkProgress.total}...
-                      </span>
-                    ) : (
-                      <button 
-                        onClick={handleAnalyseAll}
-                        className="analyse-btn-green"
-                        style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
-                      >
-                        Analyse All Results
-                      </button>
-                    )}
-                    <button 
-                      onClick={handleSearch} 
-                      className="search-btn" 
-                      style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
-                      disabled={isSearching}
-                    >
-                      {isSearching ? 'Refreshing...' : 'Refresh Live Data'}
-                    </button>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
 
             {Array.isArray(searchResults) && searchResults.length > 0 && (() => {
