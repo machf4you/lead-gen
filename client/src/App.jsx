@@ -453,6 +453,12 @@ function App() {
             setSortColumn(null);
             setSortDirection('asc');
 
+            // If any items are unscored, automatically resume bulk scoring in the background
+            const unscored = enriched.filter(i => !i.analysis || i.analysis.leadOpportunityScore === undefined);
+            if (unscored.length > 0) {
+              runBulkAnalysis(unscored, saved.searchId, saved.location || 'Anywhere');
+            }
+
             if (viewParam === 'analyse' && itemParam) {
               const matchedItem = enriched.find(item => 
                 (item.url && item.url === itemParam) || 
@@ -826,6 +832,12 @@ function App() {
     setSortColumn(null);
     setSortDirection('asc');
     setCurrentView('search');
+
+    // If any items are unscored, automatically resume bulk scoring in the background
+    const unscored = enriched.filter(i => !i.analysis || i.analysis.leadOpportunityScore === undefined);
+    if (unscored.length > 0) {
+      runBulkAnalysis(unscored, saved.searchId, saved.location || 'Anywhere');
+    }
 
     try {
       const u = new URL(window.location.href);

@@ -731,6 +731,12 @@ app.post('/api/analyse', async (req, res) => {
     }
   }
 
+  let html = '';
+  let httpStatus = '';
+  let statusCode = 200;
+  let fetchError = null;
+
+  // Step 1: Try standard HTTP fetch first
   try {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 8000);
@@ -738,203 +744,69 @@ app.post('/api/analyse', async (req, res) => {
     const response = await fetch(targetUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-GB,en;q=0.9'
       }
     });
 
     clearTimeout(id);
+    statusCode = response.status;
+    httpStatus = `${response.status} ${response.statusText || ''}`.trim();
 
-    if (response.status >= 400) {
-      throw new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
+    if (response.status < 400) {
+      try {
+        html = await response.text();
+      } catch (e) {}
+    } else {
+      fetchError = new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
     }
-
-    let httpStatus = `${response.status} ${response.statusText || ''}`.trim();
-    const contentType = response.headers.get('content-type') || '';
-    
-    const xRobots = response.headers.get('x-robots-tag') || '';
-    const hasNoIndexHeader = /noindex/i.test(xRobots);
-
-    let html = '';
-    try {
-      html = await response.text();
-    } catch (e) {
-      console.warn('Failed to parse text from response:', e);
+  } catch (err) {
+    fetchError = err;
+    if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+      httpStatus = 'Timeout';
+    } else {
+      httpStatus = 'Connection Error';
     }
+  }
 
-    let $ = cheerio.load(html);
+  let $ = html ? cheerio.load(html) : null;
+  let title = $ ? $('title').first().text().trim() : '';
 
-    // Extraction & Computations
-    const isHttps = targetUrl.startsWith('https://');
-    let statusCode = response.status;
-    const indexableVal = robots => {
-      if (/noindex/i.test(robots) || hasNoIndexHeader) return false;
-      return true;
-    };
-
-    let title = $('title').first().text().trim();
-
-    if (isPlaceholderTitle(title)) {
-      console.log(`[Placeholder Detected] Detected interstitial page: "${title}". Retrying extraction with Puppeteer...`);
-      const puppeteerResult = await fetchPageWithPuppeteer(targetUrl);
-      if (puppeteerResult.success) {
-        const $puppeteer = cheerio.load(puppeteerResult.html);
-        const newTitle = $puppeteer('title').first().text().trim();
-        
-        if (!isPlaceholderTitle(newTitle)) {
-          console.log(`[Placeholder Resolved] Puppeteer successfully retrieved actual title: "${newTitle}"`);
-          title = newTitle;
-          html = puppeteerResult.html;
-          targetUrl = puppeteerResult.finalUrl;
-          statusCode = puppeteerResult.status;
-          httpStatus = `${puppeteerResult.status} OK`;
-          $ = $puppeteer;
-        } else {
-          console.warn(`[Placeholder Detected] Puppeteer title is still placeholder: "${newTitle}"`);
-          throw new Error('Page could not be analysed correctly (interstitial detected)');
-        }
-      } else {
-        console.warn(`[Placeholder Detected] Puppeteer fetch failed: ${puppeteerResult.error}`);
-        throw new Error(`Page could not be analysed correctly (puppeteer fetch failed: ${puppeteerResult.error})`);
-      }
-    }
-    
-    let description = '';
-    $('meta').each((i, el) => {
-      const name = $(el).attr('name');
-      const property = $(el).attr('property');
-      if (name && name.toLowerCase() === 'description') {
-        description = $(el).attr('content')?.trim() || '';
-      } else if (property && property.toLowerCase() === 'og:description') {
-        if (!description) {
-          description = $(el).attr('content')?.trim() || '';
-        }
-      }
-    });
-
-    const h1Count = $('h1').length;
-    const h1Text = $('h1').first().text().trim() || '';
-    const h2Count = $('h2').length;
-    const canonical = $('link[rel="canonical"]').attr('href')?.trim() || '';
-
-    // Word Count
-    const $clone = cheerio.load(html);
-    $clone('script, style, noscript, iframe, svg, head').remove();
-    const visibleText = $clone('body').text() || '';
-    const words = visibleText.trim().split(/\s+/).filter(w => w.length > 0);
-    const wordCount = words.length;
-
-    // Images
-    const images = $('img');
-    const imageCount = images.length;
-    let missingAltCount = 0;
-    images.each((i, img) => {
-      const alt = $(img).attr('alt');
-      if (alt === undefined || alt === null || alt.trim() === '') {
-        missingAltCount++;
-      }
-    });
-
-    // Links (Internal & External)
-    const links = $('a[href]');
-    let internalLinksCount = 0;
-    let externalLinksCount = 0;
-
-    let baseDomain = '';
-    try {
-      baseDomain = new URL(targetUrl).hostname.replace(/^www\./, '');
-    } catch (e) {
-      baseDomain = targetUrl.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
-    }
-
-    links.each((i, link) => {
-      const href = $(link).attr('href')?.trim();
-      if (!href) return;
-      if (href.startsWith('#') || href.startsWith('javascript:')) return;
+  // Step 2: Fallback to Puppeteer if fetch failed (>=400 / error / empty) or returned an interstitial/placeholder
+  const needsPuppeteer = !html || statusCode >= 400 || isPlaceholderTitle(title);
+  if (needsPuppeteer) {
+    console.log(`[Analysis Fallback] Fetch got status ${statusCode} (title: "${title || 'none'}"). Attempting Puppeteer browser fallback for: ${targetUrl}`);
+    const puppeteerResult = await fetchPageWithPuppeteer(targetUrl);
+    if (puppeteerResult.success && puppeteerResult.html) {
+      const $puppeteer = cheerio.load(puppeteerResult.html);
+      const newTitle = $puppeteer('title').first().text().trim();
       
-      if (href.startsWith('/') || !/^(https?:)?\/\//i.test(href)) {
-        internalLinksCount++;
+      if (!isPlaceholderTitle(newTitle) || puppeteerResult.status < 400) {
+        console.log(`[Analysis Fallback Resolved] Puppeteer retrieved page with status ${puppeteerResult.status} (Title: "${newTitle}")`);
+        html = puppeteerResult.html;
+        targetUrl = puppeteerResult.finalUrl || targetUrl;
+        statusCode = puppeteerResult.status;
+        httpStatus = `${puppeteerResult.status} OK`;
+        $ = $puppeteer;
+        title = newTitle;
+        fetchError = null;
       } else {
-        try {
-          const linkDomain = new URL(href).hostname.replace(/^www\./, '');
-          if (linkDomain === baseDomain) {
-            internalLinksCount++;
-          } else {
-            externalLinksCount++;
-          }
-        } catch (e) {
-          if (/^https?:\/\//i.test(href)) {
-            externalLinksCount++;
-          } else {
-            internalLinksCount++;
-          }
-        }
+        console.warn(`[Analysis Fallback] Puppeteer page still returned placeholder/error: "${newTitle}"`);
       }
-    });
-
-    let robotsVal = '';
-    $('meta').each((i, el) => {
-      const name = $(el).attr('name');
-      if (name && (name.toLowerCase() === 'robots' || name.toLowerCase() === 'googlebot')) {
-        robotsVal = $(el).attr('content') || '';
-      }
-    });
-    const indexableBool = indexableVal(robotsVal);
-
-    const seoHealthData = {
-      isHttps,
-      statusCode,
-      indexable: indexableBool,
-      hasCanonical: canonical.length > 0,
-      titlePresent: title.length > 0,
-      titleLength: title.length,
-      descriptionPresent: description.length > 0,
-      descriptionLength: description.length,
-      h1Present: h1Count > 0,
-      h1Count,
-      h2Count,
-      wordCount,
-      imageCount,
-      missingAltCount,
-      internalLinksCount,
-      externalLinksCount
-    };
-
-    const aiReport = generateAIReport(seoHealthData);
-    const leadOpportunity = generateLeadDashboard(seoHealthData, searchType || 'Organic', rank || 0, targetUrl);
-
-    const gbp = await performGbpMatching(targetUrl, html, title, h1Text, location);
-    const leadScore = getOpportunityScoreAndReasons(seoHealthData, gbp, rank);
-    const leadPriority = getPriorityRating(seoHealthData, gbp, rank);
-
-    return res.json({
-      pageTitle: title || 'Not Found',
-      metaDescription: description || 'Not Found',
-      h1: h1Text || 'Not Found',
-      httpStatus: httpStatus,
-      canonicalUrl: canonical || 'Not Found',
-      indexable: indexableBool ? 'Yes' : 'No',
-      lastAnalysed: new Date().toISOString(),
-      seoHealth: seoHealthData,
-      aiReport: aiReport,
-      leadOpportunity: leadOpportunity,
-      gbp: gbp,
-      leadOpportunityScore: leadScore,
-      leadPriority: leadPriority
-    });
-
-  } catch (error) {
-    console.error('Fetch error:', error);
-    let statusText = 'Connection Error';
-    if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-      statusText = 'Timeout';
-    } else if (error.message?.startsWith('HTTP ')) {
-      statusText = error.message.replace(/^HTTP\s+/, '');
     }
+  }
+
+  // Step 3: If still no usable HTML or hard HTTP error after all fallbacks
+  if (!html || statusCode >= 400 || !$ || isPlaceholderTitle(title)) {
+    let statusText = httpStatus || 'Connection Error';
+    if (fetchError?.message?.startsWith('HTTP ')) {
+      statusText = fetchError.message.replace(/^HTTP\s+/, '');
+    }
+    const isHttps = targetUrl.startsWith('https://');
     const fallbackHealth = {
-      isHttps: targetUrl.startsWith('https://'),
-      statusCode: statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 0 : 0,
+      isHttps,
+      statusCode: statusCode >= 400 ? statusCode : (statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 0 : 0),
       indexable: false,
       hasCanonical: false,
       titlePresent: false,
@@ -960,7 +832,7 @@ app.post('/api/analyse', async (req, res) => {
       canonicalUrl: 'Not Found',
       indexable: 'No',
       lastAnalysed: new Date().toISOString(),
-      error: `Could not fetch website: ${error.message}`,
+      error: `Could not fetch website: ${fetchError?.message || statusText}`,
       seoHealth: fallbackHealth,
       aiReport: {
         execSummary: `Website analysis failed (${statusText}). Technical metrics could not be gathered.`,
@@ -995,6 +867,124 @@ app.post('/api/analyse', async (req, res) => {
       }
     });
   }
+
+  // Step 4: Normal extraction when HTML was successfully obtained
+  const isHttps = targetUrl.startsWith('https://');
+  const indexableBool = !/noindex/i.test($('meta[name="robots"]').attr('content') || '') && !/noindex/i.test($('meta[name="googlebot"]').attr('content') || '');
+
+  let description = '';
+  $('meta').each((i, el) => {
+    const name = $(el).attr('name');
+    const property = $(el).attr('property');
+    if (name && name.toLowerCase() === 'description') {
+      description = $(el).attr('content')?.trim() || '';
+    } else if (property && property.toLowerCase() === 'og:description') {
+      if (!description) {
+        description = $(el).attr('content')?.trim() || '';
+      }
+    }
+  });
+
+  const h1Count = $('h1').length;
+  const h1Text = $('h1').first().text().trim() || '';
+  const h2Count = $('h2').length;
+  const canonical = $('link[rel="canonical"]').attr('href')?.trim() || '';
+
+  // Word Count
+  const $clone = cheerio.load(html);
+  $clone('script, style, noscript, iframe, svg, head').remove();
+  const visibleText = $clone('body').text() || '';
+  const words = visibleText.trim().split(/\s+/).filter(w => w.length > 0);
+  const wordCount = words.length;
+
+  // Images
+  const images = $('img');
+  const imageCount = images.length;
+  let missingAltCount = 0;
+  images.each((i, img) => {
+    const alt = $(img).attr('alt');
+    if (alt === undefined || alt === null || alt.trim() === '') {
+      missingAltCount++;
+    }
+  });
+
+  // Links
+  const links = $('a[href]');
+  let internalLinksCount = 0;
+  let externalLinksCount = 0;
+
+  let baseDomain = '';
+  try {
+    baseDomain = new URL(targetUrl).hostname.replace(/^www\./, '');
+  } catch (e) {
+    baseDomain = targetUrl.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+  }
+
+  links.each((i, link) => {
+    const href = $(link).attr('href')?.trim();
+    if (!href) return;
+    if (href.startsWith('#') || href.startsWith('javascript:')) return;
+    
+    if (href.startsWith('/') || !/^(https?:)?\/\//i.test(href)) {
+      internalLinksCount++;
+    } else {
+      try {
+        const linkDomain = new URL(href).hostname.replace(/^www\./, '');
+        if (linkDomain === baseDomain) {
+          internalLinksCount++;
+        } else {
+          externalLinksCount++;
+        }
+      } catch (e) {
+        if (/^https?:\/\//i.test(href)) {
+          externalLinksCount++;
+        } else {
+          internalLinksCount++;
+        }
+      }
+    }
+  });
+
+  const seoHealthData = {
+    isHttps,
+    statusCode: statusCode || 200,
+    indexable: indexableBool,
+    hasCanonical: canonical.length > 0,
+    titlePresent: title.length > 0,
+    titleLength: title.length,
+    descriptionPresent: description.length > 0,
+    descriptionLength: description.length,
+    h1Present: h1Count > 0,
+    h1Count,
+    h2Count,
+    wordCount,
+    imageCount,
+    missingAltCount,
+    internalLinksCount,
+    externalLinksCount
+  };
+
+  const aiReport = generateAIReport(seoHealthData);
+  const leadOpportunity = generateLeadDashboard(seoHealthData, searchType || 'Organic', rank || 0, targetUrl);
+  const gbp = await performGbpMatching(targetUrl, html, title, h1Text, location);
+  const leadScore = getOpportunityScoreAndReasons(seoHealthData, gbp, rank);
+  const leadPriority = getPriorityRating(seoHealthData, gbp, rank);
+
+  return res.json({
+    pageTitle: title || 'Not Found',
+    metaDescription: description || 'Not Found',
+    h1: h1Text || 'Not Found',
+    httpStatus: httpStatus || '200 OK',
+    canonicalUrl: canonical || 'Not Found',
+    indexable: indexableBool ? 'Yes' : 'No',
+    lastAnalysed: new Date().toISOString(),
+    seoHealth: seoHealthData,
+    aiReport: aiReport,
+    leadOpportunity: leadOpportunity,
+    gbp: gbp,
+    leadOpportunityScore: leadScore,
+    leadPriority: leadPriority
+  });
 });
 
 // POST URL endpoint
