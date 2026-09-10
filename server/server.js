@@ -1422,13 +1422,38 @@ function extractEmailsFromHtml(html, baseDomain) {
     } catch (e) {}
   }
 
-  // 4. Regular expression across body
+  // 4. Standard regex across body
   const bodyEmailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
   let textMatch;
   while ((textMatch = bodyEmailRegex.exec(html)) !== null) {
     const email = textMatch[0].toLowerCase().trim();
     if (isValidEmail(email, baseDomain)) {
       found.add(email);
+    }
+  }
+
+  // 5. Cleaned HTML (strip <br>, <wbr>, inline formatting tags that break up email text e.g. "hello@<br>domain.co.uk")
+  const cleanedHtml = html
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<wbr\s*\/?>/gi, '')
+    .replace(/<\/?(span|strong|em|b|i|font|p|div|h1|h2|h3|h4|h5|h6)[^>]*>/gi, ' ');
+
+  let cleanedMatch;
+  const cleanedRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
+  while ((cleanedMatch = cleanedRegex.exec(cleanedHtml)) !== null) {
+    const email = cleanedMatch[0].toLowerCase().trim();
+    if (isValidEmail(email, baseDomain)) {
+      found.add(email);
+    }
+  }
+
+  // 6. Text with whitespace/newlines around @ symbol
+  const strippedText = cleanedHtml.replace(/<[^>]+>/g, ' ');
+  const spacedMatches = [...strippedText.matchAll(/([a-zA-Z0-9._%+-]+)\s*[@]\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g)];
+  for (const m of spacedMatches) {
+    const combined = `${m[1]}@${m[2]}`.toLowerCase().trim();
+    if (isValidEmail(combined, baseDomain)) {
+      found.add(combined);
     }
   }
 
@@ -1465,7 +1490,7 @@ function isValidEmail(email, baseDomain) {
 
 // Function to find contact emails for a prospect
 async function crawlProspectContactEmails(targetUrl) {
-  if (!targetUrl) return { status: 'No Email Found', contactEmail: null, allFoundEmails: [], emailSource: null };
+  if (!targetUrl) return { status: 'No Email', contactEmail: null, allFoundEmails: [], emailSource: null };
   let fetchUrl = targetUrl;
   if (!/^https?:\/\//i.test(fetchUrl)) {
     fetchUrl = 'https://' + fetchUrl;
@@ -1473,6 +1498,7 @@ async function crawlProspectContactEmails(targetUrl) {
   const baseDomain = normalizeDomain(fetchUrl);
 
   const allEmails = new Set();
+  const emailSourcesMap = new Map();
   let primarySource = null;
 
   // Helper fetch with modern browser headers & fallback
@@ -1512,9 +1538,15 @@ async function crawlProspectContactEmails(targetUrl) {
 
     // Fallback to Puppeteer if standard fetch was blocked (e.g. Cloudflare / WAF)
     try {
-      const pup = await fetchPageWithPuppeteer(url);
-      if (pup.success && pup.html) {
-        return { html: pup.html, finalUrl: pup.finalUrl || url };
+      const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      const html = await page.content();
+      const finalUrl = page.url();
+      await browser.close();
+      if (html && html.length > 200) {
+        return { html, finalUrl };
       }
     } catch (e) {}
 
@@ -1533,6 +1565,7 @@ async function crawlProspectContactEmails(targetUrl) {
     const homeEmails = extractEmailsFromHtml(homeResult.html, baseDomain);
     homeEmails.forEach(e => {
       allEmails.add(e);
+      if (!emailSourcesMap.has(e)) emailSourcesMap.set(e, homeResult.finalUrl);
       if (!primarySource) primarySource = homeResult.finalUrl;
     });
 
@@ -1570,6 +1603,7 @@ async function crawlProspectContactEmails(targetUrl) {
       const contactEmails = extractEmailsFromHtml(contactResult.html, baseDomain);
       contactEmails.forEach(e => {
         allEmails.add(e);
+        if (!emailSourcesMap.has(e)) emailSourcesMap.set(e, contactResult.finalUrl);
         if (!primarySource) primarySource = contactResult.finalUrl;
       });
     }
@@ -1578,7 +1612,7 @@ async function crawlProspectContactEmails(targetUrl) {
   const emailsArray = Array.from(allEmails);
 
   // Pick preferred email: prioritize matching domain, then standard business prefixes
-  const priorityPrefixes = ['info@', 'enquiries@', 'contact@', 'hello@', 'sales@', 'office@', 'admin@', 'team@'];
+  const priorityPrefixes = ['hello@', 'info@', 'enquiries@', 'contact@', 'sales@', 'office@', 'admin@', 'team@'];
   let preferredEmail = null;
 
   if (emailsArray.length > 0) {
@@ -1598,30 +1632,25 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  let status = 'No Email Found';
-  if (emailsArray.length === 1) status = 'Found';
-  else if (emailsArray.length > 1) status = 'Multiple Found';
+  const emailSource = preferredEmail ? (emailSourcesMap.get(preferredEmail) || primarySource || fetchUrl) : null;
+  const status = preferredEmail ? 'Email Found' : 'No Email';
 
   return {
     status,
     contactEmail: preferredEmail || null,
     allFoundEmails: emailsArray,
-    emailSource: primarySource || (homeResult ? homeResult.finalUrl : fetchUrl)
+    emailSource: emailSource
   };
 }
 
-// Helper to generate a partnership outreach email draft
-function generatePartnershipEmail({ businessName, domain, searchKeyword, location }) {
-  const cleanName = businessName && businessName !== 'Not Found' && businessName !== domain
-    ? businessName
-    : (domain ? domain.replace(/^www\./, '').split('.')[0] : 'there');
-  const capName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+// Helper to generate a partnership outreach email template for a pack
+function generatePartnershipTemplate({ searchKeyword, location }) {
   const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
   const loc = location && location !== 'Anywhere' ? location : 'your area';
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
   
-  const body = `Hi ${capName} Team,
+  const body = `Hi {{businessName}} Team,
 
 I hope you're having a productive week.
 
@@ -1629,7 +1658,7 @@ I'm reaching out directly because we are currently looking to partner with an es
 
 At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
 
-We came across ${domain || 'your business'} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
+We came across {{domain}} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
 
 If you have capacity for additional ${trade} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
 
@@ -1658,12 +1687,12 @@ app.post('/api/outreach-packs/find-contacts', async (req, res) => {
   }
 });
 
-// POST endpoint to generate partnership outreach email draft
-app.post('/api/outreach-packs/generate-email', (req, res) => {
+// POST endpoint to generate partnership outreach email template
+app.post('/api/outreach-packs/generate-template', (req, res) => {
   try {
-    const { businessName, domain, searchKeyword, location } = req.body;
-    const emailDraft = generatePartnershipEmail({ businessName, domain, searchKeyword, location });
-    res.json(emailDraft);
+    const { searchKeyword, location } = req.body;
+    const template = generatePartnershipTemplate({ searchKeyword, location });
+    res.json(template);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1714,7 +1743,7 @@ app.get('/api/outreach-packs/:packId', async (req, res) => {
 app.post('/api/outreach-packs', async (req, res) => {
   try {
     const db = await getDb();
-    const { name, prospects = [] } = req.body;
+    const { name, templateSubject, templateBody, prospects = [] } = req.body;
 
     // 1. Generate sequential packId: OP0001, OP0002...
     const rows = await db.all("SELECT packId FROM outreach_packs WHERE packId LIKE 'OP%'");
@@ -1730,7 +1759,7 @@ app.post('/api/outreach-packs', async (req, res) => {
     const id = `pack_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const createdAt = new Date().toISOString();
 
-    // 2. Process prospects: populate draft emails & initial statuses
+    // 2. Process prospects: populate initial operational statuses
     const processedProspects = [];
     for (const p of prospects) {
       const pDomain = normalizeDomain(p.domain || p.url || '');
@@ -1739,12 +1768,8 @@ app.post('/api/outreach-packs', async (req, res) => {
       const pSearchKeyword = p.searchKeyword || p.searchPhrase || '';
       const pLocation = p.location || '';
 
-      const draft = generatePartnershipEmail({
-        businessName: pBusinessName,
-        domain: pDomain,
-        searchKeyword: pSearchKeyword,
-        location: pLocation
-      });
+      const hasEmail = Boolean(p.contactEmail);
+      const initialStatus = p.sendStatus || (hasEmail ? 'Email Found' : 'No Email');
 
       processedProspects.push({
         id: p.id || `prospect_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1762,12 +1787,10 @@ app.post('/api/outreach-packs', async (req, res) => {
         commercialStrengthLabel: p.commercialStrengthLabel || 'Good Lead',
         gbpStatus: p.gbpStatus || 'No Profile Matched',
         contactEmail: p.contactEmail || null,
-        emailStatus: p.emailStatus || 'Not Found',
-        allFoundEmails: p.allFoundEmails || [],
+        emailStatus: p.emailStatus || (hasEmail ? 'Email Found' : 'No Email'),
+        allFoundEmails: p.allFoundEmails || (p.contactEmail ? [p.contactEmail] : []),
         emailSource: p.emailSource || null,
-        emailSubject: p.emailSubject || draft.subject,
-        emailBody: p.emailBody || draft.body,
-        sendStatus: p.sendStatus || (p.contactEmail ? 'Draft Ready' : 'Shortlisted'),
+        sendStatus: initialStatus,
         sentAt: p.sentAt || null,
         analysisData: p.analysisData || null
       });
@@ -1786,13 +1809,23 @@ app.post('/api/outreach-packs', async (req, res) => {
       }
     }
 
+    // Default template for pack
+    const firstPhrase = processedProspects[0]?.searchPhrase || processedProspects[0]?.searchKeyword || '';
+    const firstLoc = processedProspects[0]?.location || '';
+    const defaultTemplate = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+
+    const finalTemplateSubject = templateSubject || defaultTemplate.subject;
+    const finalTemplateBody = templateBody || defaultTemplate.body;
+
     await db.run(
-      `INSERT INTO outreach_packs (id, packId, name, createdAt, sentAt, status, prospectsCount, prospects)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         nextPackId,
         defaultName,
+        finalTemplateSubject,
+        finalTemplateBody,
         createdAt,
         null,
         'Draft',
@@ -1811,7 +1844,7 @@ app.post('/api/outreach-packs', async (req, res) => {
           p.domain,
           p.contactEmail || null,
           nextPackId,
-          p.sendStatus || 'Shortlisted',
+          p.sendStatus || 'No Email',
           null,
           createdAt
         ]
@@ -1824,6 +1857,8 @@ app.post('/api/outreach-packs', async (req, res) => {
         id,
         packId: nextPackId,
         name: defaultName,
+        templateSubject: finalTemplateSubject,
+        templateBody: finalTemplateBody,
         createdAt,
         sentAt: null,
         status: 'Draft',
@@ -1836,17 +1871,19 @@ app.post('/api/outreach-packs', async (req, res) => {
   }
 });
 
-// PUT update outreach pack (e.g. edit draft, update contact email, change status)
+// PUT update outreach pack (e.g. edit pack template, update contact email, change status)
 app.put('/api/outreach-packs/:packId', async (req, res) => {
   try {
     const { packId } = req.params;
-    const { name, status, sentAt, prospects } = req.body;
+    const { name, templateSubject, templateBody, status, sentAt, prospects } = req.body;
     const db = await getDb();
 
     const existing = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
     if (!existing) return res.status(404).json({ error: 'Outreach pack not found' });
 
     const updatedName = name !== undefined ? name : existing.name;
+    const updatedTemplateSubject = templateSubject !== undefined ? templateSubject : (existing.templateSubject || null);
+    const updatedTemplateBody = templateBody !== undefined ? templateBody : (existing.templateBody || null);
     const updatedStatus = status !== undefined ? status : existing.status;
     const updatedSentAt = sentAt !== undefined ? sentAt : existing.sentAt;
     const updatedProspects = prospects !== undefined ? (typeof prospects === 'string' ? prospects : JSON.stringify(prospects)) : existing.prospects;
@@ -1854,10 +1891,12 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
 
     await db.run(
       `UPDATE outreach_packs 
-       SET name = ?, status = ?, sentAt = ?, prospectsCount = ?, prospects = ?
+       SET name = ?, templateSubject = ?, templateBody = ?, status = ?, sentAt = ?, prospectsCount = ?, prospects = ?
        WHERE packId = ? OR id = ?`,
       [
         updatedName,
+        updatedTemplateSubject,
+        updatedTemplateBody,
         updatedStatus,
         updatedSentAt,
         parsedProspects.length,
@@ -1877,7 +1916,7 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
           p.domain,
           p.contactEmail || null,
           existing.packId,
-          p.sendStatus || 'Shortlisted',
+          p.sendStatus || 'No Email',
           p.sentAt || null,
           existing.createdAt
         ]
@@ -1889,6 +1928,8 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
       pack: {
         ...existing,
         name: updatedName,
+        templateSubject: updatedTemplateSubject,
+        templateBody: updatedTemplateBody,
         status: updatedStatus,
         sentAt: updatedSentAt,
         prospectsCount: parsedProspects.length,

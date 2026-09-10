@@ -204,9 +204,9 @@ function App() {
   const [selectedProspectIdsInPack, setSelectedProspectIdsInPack] = useState(new Set());
   const [isFindingContacts, setIsFindingContacts] = useState(false);
   const [searchingProspectIds, setSearchingProspectIds] = useState(new Set());
-  const [editingEmailProspect, setEditingEmailProspect] = useState(null);
-  const [editedEmailSubject, setEditedEmailSubject] = useState('');
-  const [editedEmailBody, setEditedEmailBody] = useState('');
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [editingTemplateSubject, setEditingTemplateSubject] = useState('');
+  const [editingTemplateBody, setEditingTemplateBody] = useState('');
   const [contactHistory, setContactHistory] = useState([]);
   const [newPackNameInput, setNewPackNameInput] = useState('');
   const [isCreatingPackModalOpen, setIsCreatingPackModalOpen] = useState(false);
@@ -632,11 +632,11 @@ function App() {
           const contactInfo = await res.json();
           updatedProspects = updatedProspects.map(p => {
             if (p.id === prospect.id || p.domain === prospect.domain) {
-              const newStatus = contactInfo.contactEmail ? (p.sendStatus === 'Shortlisted' ? 'Email Found' : p.sendStatus) : p.sendStatus;
+              const newStatus = contactInfo.contactEmail ? 'Email Found' : 'No Email';
               return {
                 ...p,
                 contactEmail: contactInfo.contactEmail || null,
-                emailStatus: contactInfo.status || 'No Email Found',
+                emailStatus: contactInfo.status || 'No Email',
                 allFoundEmails: contactInfo.allFoundEmails || [],
                 emailSource: contactInfo.emailSource || null,
                 sendStatus: newStatus
@@ -2953,15 +2953,99 @@ function App() {
             {/* Sub-view 3: Inside Outreach Pack Detail */}
             {outreachSubView === 'pack-detail' && activePack && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Visual Pack Workflow Header */}
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  padding: '1.25rem 1.5rem',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Pack Workflow:
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                      <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                        1. Find Emails
+                      </span>
+                      <span style={{ color: '#64748b' }}>&rarr;</span>
+                      <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                        2. Review/Edit Template
+                      </span>
+                      <span style={{ color: '#64748b' }}>&rarr;</span>
+                      <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                        3. Select Prospects
+                      </span>
+                      <span style={{ color: '#64748b' }}>&rarr;</span>
+                      <span style={{ backgroundColor: 'rgba(148, 163, 184, 0.1)', color: '#94a3b8', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                        4. Send Selected
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <button
+                      onClick={() => {
+                        const targets = selectedProspectIdsInPack.size > 0
+                          ? activePack.prospects.filter(p => selectedProspectIdsInPack.has(p.id || p.domain))
+                          : activePack.prospects;
+                        handleFindContactsForPack(activePack.packId, targets);
+                      }}
+                      disabled={isFindingContacts}
+                      className="table-btn"
+                      style={{ backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 'bold', padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
+                    >
+                      {isFindingContacts ? 'Finding Emails...' : `🔍 Find Emails (${selectedProspectIdsInPack.size > 0 ? selectedProspectIdsInPack.size : 'All'})`}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
+                        const firstLoc = activePack.prospects?.[0]?.location || '';
+                        const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+                        setEditingTemplateSubject(activePack.templateSubject || defaultTpl.subject);
+                        setEditingTemplateBody(activePack.templateBody || defaultTpl.body);
+                        setIsTemplateModalOpen(true);
+                      }}
+                      className="table-btn"
+                      style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: 'bold', padding: '0.45rem 0.9rem', fontSize: '0.85rem' }}
+                    >
+                      ✉️ View / Edit Template
+                    </button>
+
+                    <button
+                      disabled={true}
+                      className="table-btn"
+                      style={{
+                        backgroundColor: '#334155',
+                        color: '#94a3b8',
+                        fontWeight: 'bold',
+                        padding: '0.45rem 0.9rem',
+                        fontSize: '0.85rem',
+                        cursor: 'not-allowed',
+                        opacity: 0.6
+                      }}
+                      title="Email sending will be enabled in the next stage"
+                    >
+                      🚀 Send Selected ({selectedProspectIdsInPack.size})
+                    </button>
+                  </div>
+                </div>
+
                 {/* Pack Detail Header Card */}
                 <div style={{
                   backgroundColor: '#0f172a',
-                  padding: '1.5rem',
+                  padding: '1.25rem 1.5rem',
                   borderRadius: '8px',
                   border: '1px solid #334155',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '1.25rem'
+                  gap: '1rem'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -2985,7 +3069,7 @@ function App() {
                       }}>
                         {activePack.packId}
                       </span>
-                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
                         {activePack.name}
                       </h2>
                     </div>
@@ -3014,50 +3098,59 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Pack Metadata & Batch Toolbar */}
+                  {/* Pack Template Summary Bar */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
+                    backgroundColor: '#1e293b',
+                    padding: '0.75rem 1rem',
+                    borderRadius: '6px',
+                    border: '1px solid #334155',
+                    fontSize: '0.85rem',
                     flexWrap: 'wrap',
-                    gap: '1rem',
-                    paddingTop: '1rem',
-                    borderTop: '1px solid #1e293b'
+                    gap: '0.75rem'
                   }}>
-                    <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                      <div><span style={{ color: '#94a3b8' }}>Created:</span> {formatLastAnalysed(activePack.createdAt)}</div>
-                      <div><span style={{ color: '#94a3b8' }}>Prospects:</span> <strong>{activePack.prospects?.length || 0}</strong></div>
-                      <div><span style={{ color: '#94a3b8' }}>Sent Date:</span> {activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not sent yet'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#cbd5e1' }}>
+                      <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject:</span>
+                      <span style={{ color: '#ffffff' }}>
+                        {activePack.templateSubject || 'Partnership enquiry: {{trade}} in {{location}} — The Search Equation'}
+                      </span>
                     </div>
+                    <button
+                      onClick={() => {
+                        const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
+                        const firstLoc = activePack.prospects?.[0]?.location || '';
+                        const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+                        setEditingTemplateSubject(activePack.templateSubject || defaultTpl.subject);
+                        setEditingTemplateBody(activePack.templateBody || defaultTpl.body);
+                        setIsTemplateModalOpen(true);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#38bdf8',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        textDecoration: 'underline',
+                        padding: 0
+                      }}
+                    >
+                      Edit Pack Template
+                    </button>
+                  </div>
 
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                      <button
-                        onClick={() => {
-                          const targets = selectedProspectIdsInPack.size > 0
-                            ? activePack.prospects.filter(p => selectedProspectIdsInPack.has(p.id || p.domain))
-                            : activePack.prospects;
-                          handleFindContactsForPack(activePack.packId, targets);
-                        }}
-                        disabled={isFindingContacts}
-                        className="table-btn"
-                        style={{ backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 'bold' }}
-                      >
-                        {isFindingContacts ? 'Finding Emails...' : `🔍 Find Contact Emails (${selectedProspectIdsInPack.size > 0 ? selectedProspectIdsInPack.size : 'All'})`}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const targets = selectedProspectIdsInPack.size > 0
-                            ? activePack.prospects.filter(p => selectedProspectIdsInPack.has(p.id || p.domain))
-                            : activePack.prospects;
-                          handleGenerateEmailsForPack(activePack.packId, targets);
-                        }}
-                        className="analyse-btn-green"
-                        style={{ fontWeight: 'bold' }}
-                      >
-                        ✉️ Generate Outreach Emails ({selectedProspectIdsInPack.size > 0 ? selectedProspectIdsInPack.size : 'All'})
-                      </button>
-                    </div>
+                  {/* Pack Metadata */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '1.5rem',
+                    fontSize: '0.85rem',
+                    color: '#cbd5e1',
+                    paddingTop: '0.5rem'
+                  }}>
+                    <div><span style={{ color: '#94a3b8' }}>Created:</span> {formatLastAnalysed(activePack.createdAt)}</div>
+                    <div><span style={{ color: '#94a3b8' }}>Prospects:</span> <strong>{activePack.prospects?.length || 0}</strong></div>
+                    <div><span style={{ color: '#94a3b8' }}>Sent Date:</span> {activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not sent yet'}</div>
                   </div>
                 </div>
 
@@ -3081,10 +3174,9 @@ function App() {
                           />
                         </th>
                         <th>Business / Domain</th>
-                        <th>Search ID & Phrase</th>
                         <th>Rank & Score</th>
-                        <th>Contact Email & Source</th>
-                        <th>Outreach Draft</th>
+                        <th>Contact Email</th>
+                        <th>Email Source</th>
                         <th>Status</th>
                         <th className="action-cell">Actions</th>
                       </tr>
@@ -3131,13 +3223,6 @@ function App() {
                               </div>
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '0.8rem' }}>{prospect.searchId || 'N/A'}</span>
-                                <span style={{ fontSize: '0.85rem' }}>{prospect.searchPhrase || 'Not available'}</span>
-                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{prospect.location || 'Anywhere'}</span>
-                              </div>
-                            </td>
-                            <td>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                 <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
                                 {prospect.opportunityScore !== null && prospect.opportunityScore !== undefined ? (
@@ -3177,20 +3262,9 @@ function App() {
                                       gap: '0.35rem'
                                     }}>
                                       <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#38bdf8' }}></span>
-                                      Finding Emails...
+                                      Finding...
                                     </span>
-                                  ) : (
-                                    <span style={{
-                                      fontSize: '0.75rem',
-                                      fontWeight: 'bold',
-                                      borderRadius: '4px',
-                                      padding: '0.1rem 0.4rem',
-                                      backgroundColor: prospect.emailStatus === 'Found' ? 'rgba(16, 185, 129, 0.2)' : (prospect.emailStatus === 'Multiple Found' ? 'rgba(59, 130, 246, 0.2)' : (prospect.emailStatus === 'Search Failed' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(100, 116, 139, 0.2)')),
-                                      color: prospect.emailStatus === 'Found' ? '#10b981' : (prospect.emailStatus === 'Multiple Found' ? '#60a5fa' : (prospect.emailStatus === 'Search Failed' ? '#ef4444' : '#94a3b8'))
-                                    }}>
-                                      {prospect.emailStatus === 'Found' ? '✓ Found' : (prospect.emailStatus === 'Multiple Found' ? `Multiple Found (${prospect.allFoundEmails?.length || 0})` : (prospect.emailStatus === 'Search Failed' ? '⚠️ Search Failed' : 'No Email Found'))}
-                                    </span>
-                                  )}
+                                  ) : null}
 
                                   {!isSearchingThis && prospect.allFoundEmails?.length > 1 && (
                                     <select
@@ -3208,35 +3282,27 @@ function App() {
                                     </select>
                                   )}
                                 </div>
-
-                                {prospect.emailSource && (
-                                  <a href={prospect.emailSource} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: '#94a3b8', textDecoration: 'underline' }}>
-                                    Source page
-                                  </a>
-                                )}
                               </div>
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                                <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: '600', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {prospect.emailSubject || 'Draft not generated'}
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    setEditingEmailProspect(prospect);
-                                    setEditedEmailSubject(prospect.emailSubject || '');
-                                    setEditedEmailBody(prospect.emailBody || '');
-                                  }}
-                                  className="table-btn"
-                                  style={{ backgroundColor: '#334155', color: '#ffffff', fontSize: '0.8rem', padding: '0.25rem 0.5rem', alignSelf: 'flex-start' }}
+                              {prospect.emailSource ? (
+                                <a
+                                  href={prospect.emailSource}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="table-link"
+                                  style={{ fontSize: '0.8rem', color: '#38bdf8', textDecoration: 'underline', maxWidth: '180px', display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                  title={prospect.emailSource}
                                 >
-                                  ✏️ Edit Draft
-                                </button>
-                              </div>
+                                  {prospect.emailSource}
+                                </a>
+                              ) : (
+                                <span style={{ color: '#64748b', fontSize: '0.85rem' }}>-</span>
+                              )}
                             </td>
                             <td>
                               <select
-                                value={prospect.sendStatus || 'Shortlisted'}
+                                value={prospect.sendStatus || (prospect.contactEmail ? 'Email Found' : 'No Email')}
                                 onChange={(e) => {
                                   const updated = activePack.prospects.map(p => (p.id === prospect.id || p.domain === prospect.domain) ? { ...p, sendStatus: e.target.value } : p);
                                   handleUpdatePack(activePack.packId, { prospects: updated });
@@ -3244,17 +3310,16 @@ function App() {
                                 style={{
                                   fontSize: '0.8rem',
                                   backgroundColor: '#1e293b',
-                                  color: prospect.sendStatus === 'Ready to Send' ? '#10b981' : (prospect.sendStatus === 'Draft Ready' ? '#38bdf8' : '#cbd5e1'),
+                                  color: prospect.sendStatus === 'Ready' ? '#10b981' : (prospect.sendStatus === 'Email Found' ? '#38bdf8' : (prospect.sendStatus === 'Sent' ? '#a855f7' : (prospect.sendStatus === 'Failed' ? '#ef4444' : '#94a3b8'))),
                                   border: '1px solid #334155',
                                   borderRadius: '4px',
                                   padding: '0.25rem 0.5rem',
                                   fontWeight: 'bold'
                                 }}
                               >
-                                <option value="Shortlisted">Shortlisted</option>
                                 <option value="Email Found">Email Found</option>
-                                <option value="Draft Ready">Draft Ready</option>
-                                <option value="Ready to Send">Ready to Send</option>
+                                <option value="No Email">No Email</option>
+                                <option value="Ready">Ready</option>
                                 <option value="Sent">Sent</option>
                                 <option value="Failed">Failed</option>
                               </select>
@@ -3268,34 +3333,12 @@ function App() {
                                   backgroundColor: prospect.emailStatus === 'Search Failed' ? '#dc2626' : '#0284c7',
                                   padding: '0.35rem 0.6rem',
                                   fontSize: '0.8rem',
-                                  marginRight: '6px',
                                   opacity: isSearchingThis ? 0.6 : 1,
                                   cursor: isSearchingThis ? 'wait' : 'pointer'
                                 }}
                                 title="Scan website for emails"
                               >
                                 {isSearchingThis ? 'Finding...' : (prospect.emailStatus === 'Search Failed' ? 'Retry Find' : 'Find Email')}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  const analysisItem = prospect.analysisData || {
-                                    domain: prospect.domain,
-                                    url: prospect.url,
-                                    searchId: prospect.searchId,
-                                    searchType: prospect.searchType || 'Organic',
-                                    searchKeyword: prospect.searchPhrase || 'Any',
-                                    location: prospect.location || 'Anywhere',
-                                    rank: prospect.rank || 0,
-                                    leadOpportunityScore: { score: prospect.opportunityScore, band: prospect.opportunityBand },
-                                    leadPriority: { stars: prospect.commercialStrengthStars, label: prospect.commercialStrengthLabel },
-                                    gbp: { status: prospect.gbpStatus }
-                                  };
-                                  handleAnalyse(analysisItem);
-                                }}
-                                className="analyse-btn-green"
-                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
-                              >
-                                View
                               </button>
                             </td>
                           </tr>
@@ -3347,7 +3390,7 @@ function App() {
                       type="text"
                       value={newPackNameInput}
                       onChange={(e) => setNewPackNameInput(e.target.value)}
-                      placeholder="e.g. Window Shutters Bristol - Batch 1"
+                      placeholder="e.g. Window Shutters Bristol"
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box' }}
                     />
@@ -3373,8 +3416,8 @@ function App() {
               </div>
             )}
 
-            {/* Modal: Edit Outreach Email Draft */}
-            {editingEmailProspect && (
+            {/* Modal: View / Edit Pack Email Template */}
+            {isTemplateModalOpen && activePack && (
               <div style={{
                 position: 'fixed',
                 top: 0,
@@ -3405,41 +3448,34 @@ function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
-                        Edit Outreach Email — {editingEmailProspect.businessName || editingEmailProspect.domain}
+                        Outreach Email Template — {activePack.packId}
                       </h3>
                       <p style={{ margin: '0.25rem 0 0 0', color: '#38bdf8', fontSize: '0.85rem' }}>
-                        Partnership Opportunity Proposition
+                        Applied to all prospects in this pack. Use variables for automated personalization.
                       </p>
                     </div>
                     <button
-                      onClick={() => setEditingEmailProspect(null)}
+                      onClick={() => setIsTemplateModalOpen(false)}
                       style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
                     >
                       &times;
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Recipient Email</label>
-                    <input
-                      type="text"
-                      value={editingEmailProspect.contactEmail || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditingEmailProspect(prev => ({ ...prev, contactEmail: val }));
-                      }}
-                      placeholder="e.g. info@company.co.uk"
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box' }}
-                    />
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>Available Variables:</span>
+                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{businessName}}"}</code>
+                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{domain}}"}</code>
+                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{location}}"}</code>
+                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{trade}}"}</code>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Subject Line</label>
                     <input
                       type="text"
-                      value={editedEmailSubject}
-                      onChange={(e) => setEditedEmailSubject(e.target.value)}
+                      value={editingTemplateSubject}
+                      onChange={(e) => setEditingTemplateSubject(e.target.value)}
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box' }}
                     />
@@ -3451,23 +3487,20 @@ function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          const regenerated = generatePartnershipEmail({
-                            businessName: editingEmailProspect.businessName,
-                            domain: editingEmailProspect.domain,
-                            searchKeyword: editingEmailProspect.searchPhrase || editingEmailProspect.searchKeyword,
-                            location: editingEmailProspect.location
-                          });
-                          setEditedEmailSubject(regenerated.subject);
-                          setEditedEmailBody(regenerated.body);
+                          const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
+                          const firstLoc = activePack.prospects?.[0]?.location || '';
+                          const regenerated = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+                          setEditingTemplateSubject(regenerated.subject);
+                          setEditingTemplateBody(regenerated.body);
                         }}
                         style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
                       >
-                        🔄 Reset to Partnership Template
+                        🔄 Reset to Default Template
                       </button>
                     </div>
                     <textarea
-                      value={editedEmailBody}
-                      onChange={(e) => setEditedEmailBody(e.target.value)}
+                      value={editingTemplateBody}
+                      onChange={(e) => setEditingTemplateBody(e.target.value)}
                       rows={14}
                       style={{
                         backgroundColor: '#1e293b',
@@ -3487,7 +3520,7 @@ function App() {
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                     <button
-                      onClick={() => setEditingEmailProspect(null)}
+                      onClick={() => setIsTemplateModalOpen(false)}
                       className="table-btn"
                       style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
                     >
@@ -3495,46 +3528,15 @@ function App() {
                     </button>
                     <button
                       onClick={() => {
-                        const updated = activePack.prospects.map(p => {
-                          if (p.id === editingEmailProspect.id || p.domain === editingEmailProspect.domain) {
-                            return {
-                              ...p,
-                              contactEmail: editingEmailProspect.contactEmail,
-                              emailSubject: editedEmailSubject,
-                              emailBody: editedEmailBody,
-                              sendStatus: p.sendStatus === 'Shortlisted' ? 'Draft Ready' : p.sendStatus
-                            };
-                          }
-                          return p;
+                        handleUpdatePack(activePack.packId, {
+                          templateSubject: editingTemplateSubject,
+                          templateBody: editingTemplateBody
                         });
-                        handleUpdatePack(activePack.packId, { prospects: updated });
-                        setEditingEmailProspect(null);
-                      }}
-                      className="table-btn"
-                      style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
-                    >
-                      Save Draft
-                    </button>
-                    <button
-                      onClick={() => {
-                        const updated = activePack.prospects.map(p => {
-                          if (p.id === editingEmailProspect.id || p.domain === editingEmailProspect.domain) {
-                            return {
-                              ...p,
-                              contactEmail: editingEmailProspect.contactEmail,
-                              emailSubject: editedEmailSubject,
-                              emailBody: editedEmailBody,
-                              sendStatus: 'Ready to Send'
-                            };
-                          }
-                          return p;
-                        });
-                        handleUpdatePack(activePack.packId, { prospects: updated });
-                        setEditingEmailProspect(null);
+                        setIsTemplateModalOpen(false);
                       }}
                       className="analyse-btn-green"
                     >
-                      Save & Mark Ready to Send
+                      Save Template
                     </button>
                   </div>
                 </div>

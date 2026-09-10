@@ -61,6 +61,8 @@ export async function getDb() {
       id TEXT PRIMARY KEY,
       packId TEXT NOT NULL UNIQUE,
       name TEXT,
+      templateSubject TEXT,
+      templateBody TEXT,
       createdAt TEXT NOT NULL,
       sentAt TEXT,
       status TEXT NOT NULL DEFAULT 'Draft',
@@ -78,6 +80,13 @@ export async function getDb() {
       createdAt TEXT NOT NULL
     );
   `);
+
+  try {
+    await db.exec(`ALTER TABLE outreach_packs ADD COLUMN templateSubject TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_packs ADD COLUMN templateBody TEXT;`);
+  } catch (e) {}
   
   return db;
 }
