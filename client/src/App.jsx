@@ -1795,7 +1795,7 @@ function App() {
               return (
                 <>
                 <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500' }}>
-                  Opportunity Score: The higher the score, the better the lead opportunity.
+                  Opportunity Score: The higher the score, the better the lead opportunity. ★ = score 60+.
                 </div>
                 <div className="results-table-container">
                   <table className="results-table">
@@ -1848,6 +1848,9 @@ function App() {
                                         fontSize: '1.1rem',
                                         lineHeight: '1'
                                       }}>●</span>
+                                      {item.analysis.leadOpportunityScore.score >= 60 && (
+                                        <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                      )}
                                       <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
                                         {item.analysis.leadOpportunityScore?.score}
                                       </span>
@@ -1916,6 +1919,9 @@ function App() {
                                         fontSize: '1.1rem',
                                         lineHeight: '1'
                                       }}>●</span>
+                                      {item.analysis.leadOpportunityScore.score >= 60 && (
+                                        <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                      )}
                                       <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
                                         {item.analysis.leadOpportunityScore?.score}
                                       </span>
@@ -2403,9 +2409,9 @@ function App() {
                   </div>
                 </div>
 
-                {/* Lead Priority */}
+                {/* Commercial Lead Strength */}
                 <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Lead Priority</span>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Commercial Lead Strength</span>
                   <span style={{ fontSize: '1.25rem', color: '#f59e0b', fontWeight: 'bold', lineHeight: '1.2' }}>{activeAnalysisItem.leadPriority?.stars || '★★★☆☆'}</span>
                   <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>{activeAnalysisItem.leadPriority?.label || 'Good Lead'}</span>
                 </div>
@@ -2414,7 +2420,7 @@ function App() {
                 <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>GBP Status</span>
                   <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: activeAnalysisItem.gbp?.status === 'Found' ? '#10b981' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? '#f59e0b' : '#ef4444'), lineHeight: '1.2' }}>
-                    {activeAnalysisItem.gbp?.status || 'Not Found'}
+                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Found' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
                   </span>
                   <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>Google Business</span>
                 </div>
@@ -2482,26 +2488,26 @@ function App() {
                     fontWeight: 'bold', 
                     color: activeAnalysisItem.gbp?.status === 'Found' ? '#10b981' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? '#f59e0b' : '#ef4444')
                   }}>
-                    {activeAnalysisItem.gbp?.status || 'Not Found'}
+                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Found' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
                   </span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Business Name</span>
-                  <span className="analysis-value">{activeAnalysisItem.gbp?.businessName || 'Not Found'}</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.businessName || activeAnalysisItem.gbp?.businessName === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.businessName}</span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Primary Category</span>
-                  <span className="analysis-value">{activeAnalysisItem.gbp?.primaryCategory || 'Not Found'}</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.primaryCategory || activeAnalysisItem.gbp?.primaryCategory === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.primaryCategory}</span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Rating</span>
-                  <span className="analysis-value" style={{ fontWeight: 'bold', color: '#f59e0b' }}>
-                    {activeAnalysisItem.gbp?.rating !== 'Not Found' && activeAnalysisItem.gbp?.rating !== undefined ? `★ ${activeAnalysisItem.gbp.rating}` : 'Not Found'}
+                  <span className="analysis-value" style={{ fontWeight: 'bold', color: activeAnalysisItem.gbp?.rating && activeAnalysisItem.gbp?.rating !== 'Not Found' ? '#f59e0b' : 'inherit' }}>
+                    {activeAnalysisItem.gbp?.rating !== 'Not Found' && activeAnalysisItem.gbp?.rating !== undefined ? `★ ${activeAnalysisItem.gbp.rating}` : 'No Profile Matched'}
                   </span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Review Count</span>
-                  <span className="analysis-value">{activeAnalysisItem.gbp?.reviewCount || 'Not Found'}</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.reviewCount || activeAnalysisItem.gbp?.reviewCount === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.reviewCount}</span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Website URL</span>
@@ -2510,16 +2516,16 @@ function App() {
                       <a href={activeAnalysisItem.gbp.websiteUrl} target="_blank" rel="noopener noreferrer" className="table-link">
                         {activeAnalysisItem.gbp.websiteUrl}
                       </a>
-                    ) : (activeAnalysisItem.gbp?.websiteUrl || 'Not Found')}
+                    ) : (activeAnalysisItem.gbp?.websiteUrl === 'Not Found' || !activeAnalysisItem.gbp?.websiteUrl ? 'No Profile Matched' : activeAnalysisItem.gbp.websiteUrl)}
                   </span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Phone Number</span>
-                  <span className="analysis-value">{activeAnalysisItem.gbp?.phoneNumber || 'Not Found'}</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.phoneNumber || activeAnalysisItem.gbp?.phoneNumber === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.phoneNumber}</span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Address</span>
-                  <span className="analysis-value" style={{ textAlign: 'right' }}>{activeAnalysisItem.gbp?.address || 'Not Found'}</span>
+                  <span className="analysis-value" style={{ textAlign: 'right' }}>{!activeAnalysisItem.gbp?.address || activeAnalysisItem.gbp?.address === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.address}</span>
                 </div>
               </div>
 
