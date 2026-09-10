@@ -1348,14 +1348,490 @@ app.post('/api/outreach', async (req, res) => {
   }
 });
 
-// DELETE prospect from outreach shortlist
-app.delete('/api/outreach/:id', async (req, res) => {
+// Helper to extract and validate emails from HTML
+function extractEmailsFromHtml(html, baseDomain) {
+  if (!html || typeof html !== 'string') return [];
+  const found = new Set();
+  
+  // 1. Mailto links
+  const mailtoRegex = /href=["']mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\?[^"']*)?["']/gi;
+  let match;
+  while ((match = mailtoRegex.exec(html)) !== null) {
+    const email = match[1].toLowerCase().trim();
+    if (isValidEmail(email, baseDomain)) {
+      found.add(email);
+    }
+  }
+
+  // 2. JSON-LD scripts
+  const jsonLdRegex = /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let jsonMatch;
+  while ((jsonMatch = jsonLdRegex.exec(html)) !== null) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      const checkObj = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        if (typeof obj.email === 'string') {
+          const em = obj.email.replace(/^mailto:/i, '').toLowerCase().trim();
+          if (isValidEmail(em, baseDomain)) found.add(em);
+        }
+        for (const k of Object.keys(obj)) {
+          if (typeof obj[k] === 'object') checkObj(obj[k]);
+        }
+      };
+      if (Array.isArray(parsed)) parsed.forEach(checkObj);
+      else checkObj(parsed);
+    } catch (e) {}
+  }
+
+  // 3. Regular expression across body
+  const bodyEmailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
+  let textMatch;
+  while ((textMatch = bodyEmailRegex.exec(html)) !== null) {
+    const email = textMatch[0].toLowerCase().trim();
+    if (isValidEmail(email, baseDomain)) {
+      found.add(email);
+    }
+  }
+
+  return Array.from(found);
+}
+
+function isValidEmail(email, baseDomain) {
+  if (!email || typeof email !== 'string') return false;
+  email = email.toLowerCase().trim();
+  if (email.length < 5 || email.length > 100) return false;
+  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) return false;
+
+  // Reject file extensions falsely matched as TLDs
+  const extBlacklist = /\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|woff2|ttf|eot|pdf|zip|mp4)$/i;
+  if (extBlacklist.test(email)) return false;
+
+  // Reject common dummy / tracker domains
+  const domainPart = email.split('@')[1];
+  const blockedDomains = [
+    'example.com', 'domain.com', 'yourdomain.com', 'sentry.io', 'wixpress.com',
+    'cloudflare.com', 'wordpress.org', 'gravatar.com', 'schema.org', 'googleapis.com',
+    'google.com', 'facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com',
+    'github.com', 'mysite.com', 'test.com', 'email.com', 'w3.org'
+  ];
+  if (blockedDomains.some(d => domainPart === d || domainPart.endsWith('.' + d))) return false;
+
+  // Reject dummy prefixes
+  const localPart = email.split('@')[0];
+  const blockedPrefixes = ['test', 'demo', 'example', 'yourname', 'user', 'name', 'dummy'];
+  if (blockedPrefixes.includes(localPart)) return false;
+
+  return true;
+}
+
+// Function to find contact emails for a prospect
+async function crawlProspectContactEmails(targetUrl) {
+  if (!targetUrl) return { status: 'Not Found', contactEmail: null, allFoundEmails: [], emailSource: null };
+  let fetchUrl = targetUrl;
+  if (!/^https?:\/\//i.test(fetchUrl)) {
+    fetchUrl = 'https://' + fetchUrl;
+  }
+  const baseDomain = normalizeDomain(fetchUrl);
+
+  const allEmails = new Set();
+  let primarySource = null;
+
+  // Helper fetch with timeout & user-agent
+  const fetchPage = async (url) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        },
+        redirect: 'follow'
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) return null;
+      const html = await res.text();
+      return { html, finalUrl: res.url };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // 1. Fetch homepage
+  const homeResult = await fetchPage(fetchUrl);
+  let contactLinks = [];
+  if (homeResult?.html) {
+    const homeEmails = extractEmailsFromHtml(homeResult.html, baseDomain);
+    homeEmails.forEach(e => {
+      allEmails.add(e);
+      if (!primarySource) primarySource = homeResult.finalUrl;
+    });
+
+    // Find contact page links in HTML
+    try {
+      const $ = cheerio.load(homeResult.html);
+      $('a[href]').each((i, el) => {
+        const href = $(el).attr('href')?.trim();
+        const text = $(el).text()?.trim().toLowerCase();
+        if (!href) return;
+        if (/contact|get-in-touch|reach-us|enquir/i.test(href) || /contact|get in touch|enquire/i.test(text)) {
+          try {
+            const resolved = new URL(href, homeResult.finalUrl).toString();
+            if (normalizeDomain(resolved) === baseDomain && !contactLinks.includes(resolved) && resolved !== homeResult.finalUrl) {
+              contactLinks.push(resolved);
+            }
+          } catch (e) {}
+        }
+      });
+    } catch (e) {}
+  }
+
+  // 2. Fetch top 2 contact pages if found
+  for (const contactUrl of contactLinks.slice(0, 2)) {
+    const contactResult = await fetchPage(contactUrl);
+    if (contactResult?.html) {
+      const contactEmails = extractEmailsFromHtml(contactResult.html, baseDomain);
+      contactEmails.forEach(e => {
+        allEmails.add(e);
+        if (!primarySource) primarySource = contactResult.finalUrl;
+      });
+    }
+  }
+
+  const emailsArray = Array.from(allEmails);
+
+  // Pick preferred email: prioritize matching domain, then standard business prefixes
+  const priorityPrefixes = ['info@', 'enquiries@', 'contact@', 'hello@', 'sales@', 'office@', 'admin@', 'team@'];
+  let preferredEmail = null;
+
+  if (emailsArray.length > 0) {
+    // 1. Same domain + priority prefix
+    preferredEmail = emailsArray.find(e => e.endsWith('@' + baseDomain) && priorityPrefixes.some(p => e.startsWith(p)));
+    // 2. Same domain any prefix
+    if (!preferredEmail) {
+      preferredEmail = emailsArray.find(e => e.endsWith('@' + baseDomain));
+    }
+    // 3. Any priority prefix
+    if (!preferredEmail) {
+      preferredEmail = emailsArray.find(e => priorityPrefixes.some(p => e.startsWith(p)));
+    }
+    // 4. First email
+    if (!preferredEmail) {
+      preferredEmail = emailsArray[0];
+    }
+  }
+
+  let status = 'Not Found';
+  if (emailsArray.length === 1) status = 'Found';
+  else if (emailsArray.length > 1) status = 'Multiple Found';
+
+  return {
+    status,
+    contactEmail: preferredEmail || null,
+    allFoundEmails: emailsArray,
+    emailSource: primarySource || fetchUrl
+  };
+}
+
+// Helper to generate a partnership outreach email draft
+function generatePartnershipEmail({ businessName, domain, searchKeyword, location }) {
+  const cleanName = businessName && businessName !== 'Not Found' && businessName !== domain
+    ? businessName
+    : (domain ? domain.replace(/^www\./, '').split('.')[0] : 'there');
+  const capName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+  const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
+  const loc = location && location !== 'Anywhere' ? location : 'your area';
+
+  const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
+  
+  const body = `Hi ${capName} Team,
+
+I hope you're having a productive week.
+
+I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
+
+At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+
+We came across ${domain || 'your business'} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
+
+If you have capacity for additional ${trade} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
+
+Would you be open to a brief 5-minute conversation next week?
+
+Best regards,
+
+Mac
+The Search Equation
+https://thesearchequation.co.uk`;
+
+  return { subject, body };
+}
+
+// POST endpoint to crawl contact emails for a prospect
+app.post('/api/outreach-packs/find-contacts', async (req, res) => {
   try {
-    const { id } = req.params;
-    const target = decodeURIComponent(id);
+    const { url, domain } = req.body;
+    const target = url || (domain ? `https://${domain}` : '');
+    if (!target) return res.status(400).json({ error: 'URL or domain is required' });
+
+    const contactResult = await crawlProspectContactEmails(target);
+    res.json(contactResult);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST endpoint to generate partnership outreach email draft
+app.post('/api/outreach-packs/generate-email', (req, res) => {
+  try {
+    const { businessName, domain, searchKeyword, location } = req.body;
+    const emailDraft = generatePartnershipEmail({ businessName, domain, searchKeyword, location });
+    res.json(emailDraft);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET all outreach packs
+app.get('/api/outreach-packs', async (req, res) => {
+  try {
     const db = await getDb();
-    await db.run('DELETE FROM outreach_shortlist WHERE id = ? OR domain = ?', [target, target]);
+    const rows = await db.all('SELECT * FROM outreach_packs ORDER BY packId DESC');
+    const packs = rows.map(r => {
+      let parsedProspects = [];
+      try {
+        parsedProspects = JSON.parse(r.prospects);
+      } catch (e) {}
+      return {
+        ...r,
+        prospects: parsedProspects
+      };
+    });
+    res.json(packs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET single outreach pack by packId or id
+app.get('/api/outreach-packs/:packId', async (req, res) => {
+  try {
+    const { packId } = req.params;
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    if (!row) return res.status(404).json({ error: 'Outreach pack not found' });
+    let parsedProspects = [];
+    try {
+      parsedProspects = JSON.parse(row.prospects);
+    } catch (e) {}
+    res.json({
+      ...row,
+      prospects: parsedProspects
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST create new outreach pack (with auto contact finding and email draft generation)
+app.post('/api/outreach-packs', async (req, res) => {
+  try {
+    const db = await getDb();
+    const { name, prospects = [] } = req.body;
+
+    // 1. Generate sequential packId: OP0001, OP0002...
+    const rows = await db.all("SELECT packId FROM outreach_packs WHERE packId LIKE 'OP%'");
+    let maxNum = 0;
+    for (const r of rows) {
+      const match = r.packId?.match(/OP(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    const nextPackId = `OP${String(maxNum + 1).padStart(4, '0')}`;
+    const id = `pack_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const createdAt = new Date().toISOString();
+
+    // 2. Process prospects: populate draft emails & initial statuses
+    const processedProspects = [];
+    for (const p of prospects) {
+      const pDomain = normalizeDomain(p.domain || p.url || '');
+      const pUrl = p.url || (pDomain ? `https://${pDomain}` : '');
+      const pBusinessName = p.businessName || p.name || pDomain;
+      const pSearchKeyword = p.searchKeyword || p.searchPhrase || '';
+      const pLocation = p.location || '';
+
+      const draft = generatePartnershipEmail({
+        businessName: pBusinessName,
+        domain: pDomain,
+        searchKeyword: pSearchKeyword,
+        location: pLocation
+      });
+
+      processedProspects.push({
+        id: p.id || `prospect_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        domain: pDomain,
+        url: pUrl,
+        businessName: pBusinessName,
+        searchId: p.searchId || '',
+        searchPhrase: p.searchPhrase || '',
+        location: pLocation,
+        searchType: p.searchType || 'Organic',
+        rank: p.rank || 0,
+        opportunityScore: p.opportunityScore ?? null,
+        opportunityBand: p.opportunityBand || '',
+        commercialStrengthStars: p.commercialStrengthStars || '★★★☆☆',
+        commercialStrengthLabel: p.commercialStrengthLabel || 'Good Lead',
+        gbpStatus: p.gbpStatus || 'No Profile Matched',
+        contactEmail: p.contactEmail || null,
+        emailStatus: p.emailStatus || 'Not Found',
+        allFoundEmails: p.allFoundEmails || [],
+        emailSource: p.emailSource || null,
+        emailSubject: p.emailSubject || draft.subject,
+        emailBody: p.emailBody || draft.body,
+        sendStatus: p.sendStatus || (p.contactEmail ? 'Draft Ready' : 'Shortlisted'),
+        sentAt: p.sentAt || null,
+        analysisData: p.analysisData || null
+      });
+    }
+
+    const defaultName = name || `${processedProspects[0]?.searchPhrase ? processedProspects[0].searchPhrase + ' - ' : ''}Outreach Pack ${nextPackId}`;
+
+    await db.run(
+      `INSERT INTO outreach_packs (id, packId, name, createdAt, sentAt, status, prospectsCount, prospects)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        nextPackId,
+        defaultName,
+        createdAt,
+        null,
+        'Draft',
+        processedProspects.length,
+        JSON.stringify(processedProspects)
+      ]
+    );
+
+    // Record in contact history
+    for (const p of processedProspects) {
+      await db.run(
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `hist_${nextPackId}_${p.domain}`,
+          p.domain,
+          p.contactEmail || null,
+          nextPackId,
+          p.sendStatus || 'Shortlisted',
+          null,
+          createdAt
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      pack: {
+        id,
+        packId: nextPackId,
+        name: defaultName,
+        createdAt,
+        sentAt: null,
+        status: 'Draft',
+        prospectsCount: processedProspects.length,
+        prospects: processedProspects
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT update outreach pack (e.g. edit draft, update contact email, change status)
+app.put('/api/outreach-packs/:packId', async (req, res) => {
+  try {
+    const { packId } = req.params;
+    const { name, status, sentAt, prospects } = req.body;
+    const db = await getDb();
+
+    const existing = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    if (!existing) return res.status(404).json({ error: 'Outreach pack not found' });
+
+    const updatedName = name !== undefined ? name : existing.name;
+    const updatedStatus = status !== undefined ? status : existing.status;
+    const updatedSentAt = sentAt !== undefined ? sentAt : existing.sentAt;
+    const updatedProspects = prospects !== undefined ? (typeof prospects === 'string' ? prospects : JSON.stringify(prospects)) : existing.prospects;
+    const parsedProspects = typeof updatedProspects === 'string' ? JSON.parse(updatedProspects) : updatedProspects;
+
+    await db.run(
+      `UPDATE outreach_packs 
+       SET name = ?, status = ?, sentAt = ?, prospectsCount = ?, prospects = ?
+       WHERE packId = ? OR id = ?`,
+      [
+        updatedName,
+        updatedStatus,
+        updatedSentAt,
+        parsedProspects.length,
+        typeof updatedProspects === 'string' ? updatedProspects : JSON.stringify(updatedProspects),
+        packId,
+        packId
+      ]
+    );
+
+    // Update contact history
+    for (const p of parsedProspects) {
+      await db.run(
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `hist_${existing.packId}_${p.domain}`,
+          p.domain,
+          p.contactEmail || null,
+          existing.packId,
+          p.sendStatus || 'Shortlisted',
+          p.sentAt || null,
+          existing.createdAt
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      pack: {
+        ...existing,
+        name: updatedName,
+        status: updatedStatus,
+        sentAt: updatedSentAt,
+        prospectsCount: parsedProspects.length,
+        prospects: parsedProspects
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE outreach pack
+app.delete('/api/outreach-packs/:packId', async (req, res) => {
+  try {
+    const { packId } = req.params;
+    const db = await getDb();
+    await db.run('DELETE FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET contact history (for duplicate-send protection check)
+app.get('/api/outreach/history', async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM outreach_contact_history ORDER BY createdAt DESC');
+    res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

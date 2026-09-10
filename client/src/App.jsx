@@ -196,6 +196,19 @@ function App() {
   const [excludedDomains, setExcludedDomains] = useState([]);
   const [outreachList, setOutreachList] = useState([]);
   const [isOutreachLoading, setIsOutreachLoading] = useState(false);
+  const [outreachPacks, setOutreachPacks] = useState([]);
+  const [isPacksLoading, setIsPacksLoading] = useState(false);
+  const [activePack, setActivePack] = useState(null);
+  const [outreachSubView, setOutreachSubView] = useState('shortlist'); // 'shortlist' | 'packs' | 'pack-detail'
+  const [selectedShortlistIds, setSelectedShortlistIds] = useState(new Set());
+  const [selectedProspectIdsInPack, setSelectedProspectIdsInPack] = useState(new Set());
+  const [isFindingContacts, setIsFindingContacts] = useState(false);
+  const [editingEmailProspect, setEditingEmailProspect] = useState(null);
+  const [editedEmailSubject, setEditedEmailSubject] = useState('');
+  const [editedEmailBody, setEditedEmailBody] = useState('');
+  const [contactHistory, setContactHistory] = useState([]);
+  const [newPackNameInput, setNewPackNameInput] = useState('');
+  const [isCreatingPackModalOpen, setIsCreatingPackModalOpen] = useState(false);
 
   // Initial load: Fetch server exclusions & perform one-time migration of legacy localStorage exclusions if present
   useEffect(() => {
@@ -464,19 +477,234 @@ function App() {
     }
   };
 
+  const fetchOutreachPacks = async () => {
+    setIsPacksLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs`);
+      if (res.ok) {
+        const data = await res.json();
+        setOutreachPacks(data);
+      }
+    } catch (e) {
+      console.error("Error fetching outreach packs:", e);
+    } finally {
+      setIsPacksLoading(false);
+    }
+  };
+
+  const fetchContactHistory = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach/history`);
+      if (res.ok) {
+        const data = await res.json();
+        setContactHistory(data);
+      }
+    } catch (e) {
+      console.error("Error fetching contact history:", e);
+    }
+  };
+
+  const getContactHistoryWarning = (domain, currentPackId = null) => {
+    if (!domain || !contactHistory.length) return null;
+    const norm = normalizeDomain(domain);
+    const matches = contactHistory.filter(h => normalizeDomain(h.domain) === norm && (!currentPackId || h.packId !== currentPackId));
+    if (matches.length > 0) {
+      const latest = matches[0];
+      return {
+        packId: latest.packId,
+        status: latest.status,
+        sentAt: latest.sentAt
+      };
+    }
+    return null;
+  };
+
+  const handleCreatePackSubmit = async (customName) => {
+    const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
+    if (selectedProspects.length === 0) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: customName || undefined,
+          prospects: selectedProspects
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchOutreachPacks();
+        await fetchContactHistory();
+        setSelectedShortlistIds(new Set());
+        setIsCreatingPackModalOpen(false);
+        setNewPackNameInput('');
+        if (data.pack) {
+          setActivePack(data.pack);
+          setOutreachSubView('pack-detail');
+          // Automatically trigger contact finding in background for prospects without email
+          handleFindContactsForPack(data.pack.packId, data.pack.prospects);
+        }
+      }
+    } catch (e) {
+      console.error("Error creating outreach pack:", e);
+    }
+  };
+
+  const handleUpdatePack = async (packId, updates) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActivePack(data.pack);
+        setOutreachPacks(prev => prev.map(p => p.packId === packId ? data.pack : p));
+        await fetchContactHistory();
+      }
+    } catch (e) {
+      console.error("Error updating pack:", e);
+    }
+  };
+
+  const handleDeletePack = async (packId) => {
+    if (!confirm(`Are you sure you want to delete Outreach Pack ${packId}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packId)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchOutreachPacks();
+        if (activePack?.packId === packId) {
+          setActivePack(null);
+          setOutreachSubView('packs');
+        }
+      }
+    } catch (e) {
+      console.error("Error deleting pack:", e);
+    }
+  };
+
+  const handleFindContactsForPack = async (packId, prospectsToSearch) => {
+    if (!packId || !prospectsToSearch || prospectsToSearch.length === 0) return;
+    setIsFindingContacts(true);
+
+    const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
+    if (!currentPack) {
+      setIsFindingContacts(false);
+      return;
+    }
+
+    let updatedProspects = [...currentPack.prospects];
+
+    for (const prospect of prospectsToSearch) {
+      try {
+        const targetUrl = prospect.url || (prospect.domain ? `https://${prospect.domain}` : '');
+        const res = await fetch(`${API_BASE}/api/outreach-packs/find-contacts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: targetUrl, domain: prospect.domain })
+        });
+        if (res.ok) {
+          const contactInfo = await res.json();
+          updatedProspects = updatedProspects.map(p => {
+            if (p.id === prospect.id || p.domain === prospect.domain) {
+              const newStatus = contactInfo.contactEmail ? (p.sendStatus === 'Shortlisted' ? 'Email Found' : p.sendStatus) : p.sendStatus;
+              return {
+                ...p,
+                contactEmail: contactInfo.contactEmail,
+                emailStatus: contactInfo.status,
+                allFoundEmails: contactInfo.allFoundEmails,
+                emailSource: contactInfo.emailSource,
+                sendStatus: newStatus
+              };
+            }
+            return p;
+          });
+          // Update live state incrementally
+          setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+        }
+      } catch (err) {
+        console.error("Error finding contact for", prospect.domain, err);
+      }
+    }
+
+    // Persist all updates to SQLite
+    await handleUpdatePack(packId, { prospects: updatedProspects });
+    setIsFindingContacts(false);
+  };
+
+  const handleGenerateEmailsForPack = async (packId, prospectsToGenerate) => {
+    if (!packId || !prospectsToGenerate || prospectsToGenerate.length === 0) return;
+
+    const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
+    if (!currentPack) return;
+
+    let updatedProspects = [...currentPack.prospects];
+
+    for (const prospect of prospectsToGenerate) {
+      try {
+        const res = await fetch(`${API_BASE}/api/outreach-packs/generate-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessName: prospect.businessName,
+            domain: prospect.domain,
+            searchKeyword: prospect.searchPhrase || prospect.searchKeyword,
+            location: prospect.location
+          })
+        });
+        if (res.ok) {
+          const emailData = await res.json();
+          updatedProspects = updatedProspects.map(p => {
+            if (p.id === prospect.id || p.domain === prospect.domain) {
+              return {
+                ...p,
+                emailSubject: emailData.subject,
+                emailBody: emailData.body,
+                sendStatus: p.sendStatus === 'Shortlisted' || p.sendStatus === 'Email Found' ? 'Draft Ready' : p.sendStatus
+              };
+            }
+            return p;
+          });
+          setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+        }
+      } catch (err) {
+        console.error("Error generating email draft for", prospect.domain, err);
+      }
+    }
+
+    await handleUpdatePack(packId, { prospects: updatedProspects });
+  };
+
   useEffect(() => {
     fetchMilestones();
     fetchSavedSearches();
     fetchOutreachList();
+    fetchOutreachPacks();
+    fetchContactHistory();
 
     const params = new URLSearchParams(window.location.search);
     const searchIdParam = params.get('searchId');
     const viewParam = params.get('view');
     const itemParam = params.get('item');
+    const packParam = params.get('pack');
 
     if (viewParam && !searchIdParam) {
       if (['saved', 'exclusions', 'settings', 'outreach'].includes(viewParam)) {
         setCurrentView(viewParam);
+        if (viewParam === 'outreach' && packParam) {
+          fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packParam)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(p => {
+              if (p) {
+                setActivePack(p);
+                setOutreachSubView('pack-detail');
+              }
+            }).catch(() => {});
+        }
       }
     }
 
@@ -2265,169 +2493,990 @@ function App() {
           </div>
         )}
         {currentView === 'outreach' && (
-          <div className="results-table-container">
-            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div>
-                <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
-                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-                  Persistent shortlisted prospects ready for outreach preparation.
-                </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
+            {/* Outreach Top Navigation Bar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: '#1e293b', padding: '1rem 1.5rem', borderRadius: '8px', border: '1px solid #334155' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    setOutreachSubView('shortlist');
+                    setActivePack(null);
+                  }}
+                  className="table-btn"
+                  style={{
+                    backgroundColor: outreachSubView === 'shortlist' ? '#2563eb' : '#0f172a',
+                    border: '1px solid #334155',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    padding: '0.6rem 1.25rem',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  Shortlisted Prospects ({outreachList.length})
+                </button>
+                <button
+                  onClick={() => {
+                    setOutreachSubView('packs');
+                    setActivePack(null);
+                  }}
+                  className="table-btn"
+                  style={{
+                    backgroundColor: outreachSubView === 'packs' ? '#2563eb' : '#0f172a',
+                    border: '1px solid #334155',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    padding: '0.6rem 1.25rem',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  Outreach Packs ({outreachPacks.length})
+                </button>
+                {activePack && outreachSubView === 'pack-detail' && (
+                  <button
+                    className="table-btn"
+                    style={{
+                      backgroundColor: '#2563eb',
+                      border: '1px solid #3b82f6',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      padding: '0.6rem 1.25rem',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Pack {activePack.packId} ({activePack.prospects?.length || 0})
+                  </button>
+                )}
               </div>
-              <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                {outreachList.length} shortlisted {outreachList.length === 1 ? 'prospect' : 'prospects'}
-              </span>
+
+              {outreachSubView === 'shortlist' && (
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setIsCreatingPackModalOpen(true)}
+                    disabled={selectedShortlistIds.size === 0}
+                    className="analyse-btn-green"
+                    style={{
+                      padding: '0.6rem 1.25rem',
+                      fontSize: '0.9rem',
+                      opacity: selectedShortlistIds.size === 0 ? 0.5 : 1,
+                      cursor: selectedShortlistIds.size === 0 ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    + Create Outreach Pack ({selectedShortlistIds.size} Selected)
+                  </button>
+                </div>
+              )}
             </div>
 
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>Business / Domain</th>
-                  <th>Search ID</th>
-                  <th>Search Phrase</th>
-                  <th>Location</th>
-                  <th>Rank</th>
-                  <th>Opportunity Score</th>
-                  <th>Commercial Strength</th>
-                  <th>GBP Match</th>
-                  <th>Date Shortlisted</th>
-                  <th className="action-cell">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isOutreachLoading && outreachList.length === 0 ? (
-                  <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                      Loading outreach shortlist...
-                    </td>
-                  </tr>
-                ) : outreachList.length === 0 ? (
-                  <tr>
-                    <td colSpan="10" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                      <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
-                      <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  outreachList.map((item, idx) => {
-                    const score = item.opportunityScore;
-                    const gbpStatus = item.gbpStatus || 'No Profile Matched';
-                    return (
-                      <tr key={item.id || idx}>
-                        <td>
-                          <div>
-                            {item.url ? (
-                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
-                                {item.domain || item.url}
-                              </a>
-                            ) : (
-                              <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
-                            )}
-                          </div>
-                          {item.businessName && item.businessName !== item.domain && (
-                            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                              {item.businessName}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          {item.searchId ? (
-                            <span style={{ 
-                              backgroundColor: 'rgba(96, 165, 250, 0.1)', 
-                              color: '#60a5fa', 
-                              padding: '0.15rem 0.5rem', 
-                              borderRadius: '4px',
-                              fontWeight: 'bold',
-                              fontSize: '0.85rem'
-                            }}>
-                              {item.searchId}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#64748b' }}>-</span>
-                          )}
-                        </td>
-                        <td>{item.searchPhrase || 'Not available'}</td>
-                        <td>{item.location || 'Anywhere'}</td>
-                        <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
-                          {item.rank ? `#${item.rank}` : '-'}
-                        </td>
-                        <td>
-                          {score !== null && score !== undefined ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                              <span style={{ 
-                                color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
-                                marginRight: '6px',
-                                fontSize: '1.1rem',
-                                lineHeight: '1'
-                              }}>●</span>
-                              {score >= 60 && (
-                                <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                              )}
-                              <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                {score}
-                              </span>
-                            </span>
-                          ) : (
-                            <span style={{ color: '#64748b' }}>-</span>
-                          )}
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.95rem' }}>
-                              {item.commercialStrengthStars || '★★★☆☆'}
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
-                              {item.commercialStrengthLabel || 'Good Lead'}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          <span style={{ 
-                            color: gbpStatus === 'Found' ? '#10b981' : (gbpStatus === 'Multiple Matches' ? '#f59e0b' : '#ef4444'),
-                            fontWeight: 'bold',
-                            fontSize: '0.85rem'
-                          }}>
-                            {gbpStatus}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-                          {formatLastAnalysed(item.shortlistedAt)}
-                        </td>
-                        <td className="action-cell">
-                          <button 
-                            onClick={() => {
-                              const analysisItem = item.analysisData || {
-                                domain: item.domain,
-                                url: item.url,
-                                searchId: item.searchId,
-                                searchType: item.searchType || 'Organic',
-                                searchKeyword: item.searchPhrase || 'Any',
-                                location: item.location || 'Anywhere',
-                                rank: item.rank || 0,
-                                leadOpportunityScore: { score: item.opportunityScore, band: item.opportunityBand },
-                                leadPriority: { stars: item.commercialStrengthStars, label: item.commercialStrengthLabel },
-                                gbp: { status: item.gbpStatus }
-                              };
-                              handleAnalyse(analysisItem);
-                            }}
-                            className="analyse-btn-green"
-                            style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
-                          >
-                            View Analysis
-                          </button>
-                          <button 
-                            onClick={() => handleRemoveFromOutreach(item.id || item.domain)}
-                            className="table-btn"
-                            style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
-                          >
-                            Remove
-                          </button>
+            {/* Sub-view 1: Shortlisted Prospects */}
+            {outreachSubView === 'shortlist' && (
+              <div className="results-table-container">
+                <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                      Select prospects and click "Create Outreach Pack" to begin email contact finding and draft preparation.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    {selectedShortlistIds.size > 0 && (
+                      <button
+                        onClick={() => setSelectedShortlistIds(new Set())}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
+                      >
+                        Deselect All
+                      </button>
+                    )}
+                    <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                      {outreachList.length} shortlisted {outreachList.length === 1 ? 'prospect' : 'prospects'}
+                    </span>
+                  </div>
+                </div>
+
+                <table className="results-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '40px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={outreachList.length > 0 && selectedShortlistIds.size === outreachList.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedShortlistIds(new Set(outreachList.map(item => item.id || item.domain)));
+                            } else {
+                              setSelectedShortlistIds(new Set());
+                            }
+                          }}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                      </th>
+                      <th>Business / Domain</th>
+                      <th>Search ID</th>
+                      <th>Search Phrase</th>
+                      <th>Location</th>
+                      <th>Rank</th>
+                      <th>Opportunity Score</th>
+                      <th>Commercial Strength</th>
+                      <th>GBP Match</th>
+                      <th>Date Shortlisted</th>
+                      <th className="action-cell">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isOutreachLoading && outreachList.length === 0 ? (
+                      <tr>
+                        <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                          Loading outreach shortlist...
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                    ) : outreachList.length === 0 ? (
+                      <tr>
+                        <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                          <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
+                          <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      outreachList.map((item, idx) => {
+                        const score = item.opportunityScore;
+                        const gbpStatus = item.gbpStatus || 'No Profile Matched';
+                        const itemKey = item.id || item.domain;
+                        const isSelected = selectedShortlistIds.has(itemKey);
+                        const warning = getContactHistoryWarning(item.domain);
+
+                        return (
+                          <tr key={item.id || idx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
+                            <td style={{ textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const next = new Set(selectedShortlistIds);
+                                  if (e.target.checked) next.add(itemKey);
+                                  else next.delete(itemKey);
+                                  setSelectedShortlistIds(next);
+                                }}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                            </td>
+                            <td>
+                              <div>
+                                {item.url ? (
+                                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
+                                    {item.domain || item.url}
+                                  </a>
+                                ) : (
+                                  <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
+                                )}
+                                {warning && (
+                                  <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }} title={`Already in Pack ${warning.packId}`}>
+                                    ⚠️ In {warning.packId}
+                                  </span>
+                                )}
+                              </div>
+                              {item.businessName && item.businessName !== item.domain && (
+                                <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                                  {item.businessName}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              {item.searchId ? (
+                                <span style={{ 
+                                  backgroundColor: 'rgba(96, 165, 250, 0.1)', 
+                                  color: '#60a5fa', 
+                                  padding: '0.15rem 0.5rem', 
+                                  borderRadius: '4px',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.85rem'
+                                }}>
+                                  {item.searchId}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#64748b' }}>-</span>
+                              )}
+                            </td>
+                            <td>{item.searchPhrase || 'Not available'}</td>
+                            <td>{item.location || 'Anywhere'}</td>
+                            <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
+                              {item.rank ? `#${item.rank}` : '-'}
+                            </td>
+                            <td>
+                              {score !== null && score !== undefined ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <span style={{ 
+                                    color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
+                                    marginRight: '6px',
+                                    fontSize: '1.1rem',
+                                    lineHeight: '1'
+                                  }}>●</span>
+                                  {score >= 60 && (
+                                    <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                  )}
+                                  <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                    {score}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span style={{ color: '#64748b' }}>-</span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                                  {item.commercialStrengthStars || '★★★☆☆'}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+                                  {item.commercialStrengthLabel || 'Good Lead'}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ 
+                                color: gbpStatus === 'Found' ? '#10b981' : (gbpStatus === 'Multiple Matches' ? '#f59e0b' : '#ef4444'),
+                                fontWeight: 'bold',
+                                fontSize: '0.85rem'
+                              }}>
+                                {gbpStatus}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                              {formatLastAnalysed(item.shortlistedAt)}
+                            </td>
+                            <td className="action-cell">
+                              <button 
+                                onClick={() => {
+                                  const analysisItem = item.analysisData || {
+                                    domain: item.domain,
+                                    url: item.url,
+                                    searchId: item.searchId,
+                                    searchType: item.searchType || 'Organic',
+                                    searchKeyword: item.searchPhrase || 'Any',
+                                    location: item.location || 'Anywhere',
+                                    rank: item.rank || 0,
+                                    leadOpportunityScore: { score: item.opportunityScore, band: item.opportunityBand },
+                                    leadPriority: { stars: item.commercialStrengthStars, label: item.commercialStrengthLabel },
+                                    gbp: { status: item.gbpStatus }
+                                  };
+                                  handleAnalyse(analysisItem);
+                                }}
+                                className="analyse-btn-green"
+                                style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              >
+                                View Analysis
+                              </button>
+                              <button 
+                                onClick={() => handleRemoveFromOutreach(item.id || item.domain)}
+                                className="table-btn"
+                                style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Sub-view 2: Outreach Packs / History Table */}
+            {outreachSubView === 'packs' && (
+              <div className="results-table-container">
+                <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Packs History</h2>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                      Permanent server-backed campaign batches. Click any Pack ID to view prospect emails, drafts and statuses.
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                    {outreachPacks.length} {outreachPacks.length === 1 ? 'pack' : 'packs'} created
+                  </span>
+                </div>
+
+                <table className="results-table">
+                  <thead>
+                    <tr>
+                      <th>Pack ID</th>
+                      <th>Pack Name</th>
+                      <th>Created Date</th>
+                      <th>Prospects</th>
+                      <th>Pack Status</th>
+                      <th>Sent Date / Time</th>
+                      <th className="action-cell">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isPacksLoading && outreachPacks.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                          Loading outreach packs...
+                        </td>
+                      </tr>
+                    ) : outreachPacks.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                          <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No Outreach Packs created yet.</p>
+                          <p style={{ fontSize: '0.9rem', margin: 0 }}>Select prospects from your Shortlist and click "Create Outreach Pack" to get started.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      outreachPacks.map((pack) => {
+                        const statusColors = {
+                          'Draft': { bg: 'rgba(100, 116, 139, 0.2)', text: '#94a3b8' },
+                          'Ready': { bg: 'rgba(59, 130, 246, 0.2)', text: '#60a5fa' },
+                          'Sent': { bg: 'rgba(16, 185, 129, 0.2)', text: '#10b981' },
+                          'Partially Sent': { bg: 'rgba(168, 85, 247, 0.2)', text: '#c084fc' },
+                          'Failed': { bg: 'rgba(239, 68, 68, 0.2)', text: '#ef4444' }
+                        };
+                        const sc = statusColors[pack.status] || statusColors['Draft'];
+
+                        return (
+                          <tr key={pack.packId || pack.id}>
+                            <td>
+                              <button
+                                onClick={() => {
+                                  setActivePack(pack);
+                                  setOutreachSubView('pack-detail');
+                                }}
+                                className="table-btn"
+                                style={{
+                                  backgroundColor: '#1e293b',
+                                  border: '1px solid #3b82f6',
+                                  color: '#38bdf8',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.95rem'
+                                }}
+                              >
+                                {pack.packId}
+                              </button>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: '600', color: '#f8fafc' }}>{pack.name}</span>
+                            </td>
+                            <td>{formatLastAnalysed(pack.createdAt)}</td>
+                            <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
+                              {pack.prospectsCount || pack.prospects?.length || 0} Prospects
+                            </td>
+                            <td>
+                              <span style={{
+                                backgroundColor: sc.bg,
+                                color: sc.text,
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                fontSize: '0.85rem'
+                              }}>
+                                {pack.status || 'Draft'}
+                              </span>
+                            </td>
+                            <td style={{ color: pack.sentAt ? '#10b981' : '#64748b', fontSize: '0.85rem' }}>
+                              {pack.sentAt ? formatLastAnalysed(pack.sentAt) : '-'}
+                            </td>
+                            <td className="action-cell">
+                              <button
+                                onClick={() => {
+                                  setActivePack(pack);
+                                  setOutreachSubView('pack-detail');
+                                }}
+                                className="analyse-btn-green"
+                                style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              >
+                                Open Pack
+                              </button>
+                              <button
+                                onClick={() => handleDeletePack(pack.packId)}
+                                className="table-btn"
+                                style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Sub-view 3: Inside Outreach Pack Detail */}
+            {outreachSubView === 'pack-detail' && activePack && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Pack Detail Header Card */}
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  padding: '1.5rem',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <button
+                        onClick={() => {
+                          setOutreachSubView('packs');
+                          setActivePack(null);
+                        }}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#f8fafc' }}
+                      >
+                        &larr; Back to Packs
+                      </button>
+                      <span style={{
+                        backgroundColor: '#2563eb',
+                        color: '#ffffff',
+                        padding: '0.25rem 0.75rem',
+                        borderRadius: '6px',
+                        fontWeight: 'bold',
+                        fontSize: '1.1rem'
+                      }}>
+                        {activePack.packId}
+                      </span>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>
+                        {activePack.name}
+                      </h2>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Pack Status:</label>
+                      <select
+                        value={activePack.status || 'Draft'}
+                        onChange={(e) => handleUpdatePack(activePack.packId, { status: e.target.value })}
+                        style={{
+                          backgroundColor: '#1e293b',
+                          color: '#ffffff',
+                          border: '1px solid #3b82f6',
+                          borderRadius: '6px',
+                          padding: '0.4rem 0.75rem',
+                          fontWeight: 'bold',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        <option value="Draft">Draft</option>
+                        <option value="Ready">Ready</option>
+                        <option value="Sent">Sent</option>
+                        <option value="Partially Sent">Partially Sent</option>
+                        <option value="Failed">Failed</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Pack Metadata & Batch Toolbar */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '1rem',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid #1e293b'
+                  }}>
+                    <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                      <div><span style={{ color: '#94a3b8' }}>Created:</span> {formatLastAnalysed(activePack.createdAt)}</div>
+                      <div><span style={{ color: '#94a3b8' }}>Prospects:</span> <strong>{activePack.prospects?.length || 0}</strong></div>
+                      <div><span style={{ color: '#94a3b8' }}>Sent Date:</span> {activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not sent yet'}</div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <button
+                        onClick={() => {
+                          const targets = selectedProspectIdsInPack.size > 0
+                            ? activePack.prospects.filter(p => selectedProspectIdsInPack.has(p.id || p.domain))
+                            : activePack.prospects;
+                          handleFindContactsForPack(activePack.packId, targets);
+                        }}
+                        disabled={isFindingContacts}
+                        className="table-btn"
+                        style={{ backgroundColor: '#0284c7', color: '#ffffff', fontWeight: 'bold' }}
+                      >
+                        {isFindingContacts ? 'Finding Emails...' : `🔍 Find Contact Emails (${selectedProspectIdsInPack.size > 0 ? selectedProspectIdsInPack.size : 'All'})`}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const targets = selectedProspectIdsInPack.size > 0
+                            ? activePack.prospects.filter(p => selectedProspectIdsInPack.has(p.id || p.domain))
+                            : activePack.prospects;
+                          handleGenerateEmailsForPack(activePack.packId, targets);
+                        }}
+                        className="analyse-btn-green"
+                        style={{ fontWeight: 'bold' }}
+                      >
+                        ✉️ Generate Outreach Emails ({selectedProspectIdsInPack.size > 0 ? selectedProspectIdsInPack.size : 'All'})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prospects Table in Pack */}
+                <div className="results-table-container">
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={activePack.prospects?.length > 0 && selectedProspectIdsInPack.size === activePack.prospects.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProspectIdsInPack(new Set(activePack.prospects.map(p => p.id || p.domain)));
+                              } else {
+                                setSelectedProspectIdsInPack(new Set());
+                              }
+                            }}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                        </th>
+                        <th>Business / Domain</th>
+                        <th>Search ID & Phrase</th>
+                        <th>Rank & Score</th>
+                        <th>Commercial Strength</th>
+                        <th>Contact Email & Source</th>
+                        <th>Outreach Draft</th>
+                        <th>Status</th>
+                        <th className="action-cell">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activePack.prospects?.map((prospect, pIdx) => {
+                        const isSelected = selectedProspectIdsInPack.has(prospect.id || prospect.domain);
+                        const warning = getContactHistoryWarning(prospect.domain, activePack.packId);
+
+                        return (
+                          <tr key={prospect.id || pIdx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
+                            <td style={{ textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  const next = new Set(selectedProspectIdsInPack);
+                                  if (e.target.checked) next.add(prospect.id || prospect.domain);
+                                  else next.delete(prospect.id || prospect.domain);
+                                  setSelectedProspectIdsInPack(next);
+                                }}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                            </td>
+                            <td>
+                              <div>
+                                {prospect.url ? (
+                                  <a href={prospect.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
+                                    {prospect.domain || prospect.url}
+                                  </a>
+                                ) : (
+                                  <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{prospect.domain}</span>
+                                )}
+                                {warning && (
+                                  <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }} title={`Already in Pack ${warning.packId}`}>
+                                    ⚠️ In {warning.packId}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                                {prospect.businessName || prospect.domain}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '0.8rem' }}>{prospect.searchId || 'N/A'}</span>
+                                <span style={{ fontSize: '0.85rem' }}>{prospect.searchPhrase || 'Not available'}</span>
+                                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{prospect.location || 'Anywhere'}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
+                                {prospect.opportunityScore !== null && prospect.opportunityScore !== undefined ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.9rem' }}>
+                                    <span style={{ color: prospect.opportunityScore >= 70 ? '#ef4444' : (prospect.opportunityScore >= 40 ? '#f59e0b' : '#10b981'), marginRight: '4px' }}>●</span>
+                                    {prospect.opportunityScore >= 60 && <span style={{ color: '#f59e0b', marginRight: '2px' }}>★</span>}
+                                    <strong style={{ color: '#ffffff' }}>{prospect.opportunityScore}</strong>
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#64748b', fontSize: '0.85rem' }}>-</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                  {prospect.commercialStrengthStars || '★★★☆☆'}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+                                  {prospect.commercialStrengthLabel || 'Good Lead'}
+                                </span>
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                {prospect.contactEmail ? (
+                                  <span style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>
+                                    {prospect.contactEmail}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                    No email found
+                                  </span>
+                                )}
+
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'bold',
+                                    borderRadius: '4px',
+                                    padding: '0.1rem 0.4rem',
+                                    backgroundColor: prospect.emailStatus === 'Found' ? 'rgba(16, 185, 129, 0.2)' : (prospect.emailStatus === 'Multiple Found' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
+                                    color: prospect.emailStatus === 'Found' ? '#10b981' : (prospect.emailStatus === 'Multiple Found' ? '#60a5fa' : '#ef4444')
+                                  }}>
+                                    {prospect.emailStatus || 'Not Found'}
+                                  </span>
+
+                                  {prospect.allFoundEmails?.length > 1 && (
+                                    <select
+                                      value={prospect.contactEmail || ''}
+                                      onChange={(e) => {
+                                        const updated = activePack.prospects.map(p => (p.id === prospect.id || p.domain === prospect.domain) ? { ...p, contactEmail: e.target.value } : p);
+                                        handleUpdatePack(activePack.packId, { prospects: updated });
+                                      }}
+                                      style={{ fontSize: '0.75rem', backgroundColor: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', borderRadius: '4px', padding: '0.1rem 0.3rem' }}
+                                      title="Switch preferred email address"
+                                    >
+                                      {prospect.allFoundEmails.map((em, idx) => (
+                                        <option key={idx} value={em}>{em}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+
+                                {prospect.emailSource && (
+                                  <a href={prospect.emailSource} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: '#94a3b8', textDecoration: 'underline' }}>
+                                    Source page
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                <div style={{ fontSize: '0.85rem', color: '#f8fafc', fontWeight: '600', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {prospect.emailSubject || 'Draft not generated'}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setEditingEmailProspect(prospect);
+                                    setEditedEmailSubject(prospect.emailSubject || '');
+                                    setEditedEmailBody(prospect.emailBody || '');
+                                  }}
+                                  className="table-btn"
+                                  style={{ backgroundColor: '#334155', color: '#ffffff', fontSize: '0.8rem', padding: '0.25rem 0.5rem', alignSelf: 'flex-start' }}
+                                >
+                                  ✏️ Edit Draft
+                                </button>
+                              </div>
+                            </td>
+                            <td>
+                              <select
+                                value={prospect.sendStatus || 'Shortlisted'}
+                                onChange={(e) => {
+                                  const updated = activePack.prospects.map(p => (p.id === prospect.id || p.domain === prospect.domain) ? { ...p, sendStatus: e.target.value } : p);
+                                  handleUpdatePack(activePack.packId, { prospects: updated });
+                                }}
+                                style={{
+                                  fontSize: '0.8rem',
+                                  backgroundColor: '#1e293b',
+                                  color: prospect.sendStatus === 'Ready to Send' ? '#10b981' : (prospect.sendStatus === 'Draft Ready' ? '#38bdf8' : '#cbd5e1'),
+                                  border: '1px solid #334155',
+                                  borderRadius: '4px',
+                                  padding: '0.25rem 0.5rem',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                <option value="Shortlisted">Shortlisted</option>
+                                <option value="Email Found">Email Found</option>
+                                <option value="Draft Ready">Draft Ready</option>
+                                <option value="Ready to Send">Ready to Send</option>
+                                <option value="Sent">Sent</option>
+                                <option value="Failed">Failed</option>
+                              </select>
+                            </td>
+                            <td className="action-cell">
+                              <button
+                                onClick={() => handleFindContactsForPack(activePack.packId, [prospect])}
+                                className="table-btn"
+                                style={{ backgroundColor: '#0284c7', padding: '0.35rem 0.6rem', fontSize: '0.8rem', marginRight: '6px' }}
+                                title="Re-scan website for emails"
+                              >
+                                Find Email
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const analysisItem = prospect.analysisData || {
+                                    domain: prospect.domain,
+                                    url: prospect.url,
+                                    searchId: prospect.searchId,
+                                    searchType: prospect.searchType || 'Organic',
+                                    searchKeyword: prospect.searchPhrase || 'Any',
+                                    location: prospect.location || 'Anywhere',
+                                    rank: prospect.rank || 0,
+                                    leadOpportunityScore: { score: prospect.opportunityScore, band: prospect.opportunityBand },
+                                    leadPriority: { stars: prospect.commercialStrengthStars, label: prospect.commercialStrengthLabel },
+                                    gbp: { status: prospect.gbpStatus }
+                                  };
+                                  handleAnalyse(analysisItem);
+                                }}
+                                className="analyse-btn-green"
+                                style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
+                              >
+                                View
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Create Outreach Pack */}
+            {isCreatingPackModalOpen && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  width: '100%',
+                  maxWidth: '520px',
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.5rem',
+                  boxShadow: '0 20px 40px rgba(0,0,0,0.8)'
+                }}>
+                  <div>
+                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Create New Outreach Pack</h3>
+                    <p style={{ margin: '0.5rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                      Grouping <strong>{selectedShortlistIds.size} selected prospects</strong> into a permanent campaign pack.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Pack Name / Description</label>
+                    <input
+                      type="text"
+                      value={newPackNameInput}
+                      onChange={(e) => setNewPackNameInput(e.target.value)}
+                      placeholder="e.g. Window Shutters Bristol - Batch 1"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => setIsCreatingPackModalOpen(false)}
+                      className="table-btn"
+                      style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => handleCreatePackSubmit(newPackNameInput.trim())}
+                      className="analyse-btn-green"
+                      style={{ padding: '0.6rem 1.5rem' }}
+                    >
+                      Create Pack & Find Contacts
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Edit Outreach Email Draft */}
+            {editingEmailProspect && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  width: '100%',
+                  maxWidth: '750px',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                        Edit Outreach Email — {editingEmailProspect.businessName || editingEmailProspect.domain}
+                      </h3>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#38bdf8', fontSize: '0.85rem' }}>
+                        Partnership Opportunity Proposition
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setEditingEmailProspect(null)}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Recipient Email</label>
+                    <input
+                      type="text"
+                      value={editingEmailProspect.contactEmail || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditingEmailProspect(prev => ({ ...prev, contactEmail: val }));
+                      }}
+                      placeholder="e.g. info@company.co.uk"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Subject Line</label>
+                    <input
+                      type="text"
+                      value={editedEmailSubject}
+                      onChange={(e) => setEditedEmailSubject(e.target.value)}
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Email Body</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const regenerated = generatePartnershipEmail({
+                            businessName: editingEmailProspect.businessName,
+                            domain: editingEmailProspect.domain,
+                            searchKeyword: editingEmailProspect.searchPhrase || editingEmailProspect.searchKeyword,
+                            location: editingEmailProspect.location
+                          });
+                          setEditedEmailSubject(regenerated.subject);
+                          setEditedEmailBody(regenerated.body);
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        🔄 Reset to Partnership Template
+                      </button>
+                    </div>
+                    <textarea
+                      value={editedEmailBody}
+                      onChange={(e) => setEditedEmailBody(e.target.value)}
+                      rows={14}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        color: '#f8fafc',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        padding: '1rem',
+                        fontSize: '0.9rem',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => setEditingEmailProspect(null)}
+                      className="table-btn"
+                      style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        const updated = activePack.prospects.map(p => {
+                          if (p.id === editingEmailProspect.id || p.domain === editingEmailProspect.domain) {
+                            return {
+                              ...p,
+                              contactEmail: editingEmailProspect.contactEmail,
+                              emailSubject: editedEmailSubject,
+                              emailBody: editedEmailBody,
+                              sendStatus: p.sendStatus === 'Shortlisted' ? 'Draft Ready' : p.sendStatus
+                            };
+                          }
+                          return p;
+                        });
+                        handleUpdatePack(activePack.packId, { prospects: updated });
+                        setEditingEmailProspect(null);
+                      }}
+                      className="table-btn"
+                      style={{ backgroundColor: '#2563eb', color: '#ffffff' }}
+                    >
+                      Save Draft
+                    </button>
+                    <button
+                      onClick={() => {
+                        const updated = activePack.prospects.map(p => {
+                          if (p.id === editingEmailProspect.id || p.domain === editingEmailProspect.domain) {
+                            return {
+                              ...p,
+                              contactEmail: editingEmailProspect.contactEmail,
+                              emailSubject: editedEmailSubject,
+                              emailBody: editedEmailBody,
+                              sendStatus: 'Ready to Send'
+                            };
+                          }
+                          return p;
+                        });
+                        handleUpdatePack(activePack.packId, { prospects: updated });
+                        setEditingEmailProspect(null);
+                      }}
+                      className="analyse-btn-green"
+                    >
+                      Save & Mark Ready to Send
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {currentView === 'settings' && (

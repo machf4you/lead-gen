@@ -56,8 +56,30 @@ export async function getDb() {
       analysisData TEXT,
       shortlistedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS outreach_packs (
+      id TEXT PRIMARY KEY,
+      packId TEXT NOT NULL UNIQUE,
+      name TEXT,
+      createdAt TEXT NOT NULL,
+      sentAt TEXT,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      prospectsCount INTEGER NOT NULL DEFAULT 0,
+      prospects TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS outreach_contact_history (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL,
+      email TEXT,
+      packId TEXT NOT NULL,
+      status TEXT NOT NULL,
+      sentAt TEXT,
+      createdAt TEXT NOT NULL
+    );
   `);
   
   return db;
 }
+
 
