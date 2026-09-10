@@ -150,6 +150,40 @@ Kind regards,
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
 
+const normalizeDomain = (urlOrDomain) => {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0];
+  }
+  return str.replace(/^www\./i, '').trim();
+};
+
+const isDomainExcluded = (urlOrDomain, excludedList) => {
+  if (!urlOrDomain || !excludedList || !Array.isArray(excludedList) || excludedList.length === 0) return false;
+  const target = normalizeDomain(urlOrDomain);
+  if (!target) return false;
+
+  return excludedList.some(exc => {
+    const excNorm = normalizeDomain(exc);
+    if (!excNorm) return false;
+    if (target === excNorm) return true;
+    if (target.endsWith('.' + excNorm)) return true;
+    if (excNorm.endsWith('.' + target)) return true;
+    return false;
+  });
+};
+
+const getDomain = (url) => {
+  return normalizeDomain(url);
+};
+
 function App() {
   const [searchResults, setSearchResults] = useState([])
   const [businessType, setBusinessType] = useState('')
@@ -360,6 +394,15 @@ function App() {
     if (searchIdParam) {
       const loadFromUrl = async () => {
         try {
+          let currentExclusions = [];
+          try {
+            const excRes = await fetch(`${API_BASE}/api/exclusions`);
+            if (excRes.ok) {
+              currentExclusions = await excRes.json();
+              setExcludedDomains(currentExclusions);
+            }
+          } catch (err) {}
+
           const res = await fetch(`${API_BASE}/api/saved-searches/${encodeURIComponent(searchIdParam)}`);
           if (res.ok) {
             const saved = await res.json();
@@ -368,20 +411,8 @@ function App() {
             setSearchMode(saved.searchMode || (saved.searchType === 'Organic' ? 'organic' : 'local'));
             setActiveSearchId(saved.searchId || null);
 
-            let initialExclusions = [];
-            try {
-              const excRes = await fetch(`${API_BASE}/api/exclusions`);
-              if (excRes.ok) {
-                initialExclusions = await excRes.json();
-                setExcludedDomains(initialExclusions);
-              }
-            } catch (err) {}
-
             const filtered = (saved.data || [])
-              .filter(item => {
-                const itemDomain = item.domain || getDomain(item.website || item.url);
-                return !initialExclusions.includes(itemDomain);
-              })
+              .filter(item => !isDomainExcluded(item.domain || item.website || item.url, currentExclusions))
               .map((item, idx) => {
                 if (item.rank === undefined || item.rank === null) {
                   return { ...item, rank: idx + 1 };
@@ -389,13 +420,41 @@ function App() {
                 return item;
               });
 
-            setSearchResults(filtered);
+            const enriched = filtered.map(item => {
+              if (item.analysis) return item;
+              
+              const isOrganic = !item.name;
+              const url = isOrganic ? item.url : (item.website || '');
+              const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
+              
+              let existingAnalysis = null;
+              const recentMatch = recentAnalyses.find(a => 
+                (url && a.url === url) || 
+                (domain && a.domain === domain)
+              );
+              if (recentMatch) {
+                existingAnalysis = recentMatch.analysis;
+              }
+              
+              if (existingAnalysis) {
+                return { 
+                  ...item, 
+                  analysis: {
+                    ...existingAnalysis,
+                    rank: item.rank
+                  } 
+                };
+              }
+              return item;
+            });
+
+            setSearchResults(enriched);
             setCurrentPage(1);
             setSortColumn(null);
             setSortDirection('asc');
 
             if (viewParam === 'analyse' && itemParam) {
-              const matchedItem = (saved.data || []).find(item => 
+              const matchedItem = enriched.find(item => 
                 (item.url && item.url === itemParam) || 
                 (item.domain && item.domain === itemParam) || 
                 (item.website && item.website === itemParam) ||
@@ -515,15 +574,6 @@ function App() {
   
   const [savedSearches, setSavedSearches] = useState([]);
 
-  const getDomain = (url) => {
-    if (!url) return '';
-    try {
-      return new URL(url).hostname.replace(/^www\./, '');
-    } catch (e) {
-      return url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
-    }
-  };
-
   const handleSearch = async () => {
     setIsSearching(true);
     setSearchError(null);
@@ -538,11 +588,17 @@ function App() {
       const data = await response.json();
       console.log(data);
       if (response.ok) {
-        // Filter out excluded domains (using server-backed excludedDomains state)
-        const filteredData = data.filter(item => {
-          const itemDomain = item.domain || getDomain(item.website || item.url);
-          return !excludedDomains.includes(itemDomain);
-        });
+        let currentExclusions = excludedDomains;
+        try {
+          const excRes = await fetch(`${API_BASE}/api/exclusions`);
+          if (excRes.ok) {
+            currentExclusions = await excRes.json();
+            setExcludedDomains(currentExclusions);
+          }
+        } catch (err) {}
+
+        // Filter out excluded domains (using server-backed exclusions)
+        const filteredData = data.filter(item => !isDomainExcluded(item.domain || item.website || item.url, currentExclusions));
 
         const enrichedData = filteredData.map((item, idx) => {
           const isOrganic = !item.name;
@@ -697,18 +753,24 @@ function App() {
     } catch (e) {}
   };
 
-  const handleLoadSavedSearch = (saved) => {
+  const handleLoadSavedSearch = async (saved) => {
     setBusinessType(saved.businessType === 'Any' ? '' : saved.businessType);
     setLocation(saved.location === 'Anywhere' ? '' : saved.location);
     setSearchMode(saved.searchMode || 'local');
     setActiveSearchId(saved.searchId || null);
     
-    // Filter stored results against current exclusions dynamically (using server-backed excludedDomains state)
-    const filtered = saved.data
-      .filter(item => {
-        const itemDomain = item.domain || getDomain(item.website || item.url);
-        return !excludedDomains.includes(itemDomain);
-      })
+    let currentExclusions = excludedDomains;
+    try {
+      const excRes = await fetch(`${API_BASE}/api/exclusions`);
+      if (excRes.ok) {
+        currentExclusions = await excRes.json();
+        setExcludedDomains(currentExclusions);
+      }
+    } catch (err) {}
+
+    // Filter stored results against current exclusions dynamically (using server-backed exclusions)
+    const filtered = (saved.data || [])
+      .filter(item => !isDomainExcluded(item.domain || item.website || item.url, currentExclusions))
       .map((item, idx) => {
         if (item.rank === undefined || item.rank === null) {
           return { ...item, rank: idx + 1 };
@@ -1396,17 +1458,11 @@ function App() {
 
   const handleExcludeDomain = async (urlOrDomain) => {
     if (!urlOrDomain) return;
-    let domain = urlOrDomain;
-    if (domain.includes('://')) {
-      domain = getDomain(domain);
-    }
+    const domain = normalizeDomain(urlOrDomain);
     if (!domain) return;
     
     // Immediately remove from currently displayed results
-    setSearchResults(prev => prev.filter(item => {
-      const itemDomain = item.domain || getDomain(item.website || item.url);
-      return itemDomain !== domain;
-    }));
+    setSearchResults(prev => prev.filter(item => !isDomainExcluded(item.domain || item.website || item.url, [domain])));
 
     try {
       const response = await fetch(`${API_BASE}/api/exclusions`, {
@@ -1417,6 +1473,7 @@ function App() {
       if (response.ok) {
         const updatedList = await response.json();
         setExcludedDomains(updatedList);
+        setSearchResults(prev => prev.filter(item => !isDomainExcluded(item.domain || item.website || item.url, updatedList)));
       }
     } catch (e) {
       console.error('Error adding server exclusion:', e);

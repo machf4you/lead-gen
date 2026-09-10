@@ -163,16 +163,21 @@ app.post('/api/search', async (req, res) => {
       const organicResults = [];
       const seenUrls = new Set();
 
+      const db = await getDb();
+      const excRows = await db.all('SELECT domain FROM excluded_domains');
+      const excludedList = excRows.map(r => r.domain);
+
       for (const item of pageOrganic) {
         if (organicResults.length >= 50) break;
 
         const url = item.url || "";
-        if (url && !seenUrls.has(url)) {
+        const itemDomain = item.domain || getDomain(url);
+        if (url && !seenUrls.has(url) && !isDomainExcluded(itemDomain || url, excludedList)) {
           seenUrls.add(url);
           organicResults.push({
-            rank: item.rank_group || (organicResults.length + 1),
+            rank: organicResults.length + 1,
             title: item.title || "",
-            domain: item.domain || "",
+            domain: itemDomain,
             url: url,
             description: item.description || ""
           });
@@ -213,15 +218,21 @@ app.post('/api/search', async (req, res) => {
         });
       }
 
+      const db = await getDb();
+      const excRows = await db.all('SELECT domain FROM excluded_domains');
+      const excludedList = excRows.map(r => r.domain);
+
       const items = task?.result?.[0]?.items || [];
-      const businesses = items.map((item, index) => ({
-        name: item.title || "",
-        website: item.url || "",
-        phone: item.phone || "",
-        address: item.address || "",
-        rating: item.rating?.value || null,
-        rank: index + 1
-      }));
+      const businesses = items
+        .filter(item => !isDomainExcluded(item.url || item.title, excludedList))
+        .map((item, index) => ({
+          name: item.title || "",
+          website: item.url || "",
+          phone: item.phone || "",
+          address: item.address || "",
+          rating: item.rating?.value || null,
+          rank: index + 1
+        }));
 
       return res.json(businesses);
     }
@@ -232,14 +243,38 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
-function getDomain(urlStr) {
-  if (!urlStr) return '';
-  try {
-    const urlObj = new URL(urlStr);
-    return urlObj.hostname.replace(/^www\./, '');
-  } catch (e) {
-    return urlStr.replace(/^https?:\/\/(www\.)?/, '').split('/')[0].split('?')[0];
+function normalizeDomain(urlOrDomain) {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0];
   }
+  return str.replace(/^www\./i, '').trim();
+}
+
+function isDomainExcluded(urlOrDomain, excludedList) {
+  if (!urlOrDomain || !excludedList || !Array.isArray(excludedList) || excludedList.length === 0) return false;
+  const target = normalizeDomain(urlOrDomain);
+  if (!target) return false;
+
+  return excludedList.some(exc => {
+    const excNorm = normalizeDomain(exc);
+    if (!excNorm) return false;
+    if (target === excNorm) return true;
+    if (target.endsWith('.' + excNorm)) return true;
+    if (excNorm.endsWith('.' + target)) return true;
+    return false;
+  });
+}
+
+function getDomain(urlStr) {
+  return normalizeDomain(urlStr);
 }
 
 function getExactHost(urlStr) {
@@ -1024,10 +1059,18 @@ app.get('/api/saved-searches', async (req, res) => {
   try {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM saved_searches ORDER BY id DESC');
-    const searches = rows.map(row => ({
-      ...row,
-      data: JSON.parse(row.data)
-    }));
+    const excRows = await db.all('SELECT domain FROM excluded_domains');
+    const excludedList = excRows.map(r => r.domain);
+
+    const searches = rows.map(row => {
+      const parsedData = JSON.parse(row.data);
+      const filteredData = parsedData.filter(item => !isDomainExcluded(item.domain || item.url || item.website, excludedList));
+      return {
+        ...row,
+        count: filteredData.length,
+        data: filteredData
+      };
+    });
     res.json(searches);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1043,9 +1086,15 @@ app.get('/api/saved-searches/:searchId', async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: 'Search not found' });
     }
+    const excRows = await db.all('SELECT domain FROM excluded_domains');
+    const excludedList = excRows.map(r => r.domain);
+    const parsedData = JSON.parse(row.data);
+    const filteredData = parsedData.filter(item => !isDomainExcluded(item.domain || item.url || item.website, excludedList));
+
     res.json({
       ...row,
-      data: JSON.parse(row.data)
+      count: filteredData.length,
+      data: filteredData
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1128,22 +1177,6 @@ app.delete('/api/saved-searches/:id', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-// Normalize domain string
-function normalizeDomain(urlOrDomain) {
-  if (!urlOrDomain) return '';
-  let str = String(urlOrDomain).trim();
-  if (str.includes('://')) {
-    try {
-      str = new URL(str).hostname;
-    } catch (e) {
-      str = str.replace(/^https?:\/\//i, '').split('/')[0];
-    }
-  } else {
-    str = str.split('/')[0];
-  }
-  return str.replace(/^www\./i, '').toLowerCase().trim();
-}
 
 // GET excluded domains
 app.get('/api/exclusions', async (req, res) => {
