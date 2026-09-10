@@ -1684,6 +1684,16 @@ function deriveGreeting(email, prospect) {
   return 'Hi there,';
 }
 
+function stripLeadingGreeting(body) {
+  if (!body) return '';
+  let cleaned = body;
+  const greetingPattern = /^\s*(?:(?:Hi|Hello|Hey|Dear)\b[^\n]*|\{\{\s*(?:greeting|firstName|businessName)\s*\}\}[^\n]*)(?:\r?\n)+/i;
+  while (greetingPattern.test(cleaned)) {
+    cleaned = cleaned.replace(greetingPattern, '');
+  }
+  return cleaned.trimStart();
+}
+
 // Helper to render template variables for a specific prospect and recipient email
 function renderTemplate(templateStr, prospect, recipientEmail = null) {
   if (!templateStr) return '';
@@ -1707,6 +1717,15 @@ function renderTemplate(templateStr, prospect, recipientEmail = null) {
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
+}
+
+// Helper to render the complete email body with automatic separate greeting prepended
+function renderFullEmailBody(templateBody, prospect, recipientEmail = null) {
+  const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
+  const greeting = deriveGreeting(email, prospect);
+  const cleanBody = stripLeadingGreeting(templateBody || '');
+  const renderedBody = renderTemplate(cleanBody, prospect, email);
+  return `${greeting}\n\n${renderedBody}`.trim();
 }
 
 // Helper to check outbound email provider configuration
@@ -1737,9 +1756,7 @@ function generatePartnershipTemplate({ searchKeyword, location }) {
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
   
-  const body = `{{greeting}}
-
-I hope you're having a productive week.
+  const body = `I hope you're having a productive week.
 
 I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
 
@@ -1902,7 +1919,7 @@ app.post('/api/outreach-packs', async (req, res) => {
     const defaultTemplate = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
 
     const finalTemplateSubject = templateSubject || defaultTemplate.subject;
-    const finalTemplateBody = templateBody || defaultTemplate.body;
+    const finalTemplateBody = stripLeadingGreeting(templateBody || defaultTemplate.body);
 
     await db.run(
       `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects)
@@ -1970,7 +1987,7 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
 
     const updatedName = name !== undefined ? name : existing.name;
     const updatedTemplateSubject = templateSubject !== undefined ? templateSubject : (existing.templateSubject || null);
-    const updatedTemplateBody = templateBody !== undefined ? templateBody : (existing.templateBody || null);
+    const updatedTemplateBody = templateBody !== undefined ? stripLeadingGreeting(templateBody) : (existing.templateBody || null);
     const updatedStatus = status !== undefined ? status : existing.status;
     const updatedSentAt = sentAt !== undefined ? sentAt : existing.sentAt;
     const updatedProspects = prospects !== undefined ? (typeof prospects === 'string' ? prospects : JSON.stringify(prospects)) : existing.prospects;
@@ -2113,7 +2130,7 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       for (const email of emails) {
         try {
           const renderedSubject = renderTemplate(templateSubject, p, email);
-          const renderedBody = renderTemplate(templateBody, p, email);
+          const renderedBody = renderFullEmailBody(templateBody, p, email);
 
           const mailOptions = {
             from: config.senderMailbox,

@@ -206,6 +206,16 @@ const deriveGreeting = (email, prospect) => {
   return 'Hi there,';
 };
 
+const stripLeadingGreeting = (body) => {
+  if (!body) return '';
+  let cleaned = body;
+  const greetingPattern = /^\s*(?:(?:Hi|Hello|Hey|Dear)\b[^\n]*|\{\{\s*(?:greeting|firstName|businessName)\s*\}\}[^\n]*)(?:\r?\n)+/i;
+  while (greetingPattern.test(cleaned)) {
+    cleaned = cleaned.replace(greetingPattern, '');
+  }
+  return cleaned.trimStart();
+};
+
 // Helper to render template variables for a specific prospect
 const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
   if (!templateStr) return '';
@@ -231,6 +241,15 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
     .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
 };
 
+// Helper to render the complete email body with automatic separate greeting prepended
+const renderFullEmailBody = (templateBody, prospect, recipientEmail = null) => {
+  const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
+  const greeting = deriveGreeting(email, prospect);
+  const cleanBody = stripLeadingGreeting(templateBody || '');
+  const renderedBody = renderTemplate(cleanBody, prospect, email);
+  return `${greeting}\n\n${renderedBody}`.trim();
+};
+
 // Helper to generate a partnership outreach email template for a pack
 const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
   const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
@@ -238,9 +257,7 @@ const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
   
-  const body = `{{greeting}}
-
-I hope you're having a productive week.
+  const body = `I hope you're having a productive week.
 
 I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
 
@@ -329,7 +346,7 @@ function App() {
             domain: p.domain,
             email: em,
             subject: renderTemplate(activePack.templateSubject, p, em),
-            body: renderTemplate(activePack.templateBody, p, em),
+            body: renderFullEmailBody(activePack.templateBody, p, em),
             greeting: deriveGreeting(em, p)
           });
         });
@@ -339,7 +356,7 @@ function App() {
           domain: p.domain,
           email: null,
           subject: renderTemplate(activePack.templateSubject, p, null),
-          body: renderTemplate(activePack.templateBody, p, null),
+          body: renderFullEmailBody(activePack.templateBody, p, null),
           greeting: deriveGreeting(null, p)
         });
       }
@@ -3189,7 +3206,7 @@ function App() {
                         const firstLoc = activePack.prospects?.[0]?.location || '';
                         const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
                         setEditingTemplateSubject(activePack.templateSubject || defaultTpl.subject);
-                        setEditingTemplateBody(activePack.templateBody || defaultTpl.body);
+                        setEditingTemplateBody(stripLeadingGreeting(activePack.templateBody || defaultTpl.body));
                         setIsTemplateModalOpen(true);
                       }}
                       className="table-btn"
@@ -3518,6 +3535,22 @@ function App() {
                     </button>
                   </div>
 
+                  {/* Non-editable greeting note */}
+                  <div style={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '6px',
+                    padding: '0.65rem 1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    color: '#cbd5e1',
+                    fontSize: '0.85rem'
+                  }}>
+                    <span style={{ color: '#38bdf8', fontSize: '1.1rem' }}>ℹ️</span>
+                    <span><strong>Greeting is added automatically for each recipient.</strong> (e.g. <em>Hi Mark,</em> or <em>Hi there,</em>). Email body begins directly after the greeting.</span>
+                  </div>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Subject Line</label>
                     <input
@@ -3539,7 +3572,7 @@ function App() {
                           const firstLoc = activePack.prospects?.[0]?.location || '';
                           const regenerated = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
                           setEditingTemplateSubject(regenerated.subject);
-                          setEditingTemplateBody(regenerated.body);
+                          setEditingTemplateBody(stripLeadingGreeting(regenerated.body));
                         }}
                         style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
                       >
@@ -3576,10 +3609,12 @@ function App() {
                     </button>
                     <button
                       onClick={() => {
+                        const cleanedBody = stripLeadingGreeting(editingTemplateBody);
                         handleUpdatePack(activePack.packId, {
-                          templateSubject: editingTemplateSubject,
-                          templateBody: editingTemplateBody
+                          templateSubject: editingTemplateSubject.trim(),
+                          templateBody: cleanedBody
                         });
+                        setEditingTemplateBody(cleanedBody);
                         setIsTemplateModalOpen(false);
                       }}
                       className="analyse-btn-green"

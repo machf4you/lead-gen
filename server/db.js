@@ -89,8 +89,40 @@ export async function getDb() {
   } catch (e) {}
 
   await cleanNonDomainEmails(db);
+  await cleanPackTemplateGreetings(db);
   
   return db;
+}
+
+// Strip leading manual greetings or variables from template body so greeting is separate & automatic
+export function stripLeadingGreeting(body) {
+  if (!body) return '';
+  let cleaned = body;
+  const greetingPattern = /^\s*(?:(?:Hi|Hello|Hey|Dear)\b[^\n]*|\{\{\s*(?:greeting|firstName|businessName)\s*\}\}[^\n]*)(?:\r?\n)+/i;
+  while (greetingPattern.test(cleaned)) {
+    cleaned = cleaned.replace(greetingPattern, '');
+  }
+  return cleaned.trimStart();
+}
+
+// Clean stored outreach packs to ensure template body does not retain manual greetings (like Hi Jon)
+export async function cleanPackTemplateGreetings(database) {
+  try {
+    const packs = await database.all('SELECT id, packId, templateBody FROM outreach_packs');
+    for (const pack of packs) {
+      if (pack.templateBody) {
+        const cleanedBody = stripLeadingGreeting(pack.templateBody);
+        if (cleanedBody !== pack.templateBody) {
+          await database.run(
+            'UPDATE outreach_packs SET templateBody = ? WHERE id = ? OR packId = ?',
+            [cleanedBody, pack.id, pack.packId]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error cleaning template greetings:', err);
+  }
 }
 
 // Clean existing packs and history to filter out non-matching domain emails
