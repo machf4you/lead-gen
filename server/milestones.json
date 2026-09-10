@@ -37,7 +37,30 @@
     "bugfixes": [
       "Fixed ReferenceError for fallbackOpportunity inside catch block when scraping fails."
     ],
-    "notes": "Version 1.1 focuses on search dashboard usability, sorting, and bulk auditing productivity gains.",
-    "rollback": "git checkout v1.1-search-results-dashboard"
+  },
+  {
+    "version": "v1.3",
+    "date": "2026-09-10T15:40:00Z",
+    "status": "Released",
+    "gitTag": "V1.3-STABLE-OUTREACH-PACKS-AND-EMAIL-DISCOVERY-CONFIRMED",
+    "commitHash": "9a3c57e2937a4126554a738fa155d574757c9ed4",
+    "summary": "Outreach Packs lifecycle, automated contact email discovery with SPA/domain stem handling, manual email editing fallback, and email preview workflow",
+    "features": [
+      "Server-backed independent Outreach Packs with fixed membership and sequential numbering (OP0001, OP0002...).",
+      "Automated contact email discovery scanning homepage, footers, and contact sub-pages with Puppeteer SPA fallback.",
+      "Support for legitimate brand stem domain email variations while filtering out third-party/agency addresses.",
+      "Inline manual email edit control (pencil icon) in pack detail with immediate SQLite persistence and re-crawl protection.",
+      "Separated personalised greeting derivation (e.g. Hi Mark / Hi there) from shared editable pack email template.",
+      "Exact-match email preview modal stepping through all selected recipients prior to sending.",
+      "Outreach Shortlist UI cleanup with Domain column simplification and pack assignment status badges (In OP0001 / Ready for Pack)."
+    ],
+    "bugfixes": [
+      "Fixed SPA client-rendered sites (e.g. React root shells) missing footer contact details by triggering Puppeteer rendering.",
+      "Fixed domain variation matching for companies whose email domain differs from their website stem (e.g. astonlilyshutters vs astonlily).",
+      "Fixed template editor opening with blank fields by synchronizing subject and body from server-backed pack template.",
+      "Prevented manual greetings entered in the template editor from polluting all recipient greetings."
+    ],
+    "notes": "Version 1.3 stabilizes the complete Outreach Pack preparation workflow, email crawler, manual editing fallback, and preview system.",
+    "rollback": "git checkout V1.3-STABLE-OUTREACH-PACKS-AND-EMAIL-DISCOVERY-CONFIRMED"
   }
 ]
