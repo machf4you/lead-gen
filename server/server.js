@@ -114,68 +114,50 @@ app.post('/api/search', async (req, res) => {
     
     if (searchMode === 'organic') {
       const searchPhrase = `${businessType} ${location}`;
-      let organicResults = [];
+      
+      const response = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([
+          {
+            keyword: searchPhrase,
+            language_name: "English",
+            location_name: "United Kingdom",
+            depth: 50
+          }
+        ])
+      });
+
+      const data = await response.json();
+      const task = data?.tasks?.[0];
+
+      if (task?.status_code !== 20000) {
+        return res.status(500).json({
+          error: `DataForSEO API task failed: ${task?.status_message}`
+        });
+      }
+
+      const items = task?.result?.[0]?.items || [];
+      const pageOrganic = items.filter(item => item.type === 'organic');
+      const organicResults = [];
       const seenUrls = new Set();
-      const maxPages = 5;
-      for (let pageNum = 0; pageNum < maxPages; pageNum++) {
+
+      for (const item of pageOrganic) {
         if (organicResults.length >= 50) break;
 
-        const response = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify([
-            {
-              keyword: searchPhrase,
-              language_name: "English",
-              location_name: "United Kingdom",
-              limit: 20,
-              offset: pageNum * 10
-            }
-          ])
-        });
-
-        const data = await response.json();
-        const task = data?.tasks?.[0];
-
-        if (task?.status_code !== 20000) {
-          if (pageNum === 0) {
-            return res.status(500).json({
-              error: `DataForSEO API task failed: ${task?.status_message}`
-            });
-          }
-          break;
-        }
-
-        const items = task?.result?.[0]?.items || [];
-        const pageOrganic = items.filter(item => item.type === 'organic');
-
-        if (pageOrganic.length === 0) {
-          break;
-        }
-
-        let newItemsAdded = 0;
-        for (const item of pageOrganic) {
-          if (organicResults.length >= 50) break;
-
-          const url = item.url || "";
-          if (url && !seenUrls.has(url)) {
-            seenUrls.add(url);
-            organicResults.push({
-              rank: organicResults.length + 1,
-              title: item.title || "",
-              domain: item.domain || "",
-              url: url,
-              description: item.description || ""
-            });
-            newItemsAdded++;
-          }
-        }
-
-        if (newItemsAdded === 0) {
-          break;
+        const url = item.url || "";
+        if (url && !seenUrls.has(url)) {
+          seenUrls.add(url);
+          organicResults.push({
+            rank: item.rank_group || (organicResults.length + 1),
+            title: item.title || "",
+            domain: item.domain || "",
+            url: url,
+            description: item.description || ""
+          });
         }
       }
 

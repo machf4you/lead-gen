@@ -1407,11 +1407,7 @@ function App() {
                 <div className="results-header-row">
                   <div className="results-count-text">
                     {searchMode === 'organic' ? (
-                      searchResults.length < 50 ? (
-                        `Search exhausted – ${searchResults.length} organic results found.`
-                      ) : (
-                        `Results: ${searchResults.length} organic results found.`
-                      )
+                      `${searchResults.length} organic results found.`
                     ) : (
                       `Results: ${searchResults.length} businesses found`
                     )}
