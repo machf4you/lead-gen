@@ -148,15 +148,81 @@ Kind regards,
   return email;
 };
 
+const normalizeDomain = (urlOrDomain) => {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0];
+  }
+  return str.replace(/^www\./i, '').trim();
+};
+
+const GENERIC_LOCAL_PARTS = new Set([
+  'hello', 'info', 'sales', 'contact', 'enquiries', 'enquiry', 'office',
+  'admin', 'support', 'team', 'bookings', 'booking', 'help', 'marketing',
+  'press', 'media', 'mail', 'service', 'services', 'billing', 'accounts',
+  'account', 'general', 'customercare', 'customerservice', 'webmaster',
+  'postmaster', 'hostmaster', 'feedback', 'jobs', 'careers', 'reception',
+  'orders', 'queries', 'query'
+]);
+
+const isDomainMatch = (email, prospectDomain) => {
+  if (!email || !prospectDomain) return false;
+  const atIndex = email.lastIndexOf('@');
+  if (atIndex === -1) return false;
+  const emailDomain = email.substring(atIndex + 1).toLowerCase().trim();
+  const cleanProspectDomain = normalizeDomain(prospectDomain).toLowerCase().trim();
+  return emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain);
+};
+
+const deriveFirstName = (email) => {
+  if (!email) return null;
+  const atIndex = email.indexOf('@');
+  if (atIndex === -1) return null;
+  const localPart = email.substring(0, atIndex).toLowerCase().trim();
+
+  if (GENERIC_LOCAL_PARTS.has(localPart)) return null;
+
+  const parts = localPart.split(/[._-]/).filter(Boolean);
+  const candidate = parts[0];
+
+  if (/^[a-z]{2,20}$/i.test(candidate) && !GENERIC_LOCAL_PARTS.has(candidate.toLowerCase())) {
+    return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+  }
+  return null;
+};
+
+const deriveGreeting = (email, prospect) => {
+  const firstName = deriveFirstName(email);
+  if (firstName) {
+    return `Hi ${firstName},`;
+  }
+  return 'Hi there,';
+};
+
 // Helper to render template variables for a specific prospect
-const renderTemplate = (templateStr, prospect) => {
+const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
   if (!templateStr) return '';
+  const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
+  const greeting = deriveGreeting(email, prospect);
+  const firstName = deriveFirstName(email) || 'there';
   const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
   const domain = prospect?.domain || '';
   const location = prospect?.location || 'your area';
   const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
 
   return templateStr
+    .replace(/Hi\s+\{\{\s*businessName\s*\}\}\s+Team,?\s*/gi, `${greeting}\n\n`)
+    .replace(/Hi\s+\{\{\s*businessName\s*\}\},?\s*/gi, `${greeting}\n\n`)
+    .replace(/Hi\s+\{\{\s*firstName\s*\}\},?/gi, greeting)
+    .replace(/\{\{\s*greeting\s*\}\}/gi, greeting)
+    .replace(/\{\{\s*firstName\s*\}\}/gi, firstName)
     .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
     .replace(/\{\{\s*domain\s*\}\}/gi, domain)
     .replace(/\{\{\s*location\s*\}\}/gi, location)
@@ -172,7 +238,7 @@ const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
   
-  const body = `Hi {{businessName}} Team,
+  const body = `{{greeting}}
 
 I hope you're having a productive week.
 
@@ -196,21 +262,6 @@ https://thesearchequation.co.uk`;
 };
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
-
-const normalizeDomain = (urlOrDomain) => {
-  if (!urlOrDomain) return '';
-  let str = String(urlOrDomain).trim().toLowerCase();
-  if (str.includes('://')) {
-    try {
-      str = new URL(str).hostname;
-    } catch (e) {
-      str = str.replace(/^https?:\/\//i, '').split('/')[0];
-    }
-  } else {
-    str = str.split('/')[0].split('?')[0];
-  }
-  return str.replace(/^www\./i, '').trim();
-};
 
 const isDomainExcluded = (urlOrDomain, excludedList) => {
   if (!urlOrDomain || !excludedList || !Array.isArray(excludedList) || excludedList.length === 0) return false;
@@ -3198,16 +3249,9 @@ function App() {
                         const isSelected = selectedProspectIdsInPack.has(prospectKey);
                         const warning = getContactHistoryWarning(prospect.domain, activePack.packId);
 
-                        // Collect all valid unique emails
-                        const emailsList = [];
-                        if (Array.isArray(prospect.allFoundEmails) && prospect.allFoundEmails.length > 0) {
-                          prospect.allFoundEmails.forEach(em => {
-                            if (em && !emailsList.includes(em)) emailsList.push(em);
-                          });
-                        }
-                        if (prospect.contactEmail && !emailsList.includes(prospect.contactEmail)) {
-                          emailsList.push(prospect.contactEmail);
-                        }
+                        // Collect all valid unique emails matching prospect's own domain
+                        const emailsList = Array.from(new Set([prospect.contactEmail, ...(prospect.allFoundEmails || [])].filter(Boolean)))
+                          .filter(em => isDomainMatch(em, prospect.domain));
 
                         // Determine display status text
                         let displayStatus = 'No Email Found';
@@ -3215,7 +3259,7 @@ function App() {
                           displayStatus = 'Sent';
                         } else if (prospect.sendStatus === 'Failed') {
                           displayStatus = 'Failed';
-                        } else if (emailsList.length > 0 || prospect.contactEmail || prospect.emailStatus === 'Email Found' || prospect.sendStatus === 'Email Found' || prospect.sendStatus === 'Ready') {
+                        } else if (emailsList.length > 0 || (prospect.contactEmail && isDomainMatch(prospect.contactEmail, prospect.domain))) {
                           displayStatus = 'Email Found';
                         }
 
@@ -3307,25 +3351,6 @@ function App() {
                       })}
                     </tbody>
                   </table>
-                </div>
-
-                {/* Bottom Action Bar */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '1rem', marginBottom: '2.5rem' }}>
-                  <button
-                    onClick={() => setIsSendConfirmModalOpen(true)}
-                    disabled={selectedProspectIdsInPack.size === 0}
-                    className={selectedProspectIdsInPack.size > 0 ? "analyse-btn-green" : "table-btn"}
-                    style={{
-                      padding: '0.65rem 1.5rem',
-                      fontSize: '0.95rem',
-                      fontWeight: 'bold',
-                      opacity: selectedProspectIdsInPack.size === 0 ? 0.5 : 1,
-                      cursor: selectedProspectIdsInPack.size === 0 ? 'not-allowed' : 'pointer'
-                    }}
-                    title={selectedProspectIdsInPack.size === 0 ? "Select at least one prospect to send" : `Send personalised emails to ${selectedProspectIdsInPack.size} selected prospects`}
-                  >
-                    Send Selected ({selectedProspectIdsInPack.size})
-                  </button>
                 </div>
               </div>
             )}
@@ -3430,8 +3455,8 @@ function App() {
                       <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
                         Outreach Email Template — {activePack.packId}
                       </h3>
-                      <p style={{ margin: '0.25rem 0 0 0', color: '#38bdf8', fontSize: '0.85rem' }}>
-                        Applied to all prospects in this pack. Use variables for automated personalization.
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        Applied to all prospects in this pack. Personalises automatically per recipient.
                       </p>
                     </div>
                     <button
@@ -3440,14 +3465,6 @@ function App() {
                     >
                       &times;
                     </button>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', backgroundColor: '#1e293b', padding: '0.75rem', borderRadius: '6px' }}>
-                    <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>Available Variables:</span>
-                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{businessName}}"}</code>
-                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{domain}}"}</code>
-                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{location}}"}</code>
-                    <code style={{ backgroundColor: '#0f172a', color: '#38bdf8', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.8rem' }}>{"{{trade}}"}</code>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -3528,7 +3545,8 @@ function App() {
               const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
               let totalRecipients = 0;
               selectedProspects.forEach(p => {
-                const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)));
+                const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
+                  .filter(em => isDomainMatch(em, p.domain));
                 totalRecipients += emails.length;
               });
 

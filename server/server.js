@@ -1610,26 +1610,23 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  const emailsArray = Array.from(allEmails);
+  // Filter only emails whose domain matches the prospect's own website domain or subdomain
+  const domainFilteredEmails = Array.from(allEmails).filter(e => isDomainMatch(e, baseDomain));
 
-  // Pick preferred email: prioritize matching domain, then standard business prefixes
+  // Pick preferred email: prioritize matching domain with priority prefixes, then any matching domain prefix
   const priorityPrefixes = ['hello@', 'info@', 'enquiries@', 'contact@', 'sales@', 'office@', 'admin@', 'team@'];
   let preferredEmail = null;
 
-  if (emailsArray.length > 0) {
+  if (domainFilteredEmails.length > 0) {
     // 1. Same domain + priority prefix
-    preferredEmail = emailsArray.find(e => e.endsWith('@' + baseDomain) && priorityPrefixes.some(p => e.startsWith(p)));
+    preferredEmail = domainFilteredEmails.find(e => e.endsWith('@' + baseDomain) && priorityPrefixes.some(p => e.startsWith(p)));
     // 2. Same domain any prefix
     if (!preferredEmail) {
-      preferredEmail = emailsArray.find(e => e.endsWith('@' + baseDomain));
+      preferredEmail = domainFilteredEmails.find(e => e.endsWith('@' + baseDomain));
     }
-    // 3. Any priority prefix
+    // 3. First domain-matched email
     if (!preferredEmail) {
-      preferredEmail = emailsArray.find(e => priorityPrefixes.some(p => e.startsWith(p)));
-    }
-    // 4. First email
-    if (!preferredEmail) {
-      preferredEmail = emailsArray[0];
+      preferredEmail = domainFilteredEmails[0];
     }
   }
 
@@ -1639,20 +1636,71 @@ async function crawlProspectContactEmails(targetUrl) {
   return {
     status,
     contactEmail: preferredEmail || null,
-    allFoundEmails: emailsArray,
+    allFoundEmails: domainFilteredEmails,
     emailSource: emailSource
   };
 }
 
-// Helper to render template variables for a specific prospect
-function renderTemplate(templateStr, prospect) {
+const GENERIC_LOCAL_PARTS = new Set([
+  'hello', 'info', 'sales', 'contact', 'enquiries', 'enquiry', 'office',
+  'admin', 'support', 'team', 'bookings', 'booking', 'help', 'marketing',
+  'press', 'media', 'mail', 'service', 'services', 'billing', 'accounts',
+  'account', 'general', 'customercare', 'customerservice', 'webmaster',
+  'postmaster', 'hostmaster', 'feedback', 'jobs', 'careers', 'reception',
+  'orders', 'queries', 'query'
+]);
+
+function isDomainMatch(email, prospectDomain) {
+  if (!email || !prospectDomain) return false;
+  const atIndex = email.lastIndexOf('@');
+  if (atIndex === -1) return false;
+  const emailDomain = email.substring(atIndex + 1).toLowerCase().trim();
+  const cleanProspectDomain = normalizeDomain(prospectDomain).toLowerCase().trim();
+  return emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain);
+}
+
+function deriveFirstName(email) {
+  if (!email) return null;
+  const atIndex = email.indexOf('@');
+  if (atIndex === -1) return null;
+  const localPart = email.substring(0, atIndex).toLowerCase().trim();
+
+  if (GENERIC_LOCAL_PARTS.has(localPart)) return null;
+
+  const parts = localPart.split(/[._-]/).filter(Boolean);
+  const candidate = parts[0];
+
+  if (/^[a-z]{2,20}$/i.test(candidate) && !GENERIC_LOCAL_PARTS.has(candidate.toLowerCase())) {
+    return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+  }
+  return null;
+}
+
+function deriveGreeting(email, prospect) {
+  const firstName = deriveFirstName(email);
+  if (firstName) {
+    return `Hi ${firstName},`;
+  }
+  return 'Hi there,';
+}
+
+// Helper to render template variables for a specific prospect and recipient email
+function renderTemplate(templateStr, prospect, recipientEmail = null) {
   if (!templateStr) return '';
-  const businessName = prospect.businessName || prospect.name || prospect.domain || '';
-  const domain = prospect.domain || '';
-  const location = prospect.location || 'your area';
-  const trade = prospect.searchPhrase || prospect.searchKeyword || 'services';
+  const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
+  const greeting = deriveGreeting(email, prospect);
+  const firstName = deriveFirstName(email) || 'there';
+  const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
+  const domain = prospect?.domain || '';
+  const location = prospect?.location || 'your area';
+  const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
 
   return templateStr
+    .replace(/Hi\s+\{\{\s*businessName\s*\}\}\s+Team,?\s*/gi, `${greeting}\n\n`)
+    .replace(/Hi\s+\{\{\s*businessName\s*\}\},?\s*/gi, `${greeting}\n\n`)
+    .replace(/Hi\s+\{\{\s*firstName\s*\}\},?/gi, greeting)
+    .replace(/\{\{\s*greeting\s*\}\}/gi, greeting)
+    .replace(/\{\{\s*firstName\s*\}\}/gi, firstName)
     .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
     .replace(/\{\{\s*domain\s*\}\}/gi, domain)
     .replace(/\{\{\s*location\s*\}\}/gi, location)
@@ -1689,7 +1737,7 @@ function generatePartnershipTemplate({ searchKeyword, location }) {
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
   
-  const body = `Hi {{businessName}} Team,
+  const body = `{{greeting}}
 
 I hope you're having a productive week.
 
@@ -2044,8 +2092,10 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       const isTarget = targetProspects.some(tp => (tp.id && tp.id === p.id) || tp.domain === p.domain);
       if (!isTarget) continue;
 
-      // Extract all valid emails
-      const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)));
+      // Extract all valid domain-matched emails only
+      const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
+        .filter(email => isDomainMatch(email, p.domain));
+
       if (emails.length === 0) {
         p.sendStatus = 'No Email';
         continue;
@@ -2057,14 +2107,14 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
         continue;
       }
 
-      const renderedSubject = renderTemplate(templateSubject, p);
-      const renderedBody = renderTemplate(templateBody, p);
-
       const emailResults = [];
       let anySuccess = false;
 
       for (const email of emails) {
         try {
+          const renderedSubject = renderTemplate(templateSubject, p, email);
+          const renderedBody = renderTemplate(templateBody, p, email);
+
           const mailOptions = {
             from: config.senderMailbox,
             to: email,

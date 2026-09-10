@@ -87,8 +87,86 @@ export async function getDb() {
   try {
     await db.exec(`ALTER TABLE outreach_packs ADD COLUMN templateBody TEXT;`);
   } catch (e) {}
+
+  await cleanNonDomainEmails(db);
   
   return db;
+}
+
+// Clean existing packs and history to filter out non-matching domain emails
+export async function cleanNonDomainEmails(database) {
+  try {
+    const packs = await database.all('SELECT * FROM outreach_packs');
+    for (const pack of packs) {
+      let prospects = [];
+      try {
+        prospects = JSON.parse(pack.prospects);
+      } catch (e) {
+        continue;
+      }
+      let modified = false;
+      for (const p of prospects) {
+        const domain = p.domain || p.url || '';
+        if (!domain) continue;
+
+        const cleanDomain = domain.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].trim();
+        const isMatch = (email) => {
+          if (!email) return false;
+          const atIdx = email.lastIndexOf('@');
+          if (atIdx === -1) return false;
+          const emailDom = email.substring(atIdx + 1).toLowerCase().trim();
+          return emailDom === cleanDomain || emailDom.endsWith('.' + cleanDomain);
+        };
+
+        const origAll = p.allFoundEmails || [];
+        const filteredAll = origAll.filter(isMatch);
+        let contactEmail = p.contactEmail;
+
+        if (contactEmail && !isMatch(contactEmail)) {
+          contactEmail = filteredAll.length > 0 ? filteredAll[0] : null;
+          modified = true;
+        }
+        if (filteredAll.length !== origAll.length) {
+          p.allFoundEmails = filteredAll;
+          modified = true;
+        }
+        if (!contactEmail && filteredAll.length > 0) {
+          contactEmail = filteredAll[0];
+          modified = true;
+        }
+        p.contactEmail = contactEmail;
+        if (!p.contactEmail) {
+          p.sendStatus = 'No Email';
+          p.emailStatus = 'No Email';
+        } else {
+          p.sendStatus = p.sendStatus === 'Sent' ? 'Sent' : 'Email Found';
+          p.emailStatus = 'Email Found';
+        }
+      }
+
+      if (modified) {
+        await database.run(
+          'UPDATE outreach_packs SET prospects = ? WHERE packId = ? OR id = ?',
+          [JSON.stringify(prospects), pack.packId, pack.id]
+        );
+      }
+    }
+
+    // Clean outreach_contact_history
+    const history = await database.all('SELECT * FROM outreach_contact_history');
+    for (const h of history) {
+      if (h.email && h.domain) {
+        const cleanDomain = h.domain.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].trim();
+        const atIdx = h.email.lastIndexOf('@');
+        const emailDom = atIdx !== -1 ? h.email.substring(atIdx + 1).toLowerCase().trim() : '';
+        if (emailDom && emailDom !== cleanDomain && !emailDom.endsWith('.' + cleanDomain)) {
+          await database.run('DELETE FROM outreach_contact_history WHERE id = ?', [h.id]);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error cleaning non-domain emails:', err);
+  }
 }
 
 
