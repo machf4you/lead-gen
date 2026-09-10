@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import util from 'util';
+import nodemailer from 'nodemailer';
 import { getDb } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1643,6 +1644,44 @@ async function crawlProspectContactEmails(targetUrl) {
   };
 }
 
+// Helper to render template variables for a specific prospect
+function renderTemplate(templateStr, prospect) {
+  if (!templateStr) return '';
+  const businessName = prospect.businessName || prospect.name || prospect.domain || '';
+  const domain = prospect.domain || '';
+  const location = prospect.location || 'your area';
+  const trade = prospect.searchPhrase || prospect.searchKeyword || 'services';
+
+  return templateStr
+    .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*domain\s*\}\}/gi, domain)
+    .replace(/\{\{\s*location\s*\}\}/gi, location)
+    .replace(/\{\{\s*trade\s*\}\}/gi, trade)
+    .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
+}
+
+// Helper to check outbound email provider configuration
+function getOutboundEmailConfig() {
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM || process.env.OUTBOUND_EMAIL_FROM;
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  const isConfigured = Boolean(host && user && pass && from);
+
+  return {
+    isConfigured,
+    senderMailbox: from || null,
+    host: host || null,
+    port: port || null,
+    user: user || null,
+    secure
+  };
+}
+
 // Helper to generate a partnership outreach email template for a pack
 function generatePartnershipTemplate({ searchKeyword, location }) {
   const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
@@ -1937,6 +1976,166 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
       }
     });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET sender status
+app.get('/api/outreach/sender-status', (req, res) => {
+  const config = getOutboundEmailConfig();
+  res.json({
+    configured: config.isConfigured,
+    senderMailbox: config.senderMailbox,
+    host: config.host,
+    port: config.port
+  });
+});
+
+// POST send selected prospects in outreach pack
+app.post('/api/outreach-packs/:packId/send', async (req, res) => {
+  try {
+    const { packId } = req.params;
+    const { selectedProspectIds = [] } = req.body;
+    const config = getOutboundEmailConfig();
+
+    if (!config.isConfigured) {
+      return res.status(400).json({
+        success: false,
+        configured: false,
+        error: 'No outbound email provider is currently configured in the server environment. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM to enable sending.'
+      });
+    }
+
+    const db = await getDb();
+    const packRow = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    if (!packRow) return res.status(404).json({ error: 'Outreach pack not found' });
+
+    let prospects = [];
+    try {
+      prospects = JSON.parse(packRow.prospects);
+    } catch (e) {
+      prospects = [];
+    }
+
+    const templateSubject = packRow.templateSubject || '';
+    const templateBody = packRow.templateBody || '';
+
+    // Create nodemailer transporter
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: process.env.SMTP_PASS
+      }
+    });
+
+    const nowIso = new Date().toISOString();
+    const sendResults = [];
+
+    // Filter prospects to send
+    const targetProspects = selectedProspectIds.length > 0
+      ? prospects.filter(p => selectedProspectIds.includes(p.id) || selectedProspectIds.includes(p.domain))
+      : prospects;
+
+    for (let i = 0; i < prospects.length; i++) {
+      const p = prospects[i];
+      const isTarget = targetProspects.some(tp => (tp.id && tp.id === p.id) || tp.domain === p.domain);
+      if (!isTarget) continue;
+
+      // Extract all valid emails
+      const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)));
+      if (emails.length === 0) {
+        p.sendStatus = 'No Email';
+        continue;
+      }
+
+      // Check duplicate send protection: if already sent, skip
+      if (p.sendStatus === 'Sent') {
+        sendResults.push({ prospectId: p.id, domain: p.domain, skipped: true, reason: 'Already sent' });
+        continue;
+      }
+
+      const renderedSubject = renderTemplate(templateSubject, p);
+      const renderedBody = renderTemplate(templateBody, p);
+
+      const emailResults = [];
+      let anySuccess = false;
+
+      for (const email of emails) {
+        try {
+          const mailOptions = {
+            from: config.senderMailbox,
+            to: email,
+            subject: renderedSubject,
+            text: renderedBody
+          };
+
+          const info = await transporter.sendMail(mailOptions);
+          emailResults.push({ email, status: 'Sent', messageId: info.messageId, sentAt: nowIso });
+          anySuccess = true;
+        } catch (err) {
+          console.error(`[Email Send Error] Failed sending to ${email}:`, err);
+          emailResults.push({ email, status: 'Failed', error: err.message, failedAt: nowIso });
+        }
+      }
+
+      p.sendHistory = [...(p.sendHistory || []), ...emailResults];
+      p.sendStatus = anySuccess ? 'Sent' : 'Failed';
+      if (anySuccess) {
+        p.sentAt = nowIso;
+      }
+
+      // Update contact history in SQLite
+      await db.run(
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `hist_${packRow.packId}_${p.domain}`,
+          p.domain,
+          p.contactEmail || emails[0],
+          packRow.packId,
+          p.sendStatus,
+          p.sentAt || null,
+          packRow.createdAt
+        ]
+      );
+
+      sendResults.push({ prospectId: p.id, domain: p.domain, emails: emailResults, status: p.sendStatus });
+    }
+
+    // Determine overall pack status
+    const allSent = prospects.every(p => p.sendStatus === 'Sent');
+    const anySent = prospects.some(p => p.sendStatus === 'Sent');
+    const newPackStatus = allSent ? 'Sent' : (anySent ? 'Partially Sent' : (packRow.status || 'Draft'));
+    const packSentAt = anySent ? (packRow.sentAt || nowIso) : packRow.sentAt;
+
+    await db.run(
+      `UPDATE outreach_packs
+       SET status = ?, sentAt = ?, prospects = ?
+       WHERE packId = ? OR id = ?`,
+      [
+        newPackStatus,
+        packSentAt,
+        JSON.stringify(prospects),
+        packRow.packId,
+        packRow.packId
+      ]
+    );
+
+    res.json({
+      success: true,
+      pack: {
+        ...packRow,
+        status: newPackStatus,
+        sentAt: packSentAt,
+        prospects
+      },
+      results: sendResults
+    });
+  } catch (error) {
+    console.error('Error in send pack endpoint:', error);
     res.status(500).json({ error: error.message });
   }
 });

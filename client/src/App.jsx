@@ -148,6 +148,53 @@ Kind regards,
   return email;
 };
 
+// Helper to render template variables for a specific prospect
+const renderTemplate = (templateStr, prospect) => {
+  if (!templateStr) return '';
+  const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
+  const domain = prospect?.domain || '';
+  const location = prospect?.location || 'your area';
+  const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
+
+  return templateStr
+    .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*domain\s*\}\}/gi, domain)
+    .replace(/\{\{\s*location\s*\}\}/gi, location)
+    .replace(/\{\{\s*trade\s*\}\}/gi, trade)
+    .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
+};
+
+// Helper to generate a partnership outreach email template for a pack
+const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
+  const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
+  const loc = location && location !== 'Anywhere' ? location : 'your area';
+
+  const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
+  
+  const body = `Hi {{businessName}} Team,
+
+I hope you're having a productive week.
+
+I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
+
+At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+
+We came across {{domain}} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
+
+If you have capacity for additional ${trade} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
+
+Would you be open to a brief 5-minute conversation next week?
+
+Best regards,
+
+Mac
+The Search Equation
+https://thesearchequation.co.uk`;
+
+  return { subject, body };
+};
+
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
 
 const normalizeDomain = (urlOrDomain) => {
@@ -210,6 +257,22 @@ function App() {
   const [contactHistory, setContactHistory] = useState([]);
   const [newPackNameInput, setNewPackNameInput] = useState('');
   const [isCreatingPackModalOpen, setIsCreatingPackModalOpen] = useState(false);
+  const [senderStatus, setSenderStatus] = useState({ configured: false, senderMailbox: null });
+  const [isSendConfirmModalOpen, setIsSendConfirmModalOpen] = useState(false);
+  const [isSendingPack, setIsSendingPack] = useState(false);
+  const [sendErrorMsg, setSendErrorMsg] = useState(null);
+
+  const fetchSenderStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach/sender-status`);
+      if (res.ok) {
+        const data = await res.json();
+        setSenderStatus(data);
+      }
+    } catch (e) {
+      console.error("Error fetching sender status:", e);
+    }
+  };
 
   const handleOpenCreatePackModal = () => {
     const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
@@ -271,6 +334,7 @@ function App() {
       }
     };
     initExclusions();
+    fetchSenderStatus();
   }, []);
   const [activeAnalysisItem, setActiveAnalysisItem] = useState(null)
   const [activeSearchId, setActiveSearchId] = useState(null)
@@ -602,6 +666,35 @@ function App() {
       }
     } catch (e) {
       console.error("Error deleting pack:", e);
+    }
+  };
+
+  const handleSendPack = async () => {
+    if (!activePack) return;
+    setIsSendingPack(true);
+    setSendErrorMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(activePack.packId)}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selectedProspectIds: Array.from(selectedProspectIdsInPack)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setSendErrorMsg(data.error || 'Failed to send outreach pack');
+      } else {
+        setActivePack(data.pack);
+        setOutreachPacks(prev => prev.map(p => p.packId === activePack.packId ? data.pack : p));
+        await fetchContactHistory();
+        setIsSendConfirmModalOpen(false);
+      }
+    } catch (err) {
+      console.error("Error sending outreach pack:", err);
+      setSendErrorMsg(err.message || 'Network error while sending');
+    } finally {
+      setIsSendingPack(false);
     }
   };
 
@@ -2607,9 +2700,6 @@ function App() {
                 <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
                     <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
-                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-                      Select prospects and click "Create Outreach Pack" to begin email contact finding and draft preparation.
-                    </p>
                   </div>
                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                     {selectedShortlistIds.size > 0 && (
@@ -3031,6 +3121,52 @@ function App() {
                   </div>
                 </div>
 
+                {/* Action Bar Above Table */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.75rem 1.25rem',
+                  backgroundColor: '#1e293b',
+                  borderRadius: '6px',
+                  border: '1px solid #334155',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  margin: '0.5rem 0'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span style={{ fontSize: '0.9rem', color: '#cbd5e1' }}>
+                      <strong>{selectedProspectIdsInPack.size}</strong> of {activePack.prospects?.length || 0} prospects selected
+                    </span>
+                    {selectedProspectIdsInPack.size > 0 && (
+                      <button
+                        onClick={() => setSelectedProspectIdsInPack(new Set())}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
+                      >
+                        Deselect All
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <button
+                      onClick={() => setIsSendConfirmModalOpen(true)}
+                      disabled={selectedProspectIdsInPack.size === 0}
+                      className={selectedProspectIdsInPack.size > 0 ? "analyse-btn-green" : "table-btn"}
+                      style={{
+                        padding: '0.65rem 1.5rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        opacity: selectedProspectIdsInPack.size === 0 ? 0.5 : 1,
+                        cursor: selectedProspectIdsInPack.size === 0 ? 'not-allowed' : 'pointer'
+                      }}
+                      title={selectedProspectIdsInPack.size === 0 ? "Select at least one prospect to send" : `Send personalised emails to ${selectedProspectIdsInPack.size} selected prospects`}
+                    >
+                      Send Selected ({selectedProspectIdsInPack.size})
+                    </button>
+                  </div>
+                </div>
+
                 {/* Simplified Prospects Table in Pack */}
                 <div className="results-table-container">
                   <table className="results-table">
@@ -3174,20 +3310,19 @@ function App() {
                 </div>
 
                 {/* Bottom Action Bar */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '1rem', marginBottom: '2.5rem' }}>
                   <button
-                    disabled={true}
-                    className="table-btn"
+                    onClick={() => setIsSendConfirmModalOpen(true)}
+                    disabled={selectedProspectIdsInPack.size === 0}
+                    className={selectedProspectIdsInPack.size > 0 ? "analyse-btn-green" : "table-btn"}
                     style={{
-                      backgroundColor: '#334155',
-                      color: '#94a3b8',
-                      fontWeight: 'bold',
                       padding: '0.65rem 1.5rem',
                       fontSize: '0.95rem',
-                      cursor: 'not-allowed',
-                      opacity: 0.6
+                      fontWeight: 'bold',
+                      opacity: selectedProspectIdsInPack.size === 0 ? 0.5 : 1,
+                      cursor: selectedProspectIdsInPack.size === 0 ? 'not-allowed' : 'pointer'
                     }}
-                    title="Sending will be enabled in the next stage"
+                    title={selectedProspectIdsInPack.size === 0 ? "Select at least one prospect to send" : `Send personalised emails to ${selectedProspectIdsInPack.size} selected prospects`}
                   >
                     Send Selected ({selectedProspectIdsInPack.size})
                   </button>
@@ -3387,6 +3522,169 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Modal: Confirm Outreach Send */}
+            {isSendConfirmModalOpen && activePack && (() => {
+              const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
+              let totalRecipients = 0;
+              selectedProspects.forEach(p => {
+                const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)));
+                totalRecipients += emails.length;
+              });
+
+              return (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 99999,
+                  padding: '1.5rem'
+                }}>
+                  <div style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: '10px',
+                    width: '100%',
+                    maxWidth: '600px',
+                    padding: '2rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.25rem',
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                          Confirm Outreach Send
+                        </h3>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          Review the details below before dispatching live outreach emails.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!isSendingPack) {
+                            setIsSendConfirmModalOpen(false);
+                            setSendErrorMsg(null);
+                          }
+                        }}
+                        disabled={isSendingPack}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: isSendingPack ? 'not-allowed' : 'pointer' }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: '160px 1fr',
+                      gap: '0.75rem 1rem',
+                      backgroundColor: '#1e293b',
+                      padding: '1.25rem',
+                      borderRadius: '6px',
+                      border: '1px solid #334155',
+                      fontSize: '0.9rem'
+                    }}>
+                      <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Pack ID:</div>
+                      <div style={{ color: '#38bdf8', fontWeight: 'bold' }}>{activePack.packId}</div>
+
+                      <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Selected Prospects:</div>
+                      <div style={{ color: '#ffffff' }}><strong>{selectedProspects.length}</strong></div>
+
+                      <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Total Recipient Emails:</div>
+                      <div style={{ color: '#ffffff' }}><strong>{totalRecipients}</strong> address{totalRecipients === 1 ? '' : 'es'}</div>
+
+                      <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Subject Line:</div>
+                      <div style={{ color: '#ffffff', wordBreak: 'break-word' }}>
+                        {activePack.templateSubject || 'Partnership enquiry — The Search Equation'}
+                      </div>
+
+                      <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Sender Mailbox:</div>
+                      <div>
+                        {senderStatus.configured && senderStatus.senderMailbox ? (
+                          <span style={{ color: '#10b981', fontWeight: 'bold' }}>{senderStatus.senderMailbox}</span>
+                        ) : (
+                          <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>Not Configured (SMTP credentials required)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {!senderStatus.configured ? (
+                      <div style={{
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        borderRadius: '6px',
+                        padding: '1rem',
+                        color: '#f59e0b',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.5'
+                      }}>
+                        <strong>Outbound Email Provider Not Configured:</strong>
+                        <p style={{ margin: '0.4rem 0 0 0' }}>
+                          No SMTP or outbound email credentials are currently configured in the server environment. To enable live sending, configure <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> on the server.
+                        </p>
+                      </div>
+                    ) : (
+                      <div style={{
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                        borderRadius: '6px',
+                        padding: '0.85rem 1rem',
+                        color: '#cbd5e1',
+                        fontSize: '0.85rem'
+                      }}>
+                        ℹ️ Live emails will be rendered individually per prospect and dispatched to all discovered contact addresses.
+                      </div>
+                    )}
+
+                    {sendErrorMsg && (
+                      <div style={{
+                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        borderRadius: '6px',
+                        padding: '0.75rem 1rem',
+                        color: '#ef4444',
+                        fontSize: '0.85rem'
+                      }}>
+                        ❌ {sendErrorMsg}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      <button
+                        onClick={() => {
+                          setIsSendConfirmModalOpen(false);
+                          setSendErrorMsg(null);
+                        }}
+                        disabled={isSendingPack}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSendPack}
+                        disabled={!senderStatus.configured || totalRecipients === 0 || isSendingPack}
+                        className="analyse-btn-green"
+                        style={{
+                          padding: '0.6rem 1.4rem',
+                          opacity: (!senderStatus.configured || totalRecipients === 0 || isSendingPack) ? 0.5 : 1,
+                          cursor: (!senderStatus.configured || totalRecipients === 0 || isSendingPack) ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {isSendingPack ? 'Sending Live Emails...' : 'Confirm Send'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
         {currentView === 'settings' && (
