@@ -1034,6 +1034,24 @@ app.get('/api/saved-searches', async (req, res) => {
   }
 });
 
+// GET single saved search by searchId or id
+app.get('/api/saved-searches/:searchId', async (req, res) => {
+  try {
+    const { searchId } = req.params;
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM saved_searches WHERE searchId = ? OR id = ?', [searchId, searchId]);
+    if (!row) {
+      return res.status(404).json({ error: 'Search not found' });
+    }
+    res.json({
+      ...row,
+      data: JSON.parse(row.data)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST save/update search
 app.post('/api/saved-searches', async (req, res) => {
   try {

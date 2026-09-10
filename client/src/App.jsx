@@ -345,6 +345,90 @@ function App() {
   useEffect(() => {
     fetchMilestones();
     fetchSavedSearches();
+
+    const params = new URLSearchParams(window.location.search);
+    const searchIdParam = params.get('searchId');
+    const viewParam = params.get('view');
+    const itemParam = params.get('item');
+
+    if (viewParam && !searchIdParam) {
+      if (['saved', 'exclusions', 'settings'].includes(viewParam)) {
+        setCurrentView(viewParam);
+      }
+    }
+
+    if (searchIdParam) {
+      const loadFromUrl = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/api/saved-searches/${encodeURIComponent(searchIdParam)}`);
+          if (res.ok) {
+            const saved = await res.json();
+            setBusinessType(saved.businessType === 'Any' ? '' : saved.businessType);
+            setLocation(saved.location === 'Anywhere' ? '' : saved.location);
+            setSearchMode(saved.searchMode || (saved.searchType === 'Organic' ? 'organic' : 'local'));
+            setActiveSearchId(saved.searchId || null);
+
+            let initialExclusions = [];
+            try {
+              const excRes = await fetch(`${API_BASE}/api/exclusions`);
+              if (excRes.ok) {
+                initialExclusions = await excRes.json();
+                setExcludedDomains(initialExclusions);
+              }
+            } catch (err) {}
+
+            const filtered = (saved.data || [])
+              .filter(item => {
+                const itemDomain = item.domain || getDomain(item.website || item.url);
+                return !initialExclusions.includes(itemDomain);
+              })
+              .map((item, idx) => {
+                if (item.rank === undefined || item.rank === null) {
+                  return { ...item, rank: idx + 1 };
+                }
+                return item;
+              });
+
+            setSearchResults(filtered);
+            setCurrentPage(1);
+            setSortColumn(null);
+            setSortDirection('asc');
+
+            if (viewParam === 'analyse' && itemParam) {
+              const matchedItem = (saved.data || []).find(item => 
+                (item.url && item.url === itemParam) || 
+                (item.domain && item.domain === itemParam) || 
+                (item.website && item.website === itemParam) ||
+                (item.name && item.name === itemParam)
+              );
+              if (matchedItem && matchedItem.analysis) {
+                const isOrganic = !matchedItem.name;
+                const analysisObj = {
+                  ...matchedItem.analysis,
+                  domain: matchedItem.domain || getDomain(matchedItem.website || matchedItem.url),
+                  url: matchedItem.url || matchedItem.website || '',
+                  searchId: saved.searchId || 'Not available',
+                  searchType: isOrganic ? 'Organic' : 'GMB',
+                  searchKeyword: saved.businessType || 'Any',
+                  location: saved.location || 'Anywhere',
+                  rank: matchedItem.rank || matchedItem.analysis?.rank || 0
+                };
+                setActiveAnalysisItem(analysisObj);
+                addToRecentAnalyses(analysisObj);
+                setCurrentView('analyse');
+              } else {
+                setCurrentView('search');
+              }
+            } else {
+              setCurrentView('search');
+            }
+          }
+        } catch (e) {
+          console.error("Failed to restore search from URL:", e);
+        }
+      };
+      loadFromUrl();
+    }
   }, []);
 
   const handleCreateMilestone = async (e) => {
@@ -576,6 +660,12 @@ function App() {
           setSavedSearches(prev => [newSearch, ...prev]);
         }
 
+        try {
+          const u = new URL(window.location.href);
+          u.search = `?searchId=${encodeURIComponent(targetSearchId)}`;
+          window.history.replaceState(null, '', u.toString());
+        } catch (e) {}
+
         // Automatically start bulk scoring of discovered prospects
         runBulkAnalysis(enrichedData, targetSearchId, location.trim() || 'Anywhere');
       } else {
@@ -600,6 +690,11 @@ function App() {
     setActiveSearchId(null);
     setActiveAnalysisItem(null);
     setCurrentView('search');
+    try {
+      const u = new URL(window.location.href);
+      u.search = '';
+      window.history.replaceState(null, '', u.toString());
+    } catch (e) {}
   };
 
   const handleLoadSavedSearch = (saved) => {
@@ -669,6 +764,12 @@ function App() {
     setSortColumn(null);
     setSortDirection('asc');
     setCurrentView('search');
+
+    try {
+      const u = new URL(window.location.href);
+      u.search = `?searchId=${encodeURIComponent(saved.searchId)}`;
+      window.history.replaceState(null, '', u.toString());
+    } catch (e) {}
   };
 
   const handleDeleteSavedSearch = (id) => {
@@ -708,6 +809,14 @@ function App() {
     
     addToRecentAnalyses(recent.analysis);
     setCurrentView('analyse');
+
+    try {
+      const u = new URL(window.location.href);
+      if (recent.analysis.searchId) u.searchParams.set('searchId', recent.analysis.searchId);
+      u.searchParams.set('view', 'analyse');
+      u.searchParams.set('item', recent.analysis.url || recent.analysis.domain || '');
+      window.history.replaceState(null, '', u.toString());
+    } catch (e) {}
   };
 
   const updateItemAnalysis = (urlOrName, analysisData, targetSearchId) => {
@@ -916,6 +1025,14 @@ function App() {
       setActiveAnalysisItem(analysisObj);
       addToRecentAnalyses(analysisObj);
       setCurrentView('analyse');
+
+      try {
+        const u = new URL(window.location.href);
+        if (activeSearchId) u.searchParams.set('searchId', activeSearchId);
+        u.searchParams.set('view', 'analyse');
+        u.searchParams.set('item', url || domain || '');
+        window.history.replaceState(null, '', u.toString());
+      } catch (e) {}
       return;
     }
 
@@ -923,6 +1040,14 @@ function App() {
     setAnalysisError(null);
     setCurrentView('analyse');
     
+    try {
+      const u = new URL(window.location.href);
+      if (activeSearchId) u.searchParams.set('searchId', activeSearchId);
+      u.searchParams.set('view', 'analyse');
+      u.searchParams.set('item', url || domain || '');
+      window.history.replaceState(null, '', u.toString());
+    } catch (e) {}
+
     const initialObj = {
       domain,
       url,
@@ -1346,24 +1471,45 @@ function App() {
           <div className="sidebar-menu">
             <button 
               onClick={handleNewSearchNav} 
-              className={`sidebar-item ${currentView === 'search' ? 'active' : ''}`}
+              className={`sidebar-item ${currentView === 'search' && !activeSearchId ? 'active' : ''}`}
             >
               New Search
             </button>
             <button 
-              onClick={() => setCurrentView('saved')} 
+              onClick={() => {
+                setCurrentView('saved');
+                try {
+                  const u = new URL(window.location.href);
+                  u.search = '?view=saved';
+                  window.history.replaceState(null, '', u.toString());
+                } catch (e) {}
+              }} 
               className={`sidebar-item ${currentView === 'saved' ? 'active' : ''}`}
             >
               Saved Searches
             </button>
             <button 
-              onClick={() => setCurrentView('exclusions')} 
+              onClick={() => {
+                setCurrentView('exclusions');
+                try {
+                  const u = new URL(window.location.href);
+                  u.search = '?view=exclusions';
+                  window.history.replaceState(null, '', u.toString());
+                } catch (e) {}
+              }} 
               className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
             >
               Manage Exclusions
             </button>
             <button 
-              onClick={() => setCurrentView('settings')} 
+              onClick={() => {
+                setCurrentView('settings');
+                try {
+                  const u = new URL(window.location.href);
+                  u.search = '?view=settings';
+                  window.history.replaceState(null, '', u.toString());
+                } catch (e) {}
+              }} 
               className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
             >
               Settings
@@ -1531,7 +1677,7 @@ function App() {
                           className="analyse-btn-green"
                           style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
                         >
-                          Analyse All Results
+                          Re-analyse All Prospects
                         </button>
                       )}
                       <button 
@@ -1540,7 +1686,7 @@ function App() {
                         style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
                         disabled={isSearching}
                       >
-                        {isSearching ? 'Refreshing...' : 'Refresh Live Data'}
+                        {isSearching ? 'Refreshing...' : 'Re-run Google Search — Uses API Credits'}
                       </button>
                     </div>
                   )}
@@ -1557,6 +1703,9 @@ function App() {
 
               return (
                 <>
+                <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500' }}>
+                  Opportunity Score: The higher the score, the better the lead opportunity.
+                </div>
                 <div className="results-table-container">
                   <table className="results-table">
                     <thead>
@@ -2108,7 +2257,18 @@ function App() {
                   {isRefreshing ? 'Refreshing...' : 'Refresh Analysis'}
                 </button>
                 <button 
-                  onClick={() => setCurrentView('search')} 
+                  onClick={() => {
+                    setCurrentView('search');
+                    try {
+                      const u = new URL(window.location.href);
+                      if (activeSearchId) {
+                        u.search = `?searchId=${encodeURIComponent(activeSearchId)}`;
+                      } else {
+                        u.search = '';
+                      }
+                      window.history.replaceState(null, '', u.toString());
+                    } catch (e) {}
+                  }} 
                   className="table-btn"
                   style={{ backgroundColor: '#475569' }}
                 >
