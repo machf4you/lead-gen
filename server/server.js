@@ -1348,22 +1348,60 @@ app.post('/api/outreach', async (req, res) => {
   }
 });
 
+// Helper to decode Cloudflare-obfuscated emails (data-cfemail / email-protection)
+function decodeCfEmail(encodedString) {
+  if (!encodedString || typeof encodedString !== 'string') return '';
+  let email = '';
+  try {
+    const r = parseInt(encodedString.substring(0, 2), 16);
+    for (let n = 2; encodedString.length - n; n += 2) {
+      const i = parseInt(encodedString.substring(n, 2), 16) ^ r;
+      email += String.fromCharCode(i);
+    }
+  } catch (e) {
+    return '';
+  }
+  return email;
+}
+
 // Helper to extract and validate emails from HTML
 function extractEmailsFromHtml(html, baseDomain) {
   if (!html || typeof html !== 'string') return [];
   const found = new Set();
   
-  // 1. Mailto links
-  const mailtoRegex = /href=["']mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(\?[^"']*)?["']/gi;
-  let match;
-  while ((match = mailtoRegex.exec(html)) !== null) {
-    const email = match[1].toLowerCase().trim();
-    if (isValidEmail(email, baseDomain)) {
-      found.add(email);
+  // 1. Cloudflare protected emails: data-cfemail
+  const cfRegex = /data-cfemail=["']([a-fA-F0-9]+)["']/gi;
+  let cfMatch;
+  while ((cfMatch = cfRegex.exec(html)) !== null) {
+    const decoded = decodeCfEmail(cfMatch[1]);
+    if (isValidEmail(decoded, baseDomain)) {
+      found.add(decoded.toLowerCase().trim());
     }
   }
 
-  // 2. JSON-LD scripts
+  // Cloudflare email-protection URLs: /cdn-cgi/l/email-protection#[hash]
+  const cfUrlRegex = /\/cdn-cgi\/l\/email-protection#([a-fA-F0-9]+)/gi;
+  let cfUrlMatch;
+  while ((cfUrlMatch = cfUrlRegex.exec(html)) !== null) {
+    const decoded = decodeCfEmail(cfUrlMatch[1]);
+    if (isValidEmail(decoded, baseDomain)) {
+      found.add(decoded.toLowerCase().trim());
+    }
+  }
+
+  // 2. Mailto links
+  const mailtoRegex = /href=["']mailto:([^"'>\s?]+)(?:\?[^"']*)?["']/gi;
+  let match;
+  while ((match = mailtoRegex.exec(html)) !== null) {
+    try {
+      const raw = decodeURIComponent(match[1]).toLowerCase().trim();
+      if (isValidEmail(raw, baseDomain)) {
+        found.add(raw);
+      }
+    } catch (e) {}
+  }
+
+  // 3. JSON-LD scripts
   const jsonLdRegex = /<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let jsonMatch;
   while ((jsonMatch = jsonLdRegex.exec(html)) !== null) {
@@ -1384,7 +1422,7 @@ function extractEmailsFromHtml(html, baseDomain) {
     } catch (e) {}
   }
 
-  // 3. Regular expression across body
+  // 4. Regular expression across body
   const bodyEmailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
   let textMatch;
   while ((textMatch = bodyEmailRegex.exec(html)) !== null) {
@@ -1413,13 +1451,13 @@ function isValidEmail(email, baseDomain) {
     'example.com', 'domain.com', 'yourdomain.com', 'sentry.io', 'wixpress.com',
     'cloudflare.com', 'wordpress.org', 'gravatar.com', 'schema.org', 'googleapis.com',
     'google.com', 'facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com',
-    'github.com', 'mysite.com', 'test.com', 'email.com', 'w3.org'
+    'github.com', 'mysite.com', 'test.com', 'email.com', 'w3.org', 'wufoo.com', 'doe.com'
   ];
   if (blockedDomains.some(d => domainPart === d || domainPart.endsWith('.' + d))) return false;
 
   // Reject dummy prefixes
   const localPart = email.split('@')[0];
-  const blockedPrefixes = ['test', 'demo', 'example', 'yourname', 'user', 'name', 'dummy'];
+  const blockedPrefixes = ['test', 'demo', 'example', 'yourname', 'user', 'name', 'dummy', 'john'];
   if (blockedPrefixes.includes(localPart)) return false;
 
   return true;
@@ -1427,7 +1465,7 @@ function isValidEmail(email, baseDomain) {
 
 // Function to find contact emails for a prospect
 async function crawlProspectContactEmails(targetUrl) {
-  if (!targetUrl) return { status: 'Not Found', contactEmail: null, allFoundEmails: [], emailSource: null };
+  if (!targetUrl) return { status: 'No Email Found', contactEmail: null, allFoundEmails: [], emailSource: null };
   let fetchUrl = targetUrl;
   if (!/^https?:\/\//i.test(fetchUrl)) {
     fetchUrl = 'https://' + fetchUrl;
@@ -1437,31 +1475,60 @@ async function crawlProspectContactEmails(targetUrl) {
   const allEmails = new Set();
   let primarySource = null;
 
-  // Helper fetch with timeout & user-agent
+  // Helper fetch with modern browser headers & fallback
   const fetchPage = async (url) => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        },
-        redirect: 'follow'
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) return null;
-      const html = await res.text();
-      return { html, finalUrl: res.url };
-    } catch (e) {
-      return null;
+    const headersList = [
+      {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-GB,en;q=0.5',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-GB,en;q=0.9'
+      }
+    ];
+
+    for (const hdrs of headersList) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: hdrs,
+          redirect: 'follow'
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const html = await res.text();
+          if (html && html.length > 200) {
+            return { html, finalUrl: res.url };
+          }
+        }
+      } catch (e) {}
     }
+
+    // Fallback to Puppeteer if standard fetch was blocked (e.g. Cloudflare / WAF)
+    try {
+      const pup = await fetchPageWithPuppeteer(url);
+      if (pup.success && pup.html) {
+        return { html: pup.html, finalUrl: pup.finalUrl || url };
+      }
+    } catch (e) {}
+
+    return null;
   };
 
   // 1. Fetch homepage
-  const homeResult = await fetchPage(fetchUrl);
-  let contactLinks = [];
+  let homeResult = await fetchPage(fetchUrl);
+  if (!homeResult && !fetchUrl.startsWith('https://www.') && fetchUrl.startsWith('https://')) {
+    const wwwUrl = fetchUrl.replace('https://', 'https://www.');
+    homeResult = await fetchPage(wwwUrl);
+  }
+
+  const contactLinks = [];
   if (homeResult?.html) {
     const homeEmails = extractEmailsFromHtml(homeResult.html, baseDomain);
     homeEmails.forEach(e => {
@@ -1476,11 +1543,13 @@ async function crawlProspectContactEmails(targetUrl) {
         const href = $(el).attr('href')?.trim();
         const text = $(el).text()?.trim().toLowerCase();
         if (!href) return;
-        if (/contact|get-in-touch|reach-us|enquir/i.test(href) || /contact|get in touch|enquire/i.test(text)) {
+        if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|pdf|zip|woff|woff2)$/i.test(href)) return;
+        if (/contact|get-in-touch|reach-us|enquir|about/i.test(href) || /contact|get in touch|reach us|enquire|about us/i.test(text)) {
           try {
             const resolved = new URL(href, homeResult.finalUrl).toString();
-            if (normalizeDomain(resolved) === baseDomain && !contactLinks.includes(resolved) && resolved !== homeResult.finalUrl) {
-              contactLinks.push(resolved);
+            const cleanResolved = resolved.split('#')[0];
+            if (normalizeDomain(cleanResolved) === baseDomain && !contactLinks.includes(cleanResolved) && cleanResolved !== homeResult.finalUrl) {
+              contactLinks.push(cleanResolved);
             }
           } catch (e) {}
         }
@@ -1488,8 +1557,14 @@ async function crawlProspectContactEmails(targetUrl) {
     } catch (e) {}
   }
 
-  // 2. Fetch top 2 contact pages if found
-  for (const contactUrl of contactLinks.slice(0, 2)) {
+  // If no contact links discovered, probe standard paths
+  if (contactLinks.length === 0) {
+    const origin = homeResult?.finalUrl ? new URL(homeResult.finalUrl).origin : `https://${baseDomain}`;
+    contactLinks.push(`${origin}/contact/`, `${origin}/contact-us/`, `${origin}/about/`);
+  }
+
+  // 2. Fetch top contact pages if found
+  for (const contactUrl of contactLinks.slice(0, 3)) {
     const contactResult = await fetchPage(contactUrl);
     if (contactResult?.html) {
       const contactEmails = extractEmailsFromHtml(contactResult.html, baseDomain);
@@ -1523,7 +1598,7 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  let status = 'Not Found';
+  let status = 'No Email Found';
   if (emailsArray.length === 1) status = 'Found';
   else if (emailsArray.length > 1) status = 'Multiple Found';
 
@@ -1531,7 +1606,7 @@ async function crawlProspectContactEmails(targetUrl) {
     status,
     contactEmail: preferredEmail || null,
     allFoundEmails: emailsArray,
-    emailSource: primarySource || fetchUrl
+    emailSource: primarySource || (homeResult ? homeResult.finalUrl : fetchUrl)
   };
 }
 
@@ -1698,7 +1773,18 @@ app.post('/api/outreach-packs', async (req, res) => {
       });
     }
 
-    const defaultName = name || `${processedProspects[0]?.searchPhrase ? processedProspects[0].searchPhrase + ' - ' : ''}Outreach Pack ${nextPackId}`;
+    let defaultName = name;
+    if (!defaultName) {
+      const phrases = [...new Set(processedProspects.map(p => (p.searchPhrase || '').trim()).filter(Boolean))];
+      const locations = [...new Set(processedProspects.map(p => (p.location || '').trim()).filter(Boolean))];
+      if (phrases.length === 1 && locations.length === 1 && locations[0] !== 'Anywhere') {
+        defaultName = `${phrases[0]} ${locations[0]}`;
+      } else if (phrases.length === 1) {
+        defaultName = phrases[0];
+      } else {
+        defaultName = `Outreach Pack ${nextPackId}`;
+      }
+    }
 
     await db.run(
       `INSERT INTO outreach_packs (id, packId, name, createdAt, sentAt, status, prospectsCount, prospects)

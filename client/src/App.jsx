@@ -203,12 +203,30 @@ function App() {
   const [selectedShortlistIds, setSelectedShortlistIds] = useState(new Set());
   const [selectedProspectIdsInPack, setSelectedProspectIdsInPack] = useState(new Set());
   const [isFindingContacts, setIsFindingContacts] = useState(false);
+  const [searchingProspectIds, setSearchingProspectIds] = useState(new Set());
   const [editingEmailProspect, setEditingEmailProspect] = useState(null);
   const [editedEmailSubject, setEditedEmailSubject] = useState('');
   const [editedEmailBody, setEditedEmailBody] = useState('');
   const [contactHistory, setContactHistory] = useState([]);
   const [newPackNameInput, setNewPackNameInput] = useState('');
   const [isCreatingPackModalOpen, setIsCreatingPackModalOpen] = useState(false);
+
+  const handleOpenCreatePackModal = () => {
+    const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
+    const phrases = [...new Set(selectedProspects.map(p => (p.searchPhrase || p.searchKeyword || '').trim()).filter(Boolean))];
+    const locations = [...new Set(selectedProspects.map(p => (p.location || '').trim()).filter(Boolean))];
+
+    let defaultName = '';
+    if (phrases.length === 1 && locations.length === 1 && locations[0] !== 'Anywhere') {
+      defaultName = `${phrases[0]} ${locations[0]}`.trim();
+    } else if (phrases.length === 1) {
+      defaultName = phrases[0].trim();
+    } else {
+      defaultName = `Outreach Pack - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+    setNewPackNameInput(defaultName);
+    setIsCreatingPackModalOpen(true);
+  };
 
   // Initial load: Fetch server exclusions & perform one-time migration of legacy localStorage exclusions if present
   useEffect(() => {
@@ -590,16 +608,19 @@ function App() {
   const handleFindContactsForPack = async (packId, prospectsToSearch) => {
     if (!packId || !prospectsToSearch || prospectsToSearch.length === 0) return;
     setIsFindingContacts(true);
+    setSearchingProspectIds(prev => new Set([...prev, ...prospectsToSearch.map(p => p.id || p.domain)]));
 
     const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
     if (!currentPack) {
       setIsFindingContacts(false);
+      setSearchingProspectIds(new Set());
       return;
     }
 
     let updatedProspects = [...currentPack.prospects];
 
     for (const prospect of prospectsToSearch) {
+      const prospectKey = prospect.id || prospect.domain;
       try {
         const targetUrl = prospect.url || (prospect.domain ? `https://${prospect.domain}` : '');
         const res = await fetch(`${API_BASE}/api/outreach-packs/find-contacts`, {
@@ -614,20 +635,46 @@ function App() {
               const newStatus = contactInfo.contactEmail ? (p.sendStatus === 'Shortlisted' ? 'Email Found' : p.sendStatus) : p.sendStatus;
               return {
                 ...p,
-                contactEmail: contactInfo.contactEmail,
-                emailStatus: contactInfo.status,
-                allFoundEmails: contactInfo.allFoundEmails,
-                emailSource: contactInfo.emailSource,
+                contactEmail: contactInfo.contactEmail || null,
+                emailStatus: contactInfo.status || 'No Email Found',
+                allFoundEmails: contactInfo.allFoundEmails || [],
+                emailSource: contactInfo.emailSource || null,
                 sendStatus: newStatus
               };
             }
             return p;
           });
-          // Update live state incrementally
+          setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+        } else {
+          updatedProspects = updatedProspects.map(p => {
+            if (p.id === prospect.id || p.domain === prospect.domain) {
+              return {
+                ...p,
+                emailStatus: 'Search Failed'
+              };
+            }
+            return p;
+          });
           setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
         }
       } catch (err) {
         console.error("Error finding contact for", prospect.domain, err);
+        updatedProspects = updatedProspects.map(p => {
+          if (p.id === prospect.id || p.domain === prospect.domain) {
+            return {
+              ...p,
+              emailStatus: 'Search Failed'
+            };
+          }
+          return p;
+        });
+        setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+      } finally {
+        setSearchingProspectIds(prev => {
+          const next = new Set(prev);
+          next.delete(prospectKey);
+          return next;
+        });
       }
     }
 
@@ -2551,7 +2598,7 @@ function App() {
               {outreachSubView === 'shortlist' && (
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   <button
-                    onClick={() => setIsCreatingPackModalOpen(true)}
+                    onClick={handleOpenCreatePackModal}
                     disabled={selectedShortlistIds.size === 0}
                     className="analyse-btn-green"
                     style={{
@@ -3036,7 +3083,6 @@ function App() {
                         <th>Business / Domain</th>
                         <th>Search ID & Phrase</th>
                         <th>Rank & Score</th>
-                        <th>Commercial Strength</th>
                         <th>Contact Email & Source</th>
                         <th>Outreach Draft</th>
                         <th>Status</th>
@@ -3045,19 +3091,21 @@ function App() {
                     </thead>
                     <tbody>
                       {activePack.prospects?.map((prospect, pIdx) => {
-                        const isSelected = selectedProspectIdsInPack.has(prospect.id || prospect.domain);
+                        const prospectKey = prospect.id || prospect.domain;
+                        const isSelected = selectedProspectIdsInPack.has(prospectKey);
+                        const isSearchingThis = searchingProspectIds.has(prospectKey);
                         const warning = getContactHistoryWarning(prospect.domain, activePack.packId);
 
                         return (
-                          <tr key={prospect.id || pIdx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
+                          <tr key={prospectKey || pIdx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
                             <td style={{ textAlign: 'center' }}>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={(e) => {
                                   const next = new Set(selectedProspectIdsInPack);
-                                  if (e.target.checked) next.add(prospect.id || prospect.domain);
-                                  else next.delete(prospect.id || prospect.domain);
+                                  if (e.target.checked) next.add(prospectKey);
+                                  else next.delete(prospectKey);
                                   setSelectedProspectIdsInPack(next);
                                 }}
                                 style={{ width: '16px', height: '16px', cursor: 'pointer' }}
@@ -3104,40 +3152,47 @@ function App() {
                               </div>
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                                  {prospect.commercialStrengthStars || '★★★☆☆'}
-                                </span>
-                                <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
-                                  {prospect.commercialStrengthLabel || 'Good Lead'}
-                                </span>
-                              </div>
-                            </td>
-                            <td>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                 {prospect.contactEmail ? (
                                   <span style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>
                                     {prospect.contactEmail}
                                   </span>
                                 ) : (
-                                  <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                  <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
                                     No email found
                                   </span>
                                 )}
 
                                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                                  <span style={{
-                                    fontSize: '0.75rem',
-                                    fontWeight: 'bold',
-                                    borderRadius: '4px',
-                                    padding: '0.1rem 0.4rem',
-                                    backgroundColor: prospect.emailStatus === 'Found' ? 'rgba(16, 185, 129, 0.2)' : (prospect.emailStatus === 'Multiple Found' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)'),
-                                    color: prospect.emailStatus === 'Found' ? '#10b981' : (prospect.emailStatus === 'Multiple Found' ? '#60a5fa' : '#ef4444')
-                                  }}>
-                                    {prospect.emailStatus || 'Not Found'}
-                                  </span>
+                                  {isSearchingThis ? (
+                                    <span style={{
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold',
+                                      borderRadius: '4px',
+                                      padding: '0.15rem 0.5rem',
+                                      backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                                      color: '#38bdf8',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem'
+                                    }}>
+                                      <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#38bdf8' }}></span>
+                                      Finding Emails...
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold',
+                                      borderRadius: '4px',
+                                      padding: '0.1rem 0.4rem',
+                                      backgroundColor: prospect.emailStatus === 'Found' ? 'rgba(16, 185, 129, 0.2)' : (prospect.emailStatus === 'Multiple Found' ? 'rgba(59, 130, 246, 0.2)' : (prospect.emailStatus === 'Search Failed' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(100, 116, 139, 0.2)')),
+                                      color: prospect.emailStatus === 'Found' ? '#10b981' : (prospect.emailStatus === 'Multiple Found' ? '#60a5fa' : (prospect.emailStatus === 'Search Failed' ? '#ef4444' : '#94a3b8'))
+                                    }}>
+                                      {prospect.emailStatus === 'Found' ? '✓ Found' : (prospect.emailStatus === 'Multiple Found' ? `Multiple Found (${prospect.allFoundEmails?.length || 0})` : (prospect.emailStatus === 'Search Failed' ? '⚠️ Search Failed' : 'No Email Found'))}
+                                    </span>
+                                  )}
 
-                                  {prospect.allFoundEmails?.length > 1 && (
+                                  {!isSearchingThis && prospect.allFoundEmails?.length > 1 && (
                                     <select
                                       value={prospect.contactEmail || ''}
                                       onChange={(e) => {
@@ -3207,11 +3262,19 @@ function App() {
                             <td className="action-cell">
                               <button
                                 onClick={() => handleFindContactsForPack(activePack.packId, [prospect])}
+                                disabled={isSearchingThis}
                                 className="table-btn"
-                                style={{ backgroundColor: '#0284c7', padding: '0.35rem 0.6rem', fontSize: '0.8rem', marginRight: '6px' }}
-                                title="Re-scan website for emails"
+                                style={{
+                                  backgroundColor: prospect.emailStatus === 'Search Failed' ? '#dc2626' : '#0284c7',
+                                  padding: '0.35rem 0.6rem',
+                                  fontSize: '0.8rem',
+                                  marginRight: '6px',
+                                  opacity: isSearchingThis ? 0.6 : 1,
+                                  cursor: isSearchingThis ? 'wait' : 'pointer'
+                                }}
+                                title="Scan website for emails"
                               >
-                                Find Email
+                                {isSearchingThis ? 'Finding...' : (prospect.emailStatus === 'Search Failed' ? 'Retry Find' : 'Find Email')}
                               </button>
                               <button
                                 onClick={() => {
