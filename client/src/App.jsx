@@ -332,6 +332,42 @@ function App() {
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [previewRecipientIndex, setPreviewRecipientIndex] = useState(0);
 
+  const openTemplateModal = () => {
+    if (!activePack) return;
+    const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
+    const firstLoc = activePack.prospects?.[0]?.location || '';
+    const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+
+    const subject = (activePack.templateSubject && activePack.templateSubject.trim())
+      ? activePack.templateSubject
+      : defaultTpl.subject;
+    const body = (activePack.templateBody && activePack.templateBody.trim())
+      ? stripLeadingGreeting(activePack.templateBody)
+      : stripLeadingGreeting(defaultTpl.body);
+
+    setEditingTemplateSubject(subject);
+    setEditingTemplateBody(body);
+    setIsTemplateModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (isTemplateModalOpen && activePack) {
+      const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
+      const firstLoc = activePack.prospects?.[0]?.location || '';
+      const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+
+      const subject = (activePack.templateSubject && activePack.templateSubject.trim())
+        ? activePack.templateSubject
+        : defaultTpl.subject;
+      const body = (activePack.templateBody && activePack.templateBody.trim())
+        ? stripLeadingGreeting(activePack.templateBody)
+        : stripLeadingGreeting(defaultTpl.body);
+
+      setEditingTemplateSubject(subject);
+      setEditingTemplateBody(body);
+    }
+  }, [isTemplateModalOpen, activePack?.templateSubject, activePack?.templateBody]);
+
   const getSelectedRecipientsList = () => {
     if (!activePack) return [];
     const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
@@ -732,6 +768,20 @@ function App() {
       }
     } catch (e) {
       console.error("Error creating outreach pack:", e);
+    }
+  };
+
+  const handleOpenPack = async (pack) => {
+    setActivePack(pack);
+    setOutreachSubView('pack-detail');
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(pack.packId || pack.id)}`);
+      if (res.ok) {
+        const fullPack = await res.json();
+        setActivePack(fullPack);
+      }
+    } catch (err) {
+      console.error("Error loading full pack details:", err);
     }
   };
 
@@ -3063,10 +3113,7 @@ function App() {
                           <tr key={pack.packId || pack.id}>
                             <td>
                               <button
-                                onClick={() => {
-                                  setActivePack(pack);
-                                  setOutreachSubView('pack-detail');
-                                }}
+                                onClick={() => handleOpenPack(pack)}
                                 className="table-btn"
                                 style={{
                                   backgroundColor: '#1e293b',
@@ -3103,10 +3150,7 @@ function App() {
                             </td>
                             <td className="action-cell">
                               <button
-                                onClick={() => {
-                                  setActivePack(pack);
-                                  setOutreachSubView('pack-detail');
-                                }}
+                                onClick={() => handleOpenPack(pack)}
                                 className="analyse-btn-green"
                                 style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
                               >
@@ -3129,56 +3173,67 @@ function App() {
               </div>
             )}
 
-            {/* Sub-view 3: Inside Outreach Pack Detail */}
+            {/* Outreach Subview: Pack Detail */}
             {outreachSubView === 'pack-detail' && activePack && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                {/* Pack Header Card */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {/* Pack Detail Header Card */}
                 <div style={{
                   backgroundColor: '#0f172a',
-                  padding: '1.5rem',
-                  borderRadius: '8px',
                   border: '1px solid #334155',
+                  borderRadius: '8px',
+                  padding: '1.5rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '1.25rem'
+                  gap: '1rem'
                 }}>
-                  {/* Title row */}
+                  {/* Row 1: Back + Pack Badge + Pack Name */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => {
                         setOutreachSubView('packs');
-                        setActivePack(null);
+                        setSelectedProspectIdsInPack(new Set());
                       }}
                       className="table-btn"
-                      style={{ backgroundColor: '#334155', color: '#f8fafc', padding: '0.45rem 0.9rem', fontSize: '0.9rem' }}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #475569',
+                        color: '#cbd5e1',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
                     >
                       &larr; Back to Packs
                     </button>
                     <span style={{
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      padding: '0.3rem 0.8rem',
+                      backgroundColor: 'rgba(59, 130, 246, 0.25)',
+                      color: '#60a5fa',
+                      border: '1px solid #3b82f6',
+                      padding: '0.4rem 0.9rem',
                       borderRadius: '6px',
                       fontWeight: 'bold',
                       fontSize: '1rem'
                     }}>
-                      Pack {activePack.packId} ({activePack.prospects?.length || 0})
+                      Pack {activePack.packId} ({activePack.prospectsCount || activePack.prospects?.length || 0})
                     </span>
-                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>
+                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem', fontWeight: 'bold' }}>
                       {activePack.name}
                     </h2>
                   </div>
 
-                  {/* Pack Metadata */}
-                  <div style={{
-                    display: 'flex',
-                    gap: '1.75rem',
-                    fontSize: '0.85rem',
-                    color: '#cbd5e1'
-                  }}>
-                    <div><span style={{ color: '#94a3b8' }}>Created:</span> {formatLastAnalysed(activePack.createdAt)}</div>
-                    <div><span style={{ color: '#94a3b8' }}>Prospects:</span> <strong>{activePack.prospects?.length || 0}</strong></div>
-                    <div><span style={{ color: '#94a3b8' }}>Sent Date:</span> {activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not sent yet'}</div>
+                  {/* Row 2: Metadata */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', color: '#94a3b8', fontSize: '0.875rem', flexWrap: 'wrap' }}>
+                    <div>
+                      Created: <span style={{ color: '#cbd5e1' }}>{formatLastAnalysed(activePack.createdAt)}</span>
+                    </div>
+                    <div>
+                      Prospects: <span style={{ color: '#cbd5e1', fontWeight: 'bold' }}>{activePack.prospectsCount || activePack.prospects?.length || 0}</span>
+                    </div>
+                    <div>
+                      Sent Date: <span style={{ color: activePack.sentAt ? '#10b981' : '#cbd5e1' }}>{activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not Sent'}</span>
+                    </div>
                   </div>
 
                   {/* Single Pack Email Template Control */}
@@ -3201,14 +3256,7 @@ function App() {
                       </span>
                     </div>
                     <button
-                      onClick={() => {
-                        const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
-                        const firstLoc = activePack.prospects?.[0]?.location || '';
-                        const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
-                        setEditingTemplateSubject(activePack.templateSubject || defaultTpl.subject);
-                        setEditingTemplateBody(stripLeadingGreeting(activePack.templateBody || defaultTpl.body));
-                        setIsTemplateModalOpen(true);
-                      }}
+                      onClick={openTemplateModal}
                       className="table-btn"
                       style={{
                         backgroundColor: '#2563eb',
@@ -3873,7 +3921,7 @@ function App() {
                         <button
                           onClick={() => {
                             setIsPreviewModalOpen(false);
-                            setIsTemplateModalOpen(true);
+                            openTemplateModal();
                           }}
                           className="table-btn"
                           style={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#cbd5e1' }}
