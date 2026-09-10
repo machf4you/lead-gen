@@ -178,7 +178,24 @@ const isDomainMatch = (email, prospectDomain) => {
   if (atIndex === -1) return false;
   const emailDomain = email.substring(atIndex + 1).toLowerCase().trim();
   const cleanProspectDomain = normalizeDomain(prospectDomain).toLowerCase().trim();
-  return emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain);
+  
+  if (emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain)) {
+    return true;
+  }
+  
+  // Stem match (e.g. astonlily vs astonlilyshutters)
+  const prospectStem = cleanProspectDomain.split('.')[0].replace(/[^a-z0-9]/gi, '');
+  const emailStem = emailDomain.split('.')[0].replace(/[^a-z0-9]/gi, '');
+  if (prospectStem.length >= 4 && emailStem.length >= 4) {
+    if (emailStem.includes(prospectStem) || prospectStem.includes(emailStem)) {
+      const blockedAgencies = ['jaedigital.co.uk', 'wordpress.org', 'wixpress.com', 'squarespace.com', 'shopify.com'];
+      if (!blockedAgencies.some(b => emailDomain === b || emailDomain.endsWith('.' + b))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 };
 
 const deriveFirstName = (email) => {
@@ -331,6 +348,8 @@ function App() {
   const [sendErrorMsg, setSendErrorMsg] = useState(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [previewRecipientIndex, setPreviewRecipientIndex] = useState(0);
+  const [editingProspectId, setEditingProspectId] = useState(null);
+  const [editingEmailValue, setEditingEmailValue] = useState('');
 
   const openTemplateModal = () => {
     if (!activePack) return;
@@ -373,18 +392,16 @@ function App() {
     const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
     const recipients = [];
     selectedProspects.forEach(p => {
-      const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
-        .filter(em => isDomainMatch(em, p.domain));
-      if (emails.length > 0) {
-        emails.forEach(em => {
-          recipients.push({
-            prospect: p,
-            domain: p.domain,
-            email: em,
-            subject: renderTemplate(activePack.templateSubject, p, em),
-            body: renderFullEmailBody(activePack.templateBody, p, em),
-            greeting: deriveGreeting(em, p)
-          });
+      // If contactEmail is manually entered/saved, use it directly; otherwise look up matching domain email
+      const email = p.contactEmail || (p.allFoundEmails?.find(em => isDomainMatch(em, p.domain))) || null;
+      if (email) {
+        recipients.push({
+          prospect: p,
+          domain: p.domain,
+          email: email,
+          subject: renderTemplate(activePack.templateSubject, p, email),
+          body: renderFullEmailBody(activePack.templateBody, p, email),
+          greeting: deriveGreeting(email, p)
         });
       } else {
         recipients.push({
@@ -889,6 +906,31 @@ function App() {
     }
   };
 
+  const handleSaveProspectEmail = async (packId, prospectKey, newEmail) => {
+    const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
+    if (!currentPack) return;
+    const cleanEmail = (newEmail || '').trim();
+    const hasEmail = Boolean(cleanEmail);
+    const updatedProspects = (currentPack.prospects || []).map(p => {
+      const pKey = p.id || p.domain;
+      if (pKey === prospectKey) {
+        return {
+          ...p,
+          contactEmail: cleanEmail || null,
+          allFoundEmails: cleanEmail ? (p.allFoundEmails?.includes(cleanEmail) ? p.allFoundEmails : [cleanEmail, ...(p.allFoundEmails || [])]) : (p.allFoundEmails || []),
+          manualEmail: hasEmail,
+          emailStatus: hasEmail ? 'Email Found' : 'No Email',
+          sendStatus: p.sendStatus === 'Sent' ? 'Sent' : (hasEmail ? 'Email Found' : 'No Email')
+        };
+      }
+      return p;
+    });
+
+    setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+    await handleUpdatePack(packId, { prospects: updatedProspects });
+    setEditingProspectId(null);
+  };
+
   const handleFindContactsForPack = async (packId, prospectsToSearch) => {
     if (!packId || !prospectsToSearch || prospectsToSearch.length === 0) return;
     setIsFindingContacts(true);
@@ -916,14 +958,17 @@ function App() {
           const contactInfo = await res.json();
           updatedProspects = updatedProspects.map(p => {
             if (p.id === prospect.id || p.domain === prospect.domain) {
-              const newStatus = contactInfo.contactEmail ? 'Email Found' : 'No Email';
+              const isManual = Boolean(p.manualEmail && p.contactEmail);
+              const finalEmail = isManual ? p.contactEmail : (contactInfo.contactEmail || null);
+              const newStatus = finalEmail ? 'Email Found' : 'No Email';
               return {
                 ...p,
-                contactEmail: contactInfo.contactEmail || null,
-                emailStatus: contactInfo.status || 'No Email',
-                allFoundEmails: contactInfo.allFoundEmails || [],
-                emailSource: contactInfo.emailSource || null,
-                sendStatus: newStatus
+                contactEmail: finalEmail,
+                manualEmail: isManual,
+                emailStatus: isManual ? 'Email Found' : (contactInfo.status || 'No Email'),
+                allFoundEmails: contactInfo.allFoundEmails || (finalEmail ? [finalEmail] : []),
+                emailSource: isManual ? p.emailSource : (contactInfo.emailSource || null),
+                sendStatus: p.sendStatus === 'Sent' ? 'Sent' : newStatus
               };
             }
             return p;
@@ -932,6 +977,7 @@ function App() {
         } else {
           updatedProspects = updatedProspects.map(p => {
             if (p.id === prospect.id || p.domain === prospect.domain) {
+              if (p.manualEmail && p.contactEmail) return p;
               return {
                 ...p,
                 emailStatus: 'Search Failed'
@@ -945,6 +991,7 @@ function App() {
         console.error("Error finding contact for", prospect.domain, err);
         updatedProspects = updatedProspects.map(p => {
           if (p.id === prospect.id || p.domain === prospect.domain) {
+            if (p.manualEmail && p.contactEmail) return p;
             return {
               ...p,
               emailStatus: 'Search Failed'
@@ -2829,40 +2876,45 @@ function App() {
             {outreachSubView !== 'pack-detail' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: '#1e293b', padding: '1rem 1.5rem', borderRadius: '8px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('shortlist');
-                      setActivePack(null);
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'shortlist' ? '#2563eb' : '#0f172a',
-                      border: '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      padding: '0.6rem 1.25rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Shortlisted Prospects ({outreachList.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('packs');
-                      setActivePack(null);
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'packs' ? '#2563eb' : '#0f172a',
-                      border: '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      padding: '0.6rem 1.25rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Outreach Packs ({outreachPacks.length})
-                  </button>
+                  {outreachSubView === 'packs' ? (
+                    <button
+                      onClick={() => {
+                        setOutreachSubView('shortlist');
+                        setActivePack(null);
+                      }}
+                      className="table-btn"
+                      style={{
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #475569',
+                        color: '#cbd5e1',
+                        padding: '0.6rem 1.25rem',
+                        fontSize: '0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      &larr; Back to Shortlist
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setOutreachSubView('packs');
+                        setActivePack(null);
+                      }}
+                      className="table-btn"
+                      style={{
+                        backgroundColor: '#0f172a',
+                        border: '1px solid #334155',
+                        color: '#ffffff',
+                        fontWeight: 'bold',
+                        padding: '0.6rem 1.25rem',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      Outreach Packs ({outreachPacks.length})
+                    </button>
+                  )}
                 </div>
 
                 {outreachSubView === 'shortlist' && (
@@ -2949,7 +3001,7 @@ function App() {
                             style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                           />
                         </th>
-                        <th>Business / Domain</th>
+                        <th>Domain</th>
                         <th>Pack Status</th>
                         <th>Search ID</th>
                         <th>Search Phrase</th>
@@ -3009,11 +3061,6 @@ function App() {
                                     <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
                                   )}
                                 </div>
-                                {item.businessName && item.businessName !== item.domain && (
-                                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                                    {item.businessName}
-                                  </div>
-                                )}
                               </td>
                               <td>
                                 {assignedPack ? (
@@ -3538,19 +3585,90 @@ function App() {
                                 )}
                               </div>
                             </td>
-                            <td>
-                              {emailsList.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                  {emailsList.map((em, eIdx) => (
-                                    <span key={eIdx} style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>
-                                      {em}
-                                    </span>
-                                  ))}
+                            <td style={{ minWidth: '220px' }}>
+                              {editingProspectId === prospectKey ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <input
+                                    type="email"
+                                    value={editingEmailValue}
+                                    onChange={(e) => setEditingEmailValue(e.target.value)}
+                                    placeholder="e.g. hello@domain.co.uk"
+                                    style={{
+                                      backgroundColor: '#0f172a',
+                                      color: '#ffffff',
+                                      border: '1px solid #3b82f6',
+                                      borderRadius: '4px',
+                                      padding: '0.25rem 0.5rem',
+                                      fontSize: '0.85rem',
+                                      width: '180px'
+                                    }}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveProspectEmail(activePack.packId, prospectKey, editingEmailValue);
+                                      if (e.key === 'Escape') setEditingProspectId(null);
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => handleSaveProspectEmail(activePack.packId, prospectKey, editingEmailValue)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.25rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                    title="Save Email"
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingProspectId(null)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                                    title="Cancel"
+                                  >
+                                    ✕
+                                  </button>
                                 </div>
                               ) : (
-                                <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
-                                  No email found
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                  <div>
+                                    {prospect.contactEmail ? (
+                                      <span style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>
+                                        {prospect.contactEmail}
+                                      </span>
+                                    ) : emailsList.length > 0 ? (
+                                      <span style={{ fontWeight: 'bold', color: '#38bdf8', fontSize: '0.9rem' }}>
+                                        {emailsList[0]}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                        No email found
+                                      </span>
+                                    )}
+                                    {prospect.manualEmail && (
+                                      <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#34d399', backgroundColor: 'rgba(52, 211, 153, 0.1)', padding: '0.1rem 0.35rem', borderRadius: '3px' }} title="Manually saved contact email">
+                                        Manual
+                                      </span>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setEditingProspectId(prospectKey);
+                                      setEditingEmailValue(prospect.contactEmail || emailsList[0] || '');
+                                    }}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#94a3b8',
+                                      cursor: 'pointer',
+                                      fontSize: '0.9rem',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      transition: 'color 0.2s'
+                                    }}
+                                    title="Edit contact email"
+                                    onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                                  >
+                                    ✏️
+                                  </button>
+                                </div>
                               )}
                             </td>
                             <td>

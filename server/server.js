@@ -1530,19 +1530,21 @@ async function crawlProspectContactEmails(targetUrl) {
         clearTimeout(timeoutId);
         if (res.ok) {
           const html = await res.text();
-          if (html && html.length > 200) {
+          const isSpa = html.includes('id="root"') || html.includes('id="app"') || html.includes('You need to enable JavaScript');
+          if (html && html.length > 200 && !isSpa) {
             return { html, finalUrl: res.url };
           }
         }
       } catch (e) {}
     }
 
-    // Fallback to Puppeteer if standard fetch was blocked (e.g. Cloudflare / WAF)
+    // Fallback to Puppeteer for dynamic / SPA / protected sites
     try {
       const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
       const page = await browser.newPage();
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await new Promise(r => setTimeout(r, 1000));
       const html = await page.content();
       const finalUrl = page.url();
       await browser.close();
@@ -1598,7 +1600,7 @@ async function crawlProspectContactEmails(targetUrl) {
   }
 
   // 2. Fetch top contact pages if found
-  for (const contactUrl of contactLinks.slice(0, 3)) {
+  for (const contactUrl of contactLinks.slice(0, 4)) {
     const contactResult = await fetchPage(contactUrl);
     if (contactResult?.html) {
       const contactEmails = extractEmailsFromHtml(contactResult.html, baseDomain);
@@ -1610,16 +1612,16 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  // Filter only emails whose domain matches the prospect's own website domain or subdomain
+  // Filter only emails whose domain matches the prospect's own website domain or legitimate related domain/subdomain
   const domainFilteredEmails = Array.from(allEmails).filter(e => isDomainMatch(e, baseDomain));
 
   // Pick preferred email: prioritize matching domain with priority prefixes, then any matching domain prefix
-  const priorityPrefixes = ['hello@', 'info@', 'enquiries@', 'contact@', 'sales@', 'office@', 'admin@', 'team@'];
+  const priorityPrefixes = ['hello@', 'info@', 'enquiries@', 'enquiry@', 'contact@', 'sales@', 'office@', 'admin@', 'team@'];
   let preferredEmail = null;
 
   if (domainFilteredEmails.length > 0) {
     // 1. Same domain + priority prefix
-    preferredEmail = domainFilteredEmails.find(e => e.endsWith('@' + baseDomain) && priorityPrefixes.some(p => e.startsWith(p)));
+    preferredEmail = domainFilteredEmails.find(e => (e.endsWith('@' + baseDomain) || isDomainMatch(e, baseDomain)) && priorityPrefixes.some(p => e.startsWith(p)));
     // 2. Same domain any prefix
     if (!preferredEmail) {
       preferredEmail = domainFilteredEmails.find(e => e.endsWith('@' + baseDomain));
@@ -1656,7 +1658,24 @@ function isDomainMatch(email, prospectDomain) {
   if (atIndex === -1) return false;
   const emailDomain = email.substring(atIndex + 1).toLowerCase().trim();
   const cleanProspectDomain = normalizeDomain(prospectDomain).toLowerCase().trim();
-  return emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain);
+  
+  if (emailDomain === cleanProspectDomain || emailDomain.endsWith('.' + cleanProspectDomain)) {
+    return true;
+  }
+  
+  // Stem match (e.g. astonlily vs astonlilyshutters)
+  const prospectStem = cleanProspectDomain.split('.')[0].replace(/[^a-z0-9]/gi, '');
+  const emailStem = emailDomain.split('.')[0].replace(/[^a-z0-9]/gi, '');
+  if (prospectStem.length >= 4 && emailStem.length >= 4) {
+    if (emailStem.includes(prospectStem) || prospectStem.includes(emailStem)) {
+      const blockedAgencies = ['jaedigital.co.uk', 'wordpress.org', 'wixpress.com', 'squarespace.com', 'shopify.com'];
+      if (!blockedAgencies.some(b => emailDomain === b || emailDomain.endsWith('.' + b))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function deriveFirstName(email) {
