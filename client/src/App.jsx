@@ -228,6 +228,41 @@ function App() {
   const [isCreatingMilestone, setIsCreatingMilestone] = useState(false)
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [deployedCommit, setDeployedCommit] = useState(null)
+
+  useEffect(() => {
+    let initialHash = null;
+
+    const checkVersion = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/version?t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          const currentHash = data.commit_hash || data.build_time;
+          if (currentHash && currentHash !== 'unknown' && currentHash !== 'dev') {
+            if (!initialHash) {
+              initialHash = currentHash;
+            } else if (currentHash !== initialHash) {
+              setDeployedCommit(data.commit_hash ? data.commit_hash.slice(0, 7) : null);
+              setUpdateAvailable(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Version check error:', err);
+      }
+    };
+
+    checkVersion();
+    const interval = setInterval(checkVersion, 20000); // Check every 20s
+    window.addEventListener('focus', checkVersion);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkVersion);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeAnalysisItem) {
@@ -1230,7 +1265,52 @@ function App() {
   };
 
   return (
-    <div className="app-container">
+    <>
+      {updateAvailable && (
+        <div style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 99999,
+          background: 'linear-gradient(90deg, #9a3412 0%, #ea580c 50%, #c2410c 100%)',
+          color: '#ffffff',
+          padding: '0.85rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+          borderBottom: '2px solid #f97316'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', fontSize: '0.95rem', fontWeight: '600' }}>
+            <span style={{ fontSize: '1.35rem' }}>⚡</span>
+            <span>
+              <strong>NEW UPDATE DEPLOYED:</strong> A new version {deployedCommit ? `(${deployedCommit})` : ''} is live. Please refresh your browser to load the latest Lead Generator features.
+            </span>
+          </div>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              backgroundColor: '#ffffff',
+              color: '#9a3412',
+              border: 'none',
+              padding: '0.55rem 1.4rem',
+              borderRadius: '6px',
+              fontWeight: '800',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>REFRESH NOW</span>
+            <span style={{ opacity: 0.7, fontSize: '0.8rem', fontWeight: 'normal' }}>(Ctrl+F5)</span>
+          </button>
+        </div>
+      )}
+
+      <div className="app-container">
       
       {/* Sidebar Navigation */}
       <div className="sidebar">
@@ -2297,6 +2377,7 @@ function App() {
       </div>
 
     </div>
+    </>
   )
 }
 

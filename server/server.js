@@ -91,6 +91,24 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// API version endpoint
+app.get('/api/version', async (req, res) => {
+  try {
+    const candidatePaths = [
+      path.join(__dirname, '..', 'version.json'),
+      path.join(process.cwd(), 'version.json'),
+      path.join(__dirname, 'version.json')
+    ];
+    for (const p of candidatePaths) {
+      try {
+        const data = await fs.readFile(p, 'utf8');
+        return res.json(JSON.parse(data));
+      } catch (e) {}
+    }
+  } catch (err) {}
+  res.json({ id: 'tse_lead_gen', commit_hash: 'unknown', build_time: null });
+});
+
 // POST search endpoint (DataForSEO Integration)
 app.post('/api/search', async (req, res) => {
   const login = process.env.DATAFORSEO_LOGIN;
