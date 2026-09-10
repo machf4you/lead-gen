@@ -711,6 +711,10 @@ app.post('/api/analyse', async (req, res) => {
 
     clearTimeout(id);
 
+    if (response.status >= 400) {
+      throw new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
+    }
+
     let httpStatus = `${response.status} ${response.statusText || ''}`.trim();
     const contentType = response.headers.get('content-type') || '';
     
@@ -890,10 +894,12 @@ app.post('/api/analyse', async (req, res) => {
     let statusText = 'Connection Error';
     if (error.name === 'AbortError' || error.message?.includes('aborted')) {
       statusText = 'Timeout';
+    } else if (error.message?.startsWith('HTTP ')) {
+      statusText = error.message.replace(/^HTTP\s+/, '');
     }
     const fallbackHealth = {
       isHttps: targetUrl.startsWith('https://'),
-      statusCode: 0,
+      statusCode: statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 0 : 0,
       indexable: false,
       hasCanonical: false,
       titlePresent: false,
@@ -910,9 +916,6 @@ app.post('/api/analyse', async (req, res) => {
       externalLinksCount: 0
     };
     const gbp = await performGbpMatching(targetUrl, '', '', '', location);
-    const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank);
-    const leadPriority = getPriorityRating(fallbackHealth, gbp, rank);
-    const fallbackOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, targetUrl);
 
     return res.json({
       pageTitle: 'Not Found',
@@ -924,11 +927,37 @@ app.post('/api/analyse', async (req, res) => {
       lastAnalysed: new Date().toISOString(),
       error: `Could not fetch website: ${error.message}`,
       seoHealth: fallbackHealth,
-      aiReport: generateAIReport(fallbackHealth),
-      leadOpportunity: fallbackOpportunity,
+      aiReport: {
+        execSummary: `Website analysis failed (${statusText}). Technical metrics could not be gathered.`,
+        opportunities: [`Unable to inspect ${targetUrl} due to connection failure or security restrictions.`]
+      },
+      leadOpportunity: {
+        rank: rank || 'Not available',
+        gbpDetected: gbp?.status === 'Found' ? 'Yes' : (gbp?.status === 'Multiple Matches' ? 'Multiple' : 'No'),
+        titlePresent: 'N/A',
+        descriptionPresent: 'N/A',
+        h1Present: 'N/A',
+        pageType: 'Homepage',
+        overallOpportunity: 'N/A',
+        reasonToContact: `Unable to access website: ${statusText}.`,
+        suggestedEmailAngle: 'Reach out to check if their website server is experiencing downtime.'
+      },
       gbp: gbp,
-      leadOpportunityScore: leadScore,
-      leadPriority: leadPriority
+      leadOpportunityScore: {
+        score: null,
+        band: 'N/A',
+        reasons: [
+          `Website analysis failed (${statusText})`,
+          "Technical SEO signals could not be gathered due to connection or accessibility failure",
+          "No artificial score is assigned to inaccessible websites"
+        ]
+      },
+      leadPriority: {
+        stars: '☆☆☆☆☆',
+        label: 'Analysis Failed',
+        explanation: `Unable to inspect website due to ${statusText}. Analysis can be retried.`,
+        points: 0
+      }
     });
   }
 });

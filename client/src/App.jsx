@@ -829,31 +829,29 @@ function App() {
         leadOpportunity: {
           rank: isOrganic ? (item.rank || 'Not available') : 'Not available',
           gbpDetected: isOrganic ? 'Unknown' : 'Yes',
-          titlePresent: 'Missing',
-          descriptionPresent: 'Missing',
-          h1Present: 'Missing',
+          titlePresent: 'N/A',
+          descriptionPresent: 'N/A',
+          h1Present: 'N/A',
           pageType: 'Homepage',
-          overallOpportunity: 'High',
+          overallOpportunity: 'N/A',
           reasonToContact: 'Connection error while attempting to analyze site.',
           suggestedEmailAngle: 'Reach out to check if their website server is experiencing downtime.'
         },
         gbp: null,
         leadOpportunityScore: {
-          score: 85,
-          band: 'Very High',
+          score: null,
+          band: 'N/A',
           reasons: [
             "Website connection failed or timed out",
-            "Page is blocked from indexation by noindex tags",
-            "First H1 heading tag is missing",
-            "HTML meta title tag is missing",
-            "HTML meta description tag is missing"
+            "Technical SEO signals could not be gathered due to connection failure",
+            "No artificial score is assigned to inaccessible websites"
           ]
         },
         leadPriority: {
-          stars: '★☆☆☆☆',
-          label: 'Poor Fit',
-          explanation: "Due to a website connection timeout or loading error, this business is currently classified as a poor fit for premium digital services.",
-          points: 5
+          stars: '☆☆☆☆☆',
+          label: 'Analysis Failed',
+          explanation: "Due to a website connection timeout or loading error, this site could not be analysed.",
+          points: 0
         }
       };
       updateItemAnalysis(itemKey, failedAnalysis, targetSearchId);
@@ -904,7 +902,7 @@ function App() {
     const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
     const itemKey = isOrganic ? item.url : (item.website || item.name);
 
-    if (item.analysis) {
+    if (item.analysis && item.analysis.leadOpportunityScore?.score !== null) {
       const analysisObj = {
         ...item.analysis,
         domain,
@@ -1602,17 +1600,23 @@ function App() {
                               <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
                               <td>
                                 {item.analysis ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                    <span style={{ 
-                                      color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
-                                      marginRight: '6px',
-                                      fontSize: '1.1rem',
-                                      lineHeight: '1'
-                                    }}>●</span>
-                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                      {item.analysis.leadOpportunityScore?.score ?? 0}
+                                  item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                      <span style={{ 
+                                        color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
+                                        marginRight: '6px',
+                                        fontSize: '1.1rem',
+                                        lineHeight: '1'
+                                      }}>●</span>
+                                      <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                        {item.analysis.leadOpportunityScore?.score}
+                                      </span>
                                     </span>
-                                  </span>
+                                  ) : (
+                                    <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                      N/A (Failed)
+                                    </span>
+                                  )
                                 ) : (
                                   <span style={{ color: '#64748b' }}>-</span>
                                 )}
@@ -1636,7 +1640,7 @@ function App() {
                                   className="analyse-btn-green" 
                                   style={{ marginRight: '8px' }}
                                 >
-                                  {item.analysis ? 'View' : 'Analyse'}
+                                  {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
                                 <button 
                                   onClick={() => handleExcludeDomain(item.domain || item.url)}
@@ -1664,17 +1668,23 @@ function App() {
                               </td>
                               <td>
                                 {item.analysis ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                    <span style={{ 
-                                      color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
-                                      marginRight: '6px',
-                                      fontSize: '1.1rem',
-                                      lineHeight: '1'
-                                    }}>●</span>
-                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                      {item.analysis.leadOpportunityScore?.score ?? 0}
+                                  item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                      <span style={{ 
+                                        color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
+                                        marginRight: '6px',
+                                        fontSize: '1.1rem',
+                                        lineHeight: '1'
+                                      }}>●</span>
+                                      <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                        {item.analysis.leadOpportunityScore?.score}
+                                      </span>
                                     </span>
-                                  </span>
+                                  ) : (
+                                    <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                      N/A (Failed)
+                                    </span>
+                                  )
                                 ) : (
                                   <span style={{ color: '#64748b' }}>-</span>
                                 )}
@@ -1697,7 +1707,7 @@ function App() {
                                   className="analyse-btn-green" 
                                   style={{ marginRight: '8px' }}
                                 >
-                                  {item.analysis ? 'View' : 'Analyse'}
+                                  {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
                                 <button 
                                   onClick={() => handleExcludeDomain(domain || item.website)}
@@ -2174,20 +2184,41 @@ function App() {
               <div className="analysis-section" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <h3>Lead Opportunity Score</h3>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.25rem 0' }}>
-                  <span style={{ fontSize: '4.5rem', fontWeight: '800', color: activeAnalysisItem.leadOpportunityScore?.score >= 80 ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.score >= 60 ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.score >= 30 ? '#3b82f6' : '#10b981')), lineHeight: '1' }}>
-                    {activeAnalysisItem.leadOpportunityScore?.score ?? 0}
-                  </span>
-                  <span style={{ 
-                    marginTop: '0.75rem',
-                    fontWeight: 'bold', 
-                    fontSize: '1.05rem',
-                    padding: '0.25rem 0.75rem', 
-                    borderRadius: '20px', 
-                    backgroundColor: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? 'rgba(239, 68, 68, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? 'rgba(245, 158, 11, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.2)')),
-                    color: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? '#3b82f6' : '#10b981'))
-                  }}>
-                    {activeAnalysisItem.leadOpportunityScore?.band || 'Low'} Opportunity
-                  </span>
+                  {activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined ? (
+                    <>
+                      <span style={{ fontSize: '4.5rem', fontWeight: '800', color: activeAnalysisItem.leadOpportunityScore?.score >= 80 ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.score >= 60 ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.score >= 30 ? '#3b82f6' : '#10b981')), lineHeight: '1' }}>
+                        {activeAnalysisItem.leadOpportunityScore.score}
+                      </span>
+                      <span style={{ 
+                        marginTop: '0.75rem',
+                        fontWeight: 'bold', 
+                        fontSize: '1.05rem',
+                        padding: '0.25rem 0.75rem', 
+                        borderRadius: '20px', 
+                        backgroundColor: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? 'rgba(239, 68, 68, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? 'rgba(245, 158, 11, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.2)')),
+                        color: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? '#3b82f6' : '#10b981'))
+                      }}>
+                        {activeAnalysisItem.leadOpportunityScore?.band || 'Low'} Opportunity
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: '#ef4444', lineHeight: '1' }}>
+                        N/A
+                      </span>
+                      <span style={{ 
+                        marginTop: '0.75rem',
+                        fontWeight: 'bold', 
+                        fontSize: '1.05rem',
+                        padding: '0.25rem 0.75rem', 
+                        borderRadius: '20px', 
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        color: '#ef4444'
+                      }}>
+                        Analysis Failed
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
