@@ -312,6 +312,40 @@ function App() {
   const [isSendConfirmModalOpen, setIsSendConfirmModalOpen] = useState(false);
   const [isSendingPack, setIsSendingPack] = useState(false);
   const [sendErrorMsg, setSendErrorMsg] = useState(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [previewRecipientIndex, setPreviewRecipientIndex] = useState(0);
+
+  const getSelectedRecipientsList = () => {
+    if (!activePack) return [];
+    const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
+    const recipients = [];
+    selectedProspects.forEach(p => {
+      const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
+        .filter(em => isDomainMatch(em, p.domain));
+      if (emails.length > 0) {
+        emails.forEach(em => {
+          recipients.push({
+            prospect: p,
+            domain: p.domain,
+            email: em,
+            subject: renderTemplate(activePack.templateSubject, p, em),
+            body: renderTemplate(activePack.templateBody, p, em),
+            greeting: deriveGreeting(em, p)
+          });
+        });
+      } else {
+        recipients.push({
+          prospect: p,
+          domain: p.domain,
+          email: null,
+          subject: renderTemplate(activePack.templateSubject, p, null),
+          body: renderTemplate(activePack.templateBody, p, null),
+          greeting: deriveGreeting(null, p)
+        });
+      }
+    });
+    return recipients;
+  };
 
   const fetchSenderStatus = async () => {
     try {
@@ -3199,7 +3233,27 @@ function App() {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <button
+                      onClick={() => {
+                        setPreviewRecipientIndex(0);
+                        setIsPreviewModalOpen(true);
+                      }}
+                      disabled={selectedProspectIdsInPack.size === 0}
+                      className="table-btn"
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        fontSize: '0.95rem',
+                        fontWeight: 'bold',
+                        backgroundColor: '#0284c7',
+                        color: '#ffffff',
+                        opacity: selectedProspectIdsInPack.size === 0 ? 0.5 : 1,
+                        cursor: selectedProspectIdsInPack.size === 0 ? 'not-allowed' : 'pointer'
+                      }}
+                      title={selectedProspectIdsInPack.size === 0 ? "Select at least one prospect to preview" : `Preview rendered emails for ${selectedProspectIdsInPack.size} selected prospects`}
+                    >
+                      👁️ Preview Emails ({selectedProspectIdsInPack.size})
+                    </button>
                     <button
                       onClick={() => setIsSendConfirmModalOpen(true)}
                       disabled={selectedProspectIdsInPack.size === 0}
@@ -3237,7 +3291,7 @@ function App() {
                             style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                           />
                         </th>
-                        <th>Business / Domain</th>
+                        <th>Domain</th>
                         <th>Rank & Score</th>
                         <th>Contact Email</th>
                         <th>Status</th>
@@ -3299,9 +3353,6 @@ function App() {
                                     ⚠️ In {warning.packId}
                                   </span>
                                 )}
-                              </div>
-                              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                                {prospect.businessName || prospect.domain}
                               </div>
                             </td>
                             <td>
@@ -3539,6 +3590,283 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Modal: Preview Emails */}
+            {isPreviewModalOpen && activePack && (() => {
+              const recipients = getSelectedRecipientsList();
+              const currentIndex = Math.min(previewRecipientIndex, Math.max(0, recipients.length - 1));
+              const current = recipients[currentIndex];
+
+              return (
+                <div style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.82)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 99999,
+                  padding: '1.5rem'
+                }}>
+                  <div style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: '12px',
+                    width: '100%',
+                    maxWidth: '820px',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    padding: '2rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.25rem',
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                  }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <span style={{ fontSize: '1.3rem' }}>👁️</span>
+                          <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                            Preview Outreach Emails — {activePack.packId}
+                          </h3>
+                        </div>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          Exact personalised rendering for {recipients.length} selected recipient{recipients.length === 1 ? '' : 's'}.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setIsPreviewModalOpen(false)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                        title="Close preview"
+                      >
+                        &times;
+                      </button>
+                    </div>
+
+                    {recipients.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        No prospects currently selected to preview.
+                      </div>
+                    ) : (
+                      <>
+                        {/* Stepper Navigation */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          backgroundColor: '#1e293b',
+                          padding: '0.6rem 1rem',
+                          borderRadius: '8px',
+                          border: '1px solid #334155'
+                        }}>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewRecipientIndex(prev => Math.max(0, prev - 1))}
+                            disabled={currentIndex === 0}
+                            className="table-btn"
+                            style={{
+                              padding: '0.4rem 0.9rem',
+                              fontSize: '0.85rem',
+                              opacity: currentIndex === 0 ? 0.4 : 1,
+                              cursor: currentIndex === 0 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            &larr; Previous
+                          </button>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ color: '#cbd5e1', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                              Recipient {currentIndex + 1} of {recipients.length}
+                            </span>
+                            <span style={{ color: '#64748b' }}>|</span>
+                            <span style={{ color: '#38bdf8', fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                              {current.domain}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setPreviewRecipientIndex(prev => Math.min(recipients.length - 1, prev + 1))}
+                            disabled={currentIndex === recipients.length - 1}
+                            className="table-btn"
+                            style={{
+                              padding: '0.4rem 0.9rem',
+                              fontSize: '0.85rem',
+                              opacity: currentIndex === recipients.length - 1 ? 0.4 : 1,
+                              cursor: currentIndex === recipients.length - 1 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            Next &rarr;
+                          </button>
+                        </div>
+
+                        {/* Quick Selection Tabs / Pills */}
+                        {recipients.length > 1 && (
+                          <div style={{
+                            display: 'flex',
+                            gap: '0.4rem',
+                            overflowX: 'auto',
+                            paddingBottom: '0.3rem'
+                          }}>
+                            {recipients.map((r, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => setPreviewRecipientIndex(idx)}
+                                style={{
+                                  padding: '0.3rem 0.7rem',
+                                  fontSize: '0.8rem',
+                                  borderRadius: '6px',
+                                  border: idx === currentIndex ? '1px solid #38bdf8' : '1px solid #334155',
+                                  backgroundColor: idx === currentIndex ? '#0369a1' : '#1e293b',
+                                  color: idx === currentIndex ? '#ffffff' : '#94a3b8',
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                  fontFamily: 'monospace'
+                                }}
+                              >
+                                {idx + 1}. {r.domain}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Recipient Metadata Card */}
+                        <div style={{
+                          backgroundColor: '#1e293b',
+                          border: '1px solid #334155',
+                          borderRadius: '8px',
+                          padding: '1rem',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gap: '0.75rem',
+                          fontSize: '0.85rem'
+                        }}>
+                          <div>
+                            <div style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                              Website Domain
+                            </div>
+                            <div style={{ color: '#f8fafc', fontWeight: '600' }}>
+                              {current.domain}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                              Recipient Email
+                            </div>
+                            <div style={{ color: current.email ? '#38bdf8' : '#f87171', fontWeight: '600', fontFamily: 'monospace' }}>
+                              {current.email ? current.email : '⚠️ No domain-matched email found'}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                              Greeting Derivation
+                            </div>
+                            <div style={{ color: '#a7f3d0', fontWeight: '600' }}>
+                              {current.greeting}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Subject */}
+                        <div style={{
+                          backgroundColor: '#1e293b',
+                          border: '1px solid #334155',
+                          borderRadius: '8px',
+                          padding: '0.85rem 1rem',
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          gap: '0.75rem'
+                        }}>
+                          <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase', flexShrink: 0 }}>
+                            Subject:
+                          </span>
+                          <span style={{ color: '#f8fafc', fontWeight: '600', fontSize: '0.95rem' }}>
+                            {current.subject}
+                          </span>
+                        </div>
+
+                        {/* Email Body Preview Box */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                            Personalised Email Body Preview
+                          </label>
+                          <div style={{
+                            backgroundColor: '#090d16',
+                            border: '1px solid #334155',
+                            borderRadius: '8px',
+                            padding: '1.25rem',
+                            color: '#f1f5f9',
+                            fontSize: '0.92rem',
+                            lineHeight: '1.65',
+                            whiteSpace: 'pre-wrap',
+                            maxHeight: '340px',
+                            overflowY: 'auto',
+                            fontFamily: 'inherit'
+                          }}>
+                            {current.body}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Footer Actions */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      marginTop: '0.5rem',
+                      paddingTop: '1rem',
+                      borderTop: '1px solid #334155'
+                    }}>
+                      <button
+                        onClick={() => setIsPreviewModalOpen(false)}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                      >
+                        Close Preview
+                      </button>
+
+                      <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button
+                          onClick={() => {
+                            setIsPreviewModalOpen(false);
+                            setIsTemplateModalOpen(true);
+                          }}
+                          className="table-btn"
+                          style={{ backgroundColor: '#1e293b', border: '1px solid #475569', color: '#cbd5e1' }}
+                        >
+                          ✏️ Edit Template
+                        </button>
+                        <button
+                          onClick={() => {
+                            setIsPreviewModalOpen(false);
+                            setIsSendConfirmModalOpen(true);
+                          }}
+                          className="analyse-btn-green"
+                          style={{
+                            padding: '0.65rem 1.4rem',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                          }}
+                        >
+                          Proceed to Confirm Send &rarr;
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Modal: Confirm Outreach Send */}
             {isSendConfirmModalOpen && activePack && (() => {
