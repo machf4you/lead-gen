@@ -1223,6 +1223,144 @@ app.delete('/api/exclusions/:domain', async (req, res) => {
   }
 });
 
+// GET outreach shortlist
+app.get('/api/outreach', async (req, res) => {
+  try {
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM outreach_shortlist ORDER BY shortlistedAt DESC');
+    const items = rows.map(r => {
+      let parsedAnalysis = null;
+      if (r.analysisData) {
+        try {
+          parsedAnalysis = JSON.parse(r.analysisData);
+        } catch (e) {}
+      }
+      return {
+        ...r,
+        analysisData: parsedAnalysis
+      };
+    });
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST add prospect to outreach shortlist (with duplicate prevention)
+app.post('/api/outreach', async (req, res) => {
+  try {
+    const {
+      id,
+      domain: rawDomain,
+      url,
+      businessName,
+      searchId,
+      searchPhrase,
+      location,
+      searchType,
+      rank,
+      opportunityScore,
+      opportunityBand,
+      commercialStrengthStars,
+      commercialStrengthLabel,
+      commercialStrengthPoints,
+      gbpStatus,
+      analysisData
+    } = req.body;
+
+    const domain = normalizeDomain(rawDomain || url || '');
+    if (!domain) {
+      return res.status(400).json({ error: 'Domain or URL is required' });
+    }
+
+    const db = await getDb();
+
+    // Check if duplicate already exists
+    const existing = await db.get('SELECT * FROM outreach_shortlist WHERE domain = ?', [domain]);
+    if (existing) {
+      let parsedAnalysis = null;
+      if (existing.analysisData) {
+        try {
+          parsedAnalysis = JSON.parse(existing.analysisData);
+        } catch (e) {}
+      }
+      return res.json({
+        success: true,
+        alreadyShortlisted: true,
+        item: {
+          ...existing,
+          analysisData: parsedAnalysis
+        }
+      });
+    }
+
+    const itemId = id || `shortlist_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const shortlistedAt = new Date().toISOString();
+    const serializedAnalysis = typeof analysisData === 'object' && analysisData !== null
+      ? JSON.stringify(analysisData)
+      : (typeof analysisData === 'string' ? analysisData : null);
+
+    await db.run(
+      `INSERT INTO outreach_shortlist (
+        id, domain, url, businessName, searchId, searchPhrase, location, searchType,
+        rank, opportunityScore, opportunityBand, commercialStrengthStars, commercialStrengthLabel,
+        commercialStrengthPoints, gbpStatus, analysisData, shortlistedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        itemId,
+        domain,
+        url || '',
+        businessName || '',
+        searchId || '',
+        searchPhrase || '',
+        location || '',
+        searchType || 'Organic',
+        rank !== undefined && rank !== null ? parseInt(rank, 10) : null,
+        opportunityScore !== undefined && opportunityScore !== null ? parseInt(opportunityScore, 10) : null,
+        opportunityBand || '',
+        commercialStrengthStars || '',
+        commercialStrengthLabel || '',
+        commercialStrengthPoints !== undefined && commercialStrengthPoints !== null ? parseInt(commercialStrengthPoints, 10) : null,
+        gbpStatus || 'No Profile Matched',
+        serializedAnalysis,
+        shortlistedAt
+      ]
+    );
+
+    const inserted = await db.get('SELECT * FROM outreach_shortlist WHERE id = ?', [itemId]);
+    let parsedInsertedAnalysis = null;
+    if (inserted && inserted.analysisData) {
+      try {
+        parsedInsertedAnalysis = JSON.parse(inserted.analysisData);
+      } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      alreadyShortlisted: false,
+      item: {
+        ...inserted,
+        analysisData: parsedInsertedAnalysis
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE prospect from outreach shortlist
+app.delete('/api/outreach/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const target = decodeURIComponent(id);
+    const db = await getDb();
+    await db.run('DELETE FROM outreach_shortlist WHERE id = ? OR domain = ?', [target, target]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Root check endpoint
 app.get('/', (req, res) => {
   res.send('Lead Gen Backend is running.');

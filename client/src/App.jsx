@@ -194,6 +194,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1)
   const [searchMode, setSearchMode] = useState('organic')
   const [excludedDomains, setExcludedDomains] = useState([]);
+  const [outreachList, setOutreachList] = useState([]);
+  const [isOutreachLoading, setIsOutreachLoading] = useState(false);
 
   // Initial load: Fetch server exclusions & perform one-time migration of legacy localStorage exclusions if present
   useEffect(() => {
@@ -376,9 +378,96 @@ function App() {
     }
   };
 
+  const fetchOutreachList = async () => {
+    setIsOutreachLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach`);
+      if (res.ok) {
+        const data = await res.json();
+        setOutreachList(data);
+      }
+    } catch (err) {
+      console.error("Error loading outreach list:", err);
+    } finally {
+      setIsOutreachLoading(false);
+    }
+  };
+
+  const isShortlisted = (urlOrDomain) => {
+    if (!urlOrDomain) return false;
+    const target = normalizeDomain(urlOrDomain);
+    if (!target) return false;
+    return outreachList.some(item => {
+      const itemDom = normalizeDomain(item.domain || item.url || '');
+      return itemDom === target;
+    });
+  };
+
+  const handleAddToOutreach = async (item) => {
+    const isOrganic = !item.name;
+    const domain = normalizeDomain(item.domain || item.url || item.website || '');
+    const url = item.url || item.website || (domain ? `https://${domain}` : '');
+    const businessName = item.name || item.analysis?.gbp?.businessName || item.analysis?.pageTitle || domain;
+    const searchId = activeSearchId || item.searchId || 'Not available';
+    const searchPhrase = getSearchPhrase(businessType || item.searchKeyword || item.businessType, location || item.location);
+    const loc = location || item.location || 'Anywhere';
+    const searchType = searchMode === 'organic' || item.searchType === 'Organic' ? 'Organic' : 'GMB';
+    const rank = item.rank || item.analysis?.rank || 0;
+    const oppScore = item.analysis?.leadOpportunityScore?.score !== undefined ? item.analysis.leadOpportunityScore.score : null;
+    const oppBand = item.analysis?.leadOpportunityScore?.band || '';
+    const strengthStars = item.analysis?.leadPriority?.stars || '★★★☆☆';
+    const strengthLabel = item.analysis?.leadPriority?.label || 'Good Lead';
+    const strengthPoints = item.analysis?.leadPriority?.points || 0;
+    const gbpStatus = item.analysis?.gbp?.status === 'Found' ? 'Found' : (item.analysis?.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain,
+          url,
+          businessName,
+          searchId,
+          searchPhrase,
+          location: loc,
+          searchType,
+          rank,
+          opportunityScore: oppScore,
+          opportunityBand: oppBand,
+          commercialStrengthStars: strengthStars,
+          commercialStrengthLabel: strengthLabel,
+          commercialStrengthPoints: strengthPoints,
+          gbpStatus,
+          analysisData: item.analysis || item
+        })
+      });
+      if (res.ok) {
+        await fetchOutreachList();
+      }
+    } catch (e) {
+      console.error("Error adding to outreach list:", e);
+    }
+  };
+
+  const handleRemoveFromOutreach = async (idOrDomain) => {
+    if (!idOrDomain) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach/${encodeURIComponent(idOrDomain)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchOutreachList();
+      }
+    } catch (e) {
+      console.error("Error removing from outreach list:", e);
+    }
+  };
+
   useEffect(() => {
     fetchMilestones();
     fetchSavedSearches();
+    fetchOutreachList();
 
     const params = new URLSearchParams(window.location.search);
     const searchIdParam = params.get('searchId');
@@ -386,7 +475,7 @@ function App() {
     const itemParam = params.get('item');
 
     if (viewParam && !searchIdParam) {
-      if (['saved', 'exclusions', 'settings'].includes(viewParam)) {
+      if (['saved', 'exclusions', 'settings', 'outreach'].includes(viewParam)) {
         setCurrentView(viewParam);
       }
     }
@@ -1594,6 +1683,32 @@ function App() {
             </button>
             <button 
               onClick={() => {
+                setCurrentView('outreach');
+                try {
+                  const u = new URL(window.location.href);
+                  u.search = '?view=outreach';
+                  window.history.replaceState(null, '', u.toString());
+                } catch (e) {}
+              }} 
+              className={`sidebar-item ${currentView === 'outreach' ? 'active' : ''}`}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <span>Outreach</span>
+              {outreachList.length > 0 && (
+                <span style={{ 
+                  backgroundColor: '#2563eb', 
+                  color: '#ffffff', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 'bold', 
+                  padding: '0.1rem 0.45rem', 
+                  borderRadius: '10px' 
+                }}>
+                  {outreachList.length}
+                </span>
+              )}
+            </button>
+            <button 
+              onClick={() => {
                 setCurrentView('settings');
                 try {
                   const u = new URL(window.location.href);
@@ -1885,6 +2000,24 @@ function App() {
                                 >
                                   {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
+                                {isShortlisted(item.domain || item.url) ? (
+                                  <button 
+                                    onClick={() => handleRemoveFromOutreach(item.domain || item.url)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
+                                    title="Click to remove from Outreach List"
+                                  >
+                                    ✓ Shortlisted
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleAddToOutreach(item)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
+                                  >
+                                    + Shortlist
+                                  </button>
+                                )}
                                 <button 
                                   onClick={() => handleExcludeDomain(item.domain || item.url)}
                                   className="table-btn"
@@ -1955,6 +2088,24 @@ function App() {
                                 >
                                   {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
+                                {isShortlisted(domain || item.website || item.name) ? (
+                                  <button 
+                                    onClick={() => handleRemoveFromOutreach(domain || item.website || item.name)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
+                                    title="Click to remove from Outreach List"
+                                  >
+                                    ✓ Shortlisted
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleAddToOutreach(item)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
+                                  >
+                                    + Shortlist
+                                  </button>
+                                )}
                                 <button 
                                   onClick={() => handleExcludeDomain(domain || item.website)}
                                   className="table-btn"
@@ -2108,6 +2259,172 @@ function App() {
                       </td>
                     </tr>
                   ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {currentView === 'outreach' && (
+          <div className="results-table-container">
+            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
+                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                  Persistent shortlisted prospects ready for outreach preparation.
+                </p>
+              </div>
+              <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                {outreachList.length} shortlisted {outreachList.length === 1 ? 'prospect' : 'prospects'}
+              </span>
+            </div>
+
+            <table className="results-table">
+              <thead>
+                <tr>
+                  <th>Business / Domain</th>
+                  <th>Search ID</th>
+                  <th>Search Phrase</th>
+                  <th>Location</th>
+                  <th>Rank</th>
+                  <th>Opportunity Score</th>
+                  <th>Commercial Strength</th>
+                  <th>GBP Match</th>
+                  <th>Date Shortlisted</th>
+                  <th className="action-cell">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isOutreachLoading && outreachList.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                      Loading outreach shortlist...
+                    </td>
+                  </tr>
+                ) : outreachList.length === 0 ? (
+                  <tr>
+                    <td colSpan="10" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                      <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
+                      <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  outreachList.map((item, idx) => {
+                    const score = item.opportunityScore;
+                    const gbpStatus = item.gbpStatus || 'No Profile Matched';
+                    return (
+                      <tr key={item.id || idx}>
+                        <td>
+                          <div>
+                            {item.url ? (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
+                                {item.domain || item.url}
+                              </a>
+                            ) : (
+                              <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
+                            )}
+                          </div>
+                          {item.businessName && item.businessName !== item.domain && (
+                            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                              {item.businessName}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          {item.searchId ? (
+                            <span style={{ 
+                              backgroundColor: 'rgba(96, 165, 250, 0.1)', 
+                              color: '#60a5fa', 
+                              padding: '0.15rem 0.5rem', 
+                              borderRadius: '4px',
+                              fontWeight: 'bold',
+                              fontSize: '0.85rem'
+                            }}>
+                              {item.searchId}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#64748b' }}>-</span>
+                          )}
+                        </td>
+                        <td>{item.searchPhrase || 'Not available'}</td>
+                        <td>{item.location || 'Anywhere'}</td>
+                        <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
+                          {item.rank ? `#${item.rank}` : '-'}
+                        </td>
+                        <td>
+                          {score !== null && score !== undefined ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                              <span style={{ 
+                                color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
+                                marginRight: '6px',
+                                fontSize: '1.1rem',
+                                lineHeight: '1'
+                              }}>●</span>
+                              {score >= 60 && (
+                                <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                              )}
+                              <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                {score}
+                              </span>
+                            </span>
+                          ) : (
+                            <span style={{ color: '#64748b' }}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                              {item.commercialStrengthStars || '★★★☆☆'}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
+                              {item.commercialStrengthLabel || 'Good Lead'}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ 
+                            color: gbpStatus === 'Found' ? '#10b981' : (gbpStatus === 'Multiple Matches' ? '#f59e0b' : '#ef4444'),
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem'
+                          }}>
+                            {gbpStatus}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                          {formatLastAnalysed(item.shortlistedAt)}
+                        </td>
+                        <td className="action-cell">
+                          <button 
+                            onClick={() => {
+                              const analysisItem = item.analysisData || {
+                                domain: item.domain,
+                                url: item.url,
+                                searchId: item.searchId,
+                                searchType: item.searchType || 'Organic',
+                                searchKeyword: item.searchPhrase || 'Any',
+                                location: item.location || 'Anywhere',
+                                rank: item.rank || 0,
+                                leadOpportunityScore: { score: item.opportunityScore, band: item.opportunityBand },
+                                leadPriority: { stars: item.commercialStrengthStars, label: item.commercialStrengthLabel },
+                                gbp: { status: item.gbpStatus }
+                              };
+                              handleAnalyse(analysisItem);
+                            }}
+                            className="analyse-btn-green"
+                            style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                          >
+                            View Analysis
+                          </button>
+                          <button 
+                            onClick={() => handleRemoveFromOutreach(item.id || item.domain)}
+                            className="table-btn"
+                            style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -2353,6 +2670,24 @@ function App() {
                 >
                   {isRefreshing ? 'Refreshing...' : 'Refresh Analysis'}
                 </button>
+                {isShortlisted(activeAnalysisItem.domain || activeAnalysisItem.url) ? (
+                  <button 
+                    onClick={() => handleRemoveFromOutreach(activeAnalysisItem.domain || activeAnalysisItem.url)}
+                    className="table-btn"
+                    style={{ backgroundColor: '#059669', color: '#ffffff', fontWeight: '600' }}
+                    title="Click to remove from Outreach List"
+                  >
+                    ✓ Shortlisted
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleAddToOutreach(activeAnalysisItem)}
+                    className="table-btn"
+                    style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '600' }}
+                  >
+                    + Add to Outreach List
+                  </button>
+                )}
                 <button 
                   onClick={() => {
                     setCurrentView('search');

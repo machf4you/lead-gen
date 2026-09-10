@@ -36,7 +36,28 @@ export async function getDb() {
       domain TEXT PRIMARY KEY,
       createdAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS outreach_shortlist (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL UNIQUE,
+      url TEXT,
+      businessName TEXT,
+      searchId TEXT,
+      searchPhrase TEXT,
+      location TEXT,
+      searchType TEXT,
+      rank INTEGER,
+      opportunityScore INTEGER,
+      opportunityBand TEXT,
+      commercialStrengthStars TEXT,
+      commercialStrengthLabel TEXT,
+      commercialStrengthPoints INTEGER,
+      gbpStatus TEXT,
+      analysisData TEXT,
+      shortlistedAt TEXT NOT NULL
+    );
   `);
   
   return db;
 }
+
