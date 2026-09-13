@@ -1810,6 +1810,77 @@ app.post('/api/outreach-packs/find-contacts', async (req, res) => {
   }
 });
 
+// ==================== MASTER EMAIL TEMPLATES API ====================
+
+// GET all master email templates
+app.get('/api/email-templates', async (req, res) => {
+  try {
+    const db = await getDb();
+    const templates = await db.all('SELECT * FROM email_templates ORDER BY createdAt ASC');
+    res.json(templates);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST create new master email template
+app.post('/api/email-templates', async (req, res) => {
+  try {
+    const { name, subject, body } = req.body;
+    if (!name || !subject || !body) {
+      return res.status(400).json({ error: 'Name, subject, and body are required' });
+    }
+    const db = await getDb();
+    const id = `tpl_${Date.now()}`;
+    const now = new Date().toISOString();
+    await db.run(
+      'INSERT INTO email_templates (id, name, subject, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, name.trim(), subject.trim(), body.trim(), now, now]
+    );
+    const created = await db.get('SELECT * FROM email_templates WHERE id = ?', [id]);
+    res.status(201).json(created);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT update existing master email template
+app.put('/api/email-templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, subject, body } = req.body;
+    if (!name || !subject || !body) {
+      return res.status(400).json({ error: 'Name, subject, and body are required' });
+    }
+    const db = await getDb();
+    const existing = await db.get('SELECT * FROM email_templates WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    const now = new Date().toISOString();
+    await db.run(
+      'UPDATE email_templates SET name = ?, subject = ?, body = ?, updatedAt = ? WHERE id = ?',
+      [name.trim(), subject.trim(), body.trim(), now, id]
+    );
+    const updated = await db.get('SELECT * FROM email_templates WHERE id = ?', [id]);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE master email template
+app.delete('/api/email-templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getDb();
+    await db.run('DELETE FROM email_templates WHERE id = ?', [id]);
+    res.json({ success: true, id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST endpoint to generate partnership outreach email template
 app.post('/api/outreach-packs/generate-template', (req, res) => {
   try {

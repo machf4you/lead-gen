@@ -79,6 +79,15 @@ export async function getDb() {
       sentAt TEXT,
       createdAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL
+    );
   `);
 
   try {
@@ -90,8 +99,66 @@ export async function getDb() {
 
   await cleanNonDomainEmails(db);
   await cleanPackTemplateGreetings(db);
+  await seedDefaultEmailTemplates(db);
   
   return db;
+}
+
+// Seed default master email templates if none exist
+export async function seedDefaultEmailTemplates(database) {
+  try {
+    const existing = await database.all('SELECT id, name FROM email_templates');
+    const existingNames = new Set(existing.map(t => t.name.toLowerCase()));
+
+    const defaults = [
+      {
+        id: 'tpl_warm_partnership',
+        name: 'Warm Partnership / Investment Approach',
+        subject: 'Partnership enquiry: {{trade}} in {{location}} — The Search Equation',
+        body: `I hope you're having a productive week.
+
+I'm reaching out directly because we are currently looking to partner with an established {{trade}} company in {{location}} to generate and deliver additional high-intent client enquiries.
+
+At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+
+We came across {{domain}} while researching established providers in {{location}}, and thought there could be strong commercial synergy between what you do and our growth framework.
+
+If you have capacity for additional {{trade}} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
+
+Best regards,
+
+Mac McCarthy
+The Search Equation`
+      },
+      {
+        id: 'tpl_standard_seo',
+        name: 'Standard SEO Introduction',
+        subject: 'Quick question regarding search visibility for {{domain}}',
+        body: `I was researching local {{trade}} providers in {{location}} and noticed {{domain}} ranking in Google search results.
+
+You have a strong foundation, but there are a few straightforward technical and local search adjustments that would significantly increase your direct customer enquiries.
+
+I've put together a brief checklist of the highest-impact opportunities for your site. Would it be alright if I sent that over?
+
+Best regards,
+
+Mac McCarthy
+The Search Equation`
+      }
+    ];
+
+    const now = new Date().toISOString();
+    for (const tpl of defaults) {
+      if (!existingNames.has(tpl.name.toLowerCase())) {
+        await database.run(
+          `INSERT INTO email_templates (id, name, subject, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`,
+          [tpl.id, tpl.name, tpl.subject, tpl.body, now, now]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Error seeding default email templates:', err);
+  }
 }
 
 // Strip leading manual greetings or variables from template body so greeting is separate & automatic

@@ -351,6 +351,109 @@ function App() {
   const [editingProspectId, setEditingProspectId] = useState(null);
   const [editingEmailValue, setEditingEmailValue] = useState('');
 
+  // Master Email Templates state
+  const [masterTemplates, setMasterTemplates] = useState([]);
+  const [isTemplatesLoading, setIsTemplatesLoading] = useState(false);
+  const [isTemplateEditorModalOpen, setIsTemplateEditorModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+  const [templateNameInput, setTemplateNameInput] = useState('');
+  const [templateSubjectInput, setTemplateSubjectInput] = useState('');
+  const [templateBodyInput, setTemplateBodyInput] = useState('');
+  const [selectedMasterTemplateIdForPack, setSelectedMasterTemplateIdForPack] = useState('');
+
+  const fetchEmailTemplates = async () => {
+    setIsTemplatesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/email-templates`);
+      if (res.ok) {
+        const list = await res.json();
+        setMasterTemplates(list);
+      }
+    } catch (err) {
+      console.error('Error fetching master email templates:', err);
+    } finally {
+      setIsTemplatesLoading(false);
+    }
+  };
+
+  const handleOpenCreateTemplateModal = () => {
+    setEditingTemplate(null);
+    setTemplateNameInput('');
+    setTemplateSubjectInput('');
+    setTemplateBodyInput('');
+    setIsTemplateEditorModalOpen(true);
+  };
+
+  const handleOpenEditTemplateModal = (tpl) => {
+    setEditingTemplate(tpl);
+    setTemplateNameInput(tpl.name || '');
+    setTemplateSubjectInput(tpl.subject || '');
+    setTemplateBodyInput(tpl.body || '');
+    setIsTemplateEditorModalOpen(true);
+  };
+
+  const handleSaveTemplateSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!templateNameInput.trim() || !templateSubjectInput.trim() || !templateBodyInput.trim()) {
+      alert('Please fill in the Template Name, Subject, and Email Body.');
+      return;
+    }
+
+    try {
+      const url = editingTemplate 
+        ? `${API_BASE}/api/email-templates/${encodeURIComponent(editingTemplate.id)}`
+        : `${API_BASE}/api/email-templates`;
+      const method = editingTemplate ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateNameInput.trim(),
+          subject: templateSubjectInput.trim(),
+          body: templateBodyInput.trim()
+        })
+      });
+
+      if (res.ok) {
+        await fetchEmailTemplates();
+        setIsTemplateEditorModalOpen(false);
+        setEditingTemplate(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to save template');
+      }
+    } catch (err) {
+      console.error('Error saving template:', err);
+      alert('Error saving template: ' + err.message);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!window.confirm('Are you sure you want to delete this master email template?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/email-templates/${encodeURIComponent(templateId)}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchEmailTemplates();
+      }
+    } catch (err) {
+      console.error('Error deleting template:', err);
+    }
+  };
+
+  const handleApplyMasterTemplateToPack = async (templateId) => {
+    const tpl = masterTemplates.find(t => t.id === templateId);
+    if (!tpl || !activePack) return;
+
+    setSelectedMasterTemplateIdForPack(templateId);
+    await handleUpdatePack(activePack.packId, {
+      templateSubject: tpl.subject,
+      templateBody: tpl.body
+    });
+  };
+
   const openTemplateModal = () => {
     if (!activePack) return;
     const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
@@ -835,6 +938,12 @@ function App() {
       if (res.ok) {
         const fullPack = await res.json();
         setActivePack(fullPack);
+        const matching = masterTemplates.find(t => t.subject === fullPack.templateSubject);
+        if (matching) {
+          setSelectedMasterTemplateIdForPack(matching.id);
+        } else {
+          setSelectedMasterTemplateIdForPack('');
+        }
       }
     } catch (err) {
       console.error("Error loading full pack details:", err);
@@ -1063,6 +1172,7 @@ function App() {
     fetchOutreachList();
     fetchOutreachPacks();
     fetchContactHistory();
+    fetchEmailTemplates();
 
     const params = new URLSearchParams(window.location.search);
     const searchIdParam = params.get('searchId');
@@ -1071,13 +1181,16 @@ function App() {
     const packParam = params.get('pack');
 
     if (viewParam && !searchIdParam) {
-      if (['saved', 'exclusions', 'settings', 'outreach', 'shortlist', 'packs'].includes(viewParam)) {
+      if (['saved', 'exclusions', 'settings', 'outreach', 'shortlist', 'packs', 'templates'].includes(viewParam)) {
         if (viewParam === 'packs') {
           setCurrentView('outreach');
           setOutreachSubView('packs');
         } else if (viewParam === 'shortlist') {
           setCurrentView('outreach');
           setOutreachSubView('shortlist');
+        } else if (viewParam === 'templates') {
+          setCurrentView('outreach');
+          setOutreachSubView('templates');
         } else {
           setCurrentView(viewParam);
         }
@@ -1087,6 +1200,8 @@ function App() {
           setOutreachSubView('packs');
         } else if (tabParam === 'shortlist') {
           setOutreachSubView('shortlist');
+        } else if (tabParam === 'templates') {
+          setOutreachSubView('templates');
         }
 
         if ((viewParam === 'outreach' || viewParam === 'packs') && packParam) {
@@ -2370,6 +2485,30 @@ function App() {
                     </span>
                   )}
                 </button>
+
+                <button 
+                  onClick={() => {
+                    setCurrentView('outreach');
+                    setOutreachSubView('templates');
+                    setActivePack(null);
+                    try {
+                      const u = new URL(window.location.href);
+                      u.search = '?view=outreach&tab=templates';
+                      window.history.replaceState(null, '', u.toString());
+                    } catch (e) {}
+                  }} 
+                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'templates' ? 'active' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Email Templates</span>
+                  {masterTemplates.length > 0 && (
+                    <span className="sidebar-badge" style={{ 
+                      backgroundColor: currentView === 'outreach' && outreachSubView === 'templates' ? 'rgba(255, 255, 255, 0.25)' : '#475569'
+                    }}>
+                      {masterTemplates.length}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
             <button 
@@ -2979,6 +3118,28 @@ function App() {
                   >
                     Outreach Packs ({outreachPacks.length})
                   </button>
+                  <button
+                    onClick={() => {
+                      setOutreachSubView('templates');
+                      setActivePack(null);
+                      try {
+                        const u = new URL(window.location.href);
+                        u.search = '?view=outreach&tab=templates';
+                        window.history.replaceState(null, '', u.toString());
+                      } catch (e) {}
+                    }}
+                    className="table-btn"
+                    style={{
+                      backgroundColor: outreachSubView === 'templates' ? '#2563eb' : '#0f172a',
+                      border: outreachSubView === 'templates' ? '1px solid #3b82f6' : '1px solid #334155',
+                      color: '#ffffff',
+                      fontWeight: outreachSubView === 'templates' ? 'bold' : 'normal',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Email Templates ({masterTemplates.length})
+                  </button>
                 </div>
 
                 {outreachSubView === 'shortlist' && (
@@ -2988,13 +3149,28 @@ function App() {
                       disabled={selectedShortlistIds.size === 0}
                       className="analyse-btn-green"
                       style={{
-                        padding: '0.6rem 1.25rem',
+                        padding: '0.5rem 1.1rem',
                         fontSize: '0.9rem',
                         opacity: selectedShortlistIds.size === 0 ? 0.5 : 1,
                         cursor: selectedShortlistIds.size === 0 ? 'not-allowed' : 'pointer'
                       }}
                     >
                       + Create Outreach Pack ({selectedShortlistIds.size} Selected)
+                    </button>
+                  </div>
+                )}
+
+                {outreachSubView === 'templates' && (
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <button
+                      onClick={handleOpenCreateTemplateModal}
+                      className="analyse-btn-green"
+                      style={{
+                        padding: '0.5rem 1.1rem',
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      + Create Master Template
                     </button>
                   </div>
                 )}
@@ -3388,6 +3564,125 @@ function App() {
               </div>
             )}
 
+            {/* Sub-view 3: Master Email Templates Management */}
+            {outreachSubView === 'templates' && (
+              <div className="results-table-container">
+                <div style={{ padding: '1.5rem 1.5rem 0.75rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Master Email Templates</h2>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                      Reusable master templates for outreach campaigns. Selecting a template in a pack creates an independent pack copy.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                      {masterTemplates.length} {masterTemplates.length === 1 ? 'template' : 'templates'}
+                    </span>
+                    <button
+                      onClick={handleOpenCreateTemplateModal}
+                      className="analyse-btn-green"
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                    >
+                      + Create Master Template
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ padding: '1rem 1.5rem 2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {isTemplatesLoading && masterTemplates.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                      Loading email templates...
+                    </div>
+                  ) : masterTemplates.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+                      <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No Master Templates found.</p>
+                      <button onClick={handleOpenCreateTemplateModal} className="analyse-btn-green" style={{ marginTop: '0.5rem' }}>
+                        Create First Template
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '1.25rem' }}>
+                      {masterTemplates.map((tpl) => (
+                        <div
+                          key={tpl.id}
+                          style={{
+                            backgroundColor: '#0f172a',
+                            border: '1px solid #334155',
+                            borderRadius: '8px',
+                            padding: '1.25rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1rem',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                            <div>
+                              <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.15rem', fontWeight: '700' }}>
+                                {tpl.name}
+                              </h3>
+                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                ID: {tpl.id} &bull; Updated: {formatLastAnalysed(tpl.updatedAt || tpl.createdAt)}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button
+                                onClick={() => handleOpenEditTemplateModal(tpl)}
+                                className="table-btn"
+                                style={{
+                                  backgroundColor: '#1e293b',
+                                  border: '1px solid #3b82f6',
+                                  color: '#60a5fa',
+                                  padding: '0.35rem 0.75rem',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTemplate(tpl.id)}
+                                className="table-btn"
+                                style={{
+                                  backgroundColor: '#1e293b',
+                                  border: '1px solid #ef4444',
+                                  color: '#f87171',
+                                  padding: '0.35rem 0.75rem',
+                                  fontSize: '0.85rem'
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+
+                          <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', borderRadius: '6px', border: '1px solid #334155', fontSize: '0.875rem' }}>
+                            <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject: </span>
+                            <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{tpl.subject}</span>
+                          </div>
+
+                          <div style={{
+                            backgroundColor: '#1e293b',
+                            padding: '0.85rem 1rem',
+                            borderRadius: '6px',
+                            border: '1px solid #334155',
+                            fontSize: '0.875rem',
+                            color: '#cbd5e1',
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: '1.5',
+                            maxHeight: '220px',
+                            overflowY: 'auto'
+                          }}>
+                            {tpl.body}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Outreach Subview: Pack Detail */}
             {outreachSubView === 'pack-detail' && activePack && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -3451,38 +3746,66 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Single Pack Email Template Control */}
+                  {/* Pack Email Template Selection & Customization */}
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
                     backgroundColor: '#1e293b',
-                    padding: '0.85rem 1.25rem',
+                    padding: '1rem 1.25rem',
                     borderRadius: '6px',
-                    border: '1px solid #334155',
-                    fontSize: '0.9rem',
-                    flexWrap: 'wrap',
-                    gap: '1rem'
+                    border: '1px solid #334155'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#cbd5e1' }}>
-                      <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject:</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <label style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                          Select Email Template:
+                        </label>
+                        <select
+                          value={selectedMasterTemplateIdForPack || ''}
+                          onChange={(e) => handleApplyMasterTemplateToPack(e.target.value)}
+                          className="search-input"
+                          style={{
+                            backgroundColor: '#0f172a',
+                            borderColor: '#3b82f6',
+                            color: '#ffffff',
+                            fontWeight: '600',
+                            padding: '0.45rem 0.85rem',
+                            fontSize: '0.9rem',
+                            minWidth: '300px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="" disabled>-- Select Reusable Master Template --</option>
+                          {masterTemplates.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={openTemplateModal}
+                        className="table-btn"
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          fontWeight: 'bold',
+                          padding: '0.45rem 1rem',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        Edit Template for this Pack
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#cbd5e1', fontSize: '0.875rem' }}>
+                      <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Active Pack Subject:</span>
                       <span style={{ color: '#ffffff' }}>
                         {activePack.templateSubject || 'Partnership enquiry: {{trade}} in {{location}} — The Search Equation'}
                       </span>
                     </div>
-                    <button
-                      onClick={openTemplateModal}
-                      className="table-btn"
-                      style={{
-                        backgroundColor: '#2563eb',
-                        color: '#ffffff',
-                        fontWeight: 'bold',
-                        padding: '0.4rem 0.9rem',
-                        fontSize: '0.85rem'
-                      }}
-                    >
-                      Edit Email Template
-                    </button>
                   </div>
                 </div>
 
@@ -4400,6 +4723,152 @@ function App() {
                 </div>
               );
             })()}
+
+            {/* Modal: Create / Edit Master Email Template */}
+            {isTemplateEditorModalOpen && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '12px',
+                  width: '100%',
+                  maxWidth: '720px',
+                  maxHeight: '92vh',
+                  overflowY: 'auto',
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                        {editingTemplate ? 'Edit Master Email Template' : 'Create Master Email Template'}
+                      </h3>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        Master templates are reusable across all Outreach Packs.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setIsTemplateEditorModalOpen(false)}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveTemplateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Template Name</label>
+                      <input
+                        type="text"
+                        value={templateNameInput}
+                        onChange={(e) => setTemplateNameInput(e.target.value)}
+                        placeholder="e.g. Warm Partnership / Investment Approach"
+                        className="search-input"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Subject Line</label>
+                      <input
+                        type="text"
+                        value={templateSubjectInput}
+                        onChange={(e) => setTemplateSubjectInput(e.target.value)}
+                        placeholder="Partnership enquiry: {{trade}} in {{location}} — The Search Equation"
+                        className="search-input"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        required
+                      />
+                    </div>
+
+                    {/* Helper Insert Tokens */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
+                        Click to insert personalisation variables:
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {['{{trade}}', '{{location}}', '{{domain}}', '{{businessName}}', '{{firstName}}'].map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              setTemplateBodyInput(prev => `${prev} ${tag} `);
+                            }}
+                            className="table-btn"
+                            style={{
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #475569',
+                              color: '#38bdf8',
+                              padding: '0.25rem 0.6rem',
+                              fontSize: '0.8rem',
+                              fontFamily: 'monospace',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                        Email Body <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(Salutation like "Hi Paul," or "Hi there," is automatically prepended upon sending)</span>
+                      </label>
+                      <textarea
+                        value={templateBodyInput}
+                        onChange={(e) => setTemplateBodyInput(e.target.value)}
+                        placeholder="Write your email body here..."
+                        className="analysis-notes-area"
+                        style={{
+                          height: '240px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          fontFamily: 'inherit',
+                          fontSize: '0.925rem',
+                          lineHeight: '1.5'
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsTemplateEditorModalOpen(false)}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#cbd5e1', padding: '0.5rem 1.25rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="analyse-btn-green"
+                        style={{ padding: '0.5rem 1.5rem', fontWeight: 'bold' }}
+                      >
+                        Save Master Template
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {currentView === 'settings' && (
