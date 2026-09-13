@@ -234,7 +234,7 @@ const stripLeadingGreeting = (body) => {
 };
 
 // Helper to render template variables for a specific prospect
-const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
+const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSettings = null) => {
   if (!templateStr) return '';
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
@@ -243,6 +243,10 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
   const domain = prospect?.domain || '';
   const location = prospect?.location || 'your area';
   const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
+
+  const senderFirstName = senderSettings?.sender_first_name || 'Mac';
+  const senderName = senderSettings?.sender_name || 'Mac McCarthy';
+  const companyName = senderSettings?.company_name || 'The Search Equation';
 
   return templateStr
     .replace(/Hi\s+\{\{\s*businessName\s*\}\}\s+Team,?\s*/gi, `${greeting}\n\n`)
@@ -255,15 +259,18 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null) => {
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
-    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
+    .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
+    .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
+    .replace(/\{\{\s*(?:company_name|companyName)\s*\}\}/gi, companyName);
 };
 
 // Helper to render the complete email body with automatic separate greeting prepended
-const renderFullEmailBody = (templateBody, prospect, recipientEmail = null) => {
+const renderFullEmailBody = (templateBody, prospect, recipientEmail = null, senderSettings = null) => {
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
   const cleanBody = stripLeadingGreeting(templateBody || '');
-  const renderedBody = renderTemplate(cleanBody, prospect, email);
+  const renderedBody = renderTemplate(cleanBody, prospect, email, senderSettings);
   return `${greeting}\n\n${renderedBody}`.trim();
 };
 
@@ -272,13 +279,13 @@ const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
   const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
   const loc = location && location !== 'Anywhere' ? location : 'your area';
 
-  const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
+  const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
   
   const body = `I hope you're having a productive week.
 
 I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
 
-At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+At {{company_name}}, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
 
 We came across {{domain}} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
 
@@ -288,9 +295,8 @@ Would you be open to a brief 5-minute conversation next week?
 
 Best regards,
 
-Mac
-The Search Equation
-https://thesearchequation.co.uk`;
+{{sender_name}}
+{{company_name}}`;
 
   return { subject, body };
 };
@@ -360,6 +366,61 @@ function App() {
   const [templateSubjectInput, setTemplateSubjectInput] = useState('');
   const [templateBodyInput, setTemplateBodyInput] = useState('');
   const [selectedMasterTemplateIdForPack, setSelectedMasterTemplateIdForPack] = useState('');
+
+  // Outreach Sender Details state
+  const [senderSettings, setSenderSettings] = useState({
+    sender_first_name: 'Mac',
+    sender_name: 'Mac McCarthy',
+    company_name: 'The Search Equation'
+  });
+  const [isSavingSenderSettings, setIsSavingSenderSettings] = useState(false);
+  const [senderSettingsSavedMsg, setSenderSettingsSavedMsg] = useState(false);
+
+  const fetchSenderSettings = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/sender`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (data.sender_first_name || data.sender_name || data.company_name)) {
+          setSenderSettings({
+            sender_first_name: data.sender_first_name || 'Mac',
+            sender_name: data.sender_name || 'Mac McCarthy',
+            company_name: data.company_name || 'The Search Equation'
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching sender settings:', err);
+    }
+  };
+
+  const handleSaveSenderSettings = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingSenderSettings(true);
+    setSenderSettingsSavedMsg(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/sender`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(senderSettings)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.settings) {
+          setSenderSettings(data.settings);
+        }
+        setSenderSettingsSavedMsg(true);
+        setTimeout(() => setSenderSettingsSavedMsg(false), 3000);
+      } else {
+        alert('Failed to save sender settings.');
+      }
+    } catch (err) {
+      console.error('Error saving sender settings:', err);
+      alert('Error saving sender settings: ' + err.message);
+    } finally {
+      setIsSavingSenderSettings(false);
+    }
+  };
 
   const fetchEmailTemplates = async () => {
     setIsTemplatesLoading(true);
@@ -502,8 +563,8 @@ function App() {
           prospect: p,
           domain: p.domain,
           email: email,
-          subject: renderTemplate(activePack.templateSubject, p, email),
-          body: renderFullEmailBody(activePack.templateBody, p, email),
+          subject: renderTemplate(activePack.templateSubject, p, email, senderSettings),
+          body: renderFullEmailBody(activePack.templateBody, p, email, senderSettings),
           greeting: deriveGreeting(email, p)
         });
       } else {
@@ -511,8 +572,8 @@ function App() {
           prospect: p,
           domain: p.domain,
           email: null,
-          subject: renderTemplate(activePack.templateSubject, p, null),
-          body: renderFullEmailBody(activePack.templateBody, p, null),
+          subject: renderTemplate(activePack.templateSubject, p, null, senderSettings),
+          body: renderFullEmailBody(activePack.templateBody, p, null, senderSettings),
           greeting: deriveGreeting(null, p)
         });
       }
@@ -1173,6 +1234,7 @@ function App() {
     fetchOutreachPacks();
     fetchContactHistory();
     fetchEmailTemplates();
+    fetchSenderSettings();
 
     const params = new URLSearchParams(window.location.search);
     const searchIdParam = params.get('searchId');
@@ -4788,7 +4850,7 @@ function App() {
                         type="text"
                         value={templateSubjectInput}
                         onChange={(e) => setTemplateSubjectInput(e.target.value)}
-                        placeholder="Partnership enquiry: {{trade}} in {{location}} — The Search Equation"
+                        placeholder="Partnership enquiry: {{trade}} in {{location}} — {{company_name}}"
                         className="search-input"
                         style={{ width: '100%', boxSizing: 'border-box' }}
                         required
@@ -4801,7 +4863,7 @@ function App() {
                         Click to insert personalisation variables:
                       </span>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                        {['{{trade}}', '{{location}}', '{{domain}}', '{{businessName}}', '{{firstName}}'].map(tag => (
+                        {['{{trade}}', '{{location}}', '{{domain}}', '{{businessName}}', '{{firstName}}', '{{sender_first_name}}', '{{sender_name}}', '{{company_name}}'].map(tag => (
                           <button
                             key={tag}
                             type="button"
@@ -4874,6 +4936,83 @@ function App() {
             <div className="search-header-container" style={{ marginBottom: 0 }}>
               <h1 className="header-title">Settings</h1>
               <p className="header-subtitle">Configure application settings and track project release history.</p>
+            </div>
+
+            {/* Outreach Sender Details Section */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Outreach Sender Details</h2>
+                  <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                    Configure sender identity and company values resolved in master outreach templates (<code style={{ color: '#38bdf8' }}>{"{{sender_first_name}}"}</code>, <code style={{ color: '#38bdf8' }}>{"{{sender_name}}"}</code>, and <code style={{ color: '#38bdf8' }}>{"{{company_name}}"}</code>).
+                  </p>
+                </div>
+                {senderSettingsSavedMsg && (
+                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #10b981' }}>
+                    ✓ Settings saved successfully
+                  </span>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveSenderSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Sender First Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_first_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.sender_first_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_first_name: e.target.value }))}
+                      placeholder="e.g. Mac"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Sender Full Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.sender_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_name: e.target.value }))}
+                      placeholder="e.g. Mac McCarthy"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Company Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{company_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.company_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, company_name: e.target.value }))}
+                      placeholder="e.g. The Search Equation"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                  <button
+                    type="submit"
+                    className="analyse-btn-green"
+                    disabled={isSavingSenderSettings}
+                    style={{ padding: '0.55rem 1.5rem', fontWeight: 'bold' }}
+                  >
+                    {isSavingSenderSettings ? 'Saving...' : 'Save Sender Details'}
+                  </button>
+                </div>
+              </form>
             </div>
 
             {/* Version History & Milestone Manager */}

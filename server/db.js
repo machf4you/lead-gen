@@ -88,6 +88,11 @@ export async function getDb() {
       createdAt TEXT NOT NULL,
       updatedAt TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   try {
@@ -97,11 +102,69 @@ export async function getDb() {
     await db.exec(`ALTER TABLE outreach_packs ADD COLUMN templateBody TEXT;`);
   } catch (e) {}
 
+  await initDefaultSettings(db);
   await cleanNonDomainEmails(db);
   await cleanPackTemplateGreetings(db);
   await seedDefaultEmailTemplates(db);
+  await migrateSenderVariablesInTemplates(db);
   
   return db;
+}
+
+// Initialize default app settings in database
+export async function initDefaultSettings(database) {
+  try {
+    const defaults = {
+      sender_first_name: 'Mac',
+      sender_name: 'Mac McCarthy',
+      company_name: 'The Search Equation'
+    };
+    for (const [key, val] of Object.entries(defaults)) {
+      const existing = await database.get('SELECT key FROM app_settings WHERE key = ?', [key]);
+      if (!existing) {
+        await database.run('INSERT INTO app_settings (key, value) VALUES (?, ?)', [key, val]);
+      }
+    }
+  } catch (e) {
+    console.error('Error initializing default settings:', e);
+  }
+}
+
+// Get outreach sender settings from database
+export async function getSenderSettings(database) {
+  try {
+    const rows = await database.all('SELECT key, value FROM app_settings');
+    const settings = {
+      sender_first_name: 'Mac',
+      sender_name: 'Mac McCarthy',
+      company_name: 'The Search Equation'
+    };
+    for (const r of rows) {
+      if (r.key in settings) {
+        settings[r.key] = r.value;
+      }
+    }
+    return settings;
+  } catch (e) {
+    return {
+      sender_first_name: 'Mac',
+      sender_name: 'Mac McCarthy',
+      company_name: 'The Search Equation'
+    };
+  }
+}
+
+// Update outreach sender settings in database
+export async function updateSenderSettings(database, newSettings) {
+  for (const key of ['sender_first_name', 'sender_name', 'company_name']) {
+    if (newSettings[key] !== undefined) {
+      await database.run(
+        'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        [key, String(newSettings[key]).trim()]
+      );
+    }
+  }
+  return getSenderSettings(database);
 }
 
 // Seed default master email templates if none exist
@@ -114,12 +177,12 @@ export async function seedDefaultEmailTemplates(database) {
       {
         id: 'tpl_warm_partnership',
         name: 'Warm Partnership / Investment Approach',
-        subject: 'Partnership enquiry: {{trade}} in {{location}} — The Search Equation',
+        subject: 'Partnership enquiry: {{trade}} in {{location}} — {{company_name}}',
         body: `I hope you're having a productive week.
 
 I'm reaching out directly because we are currently looking to partner with an established {{trade}} company in {{location}} to generate and deliver additional high-intent client enquiries.
 
-At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+At {{company_name}}, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
 
 We came across {{domain}} while researching established providers in {{location}}, and thought there could be strong commercial synergy between what you do and our growth framework.
 
@@ -127,8 +190,8 @@ If you have capacity for additional {{trade}} projects and are open to exploring
 
 Best regards,
 
-Mac McCarthy
-The Search Equation`
+{{sender_name}}
+{{company_name}}`
       },
       {
         id: 'tpl_standard_seo',
@@ -142,8 +205,8 @@ I've put together a brief checklist of the highest-impact opportunities for your
 
 Best regards,
 
-Mac McCarthy
-The Search Equation`
+{{sender_name}}
+{{company_name}}`
       }
     ];
 
@@ -158,6 +221,66 @@ The Search Equation`
     }
   } catch (err) {
     console.error('Error seeding default email templates:', err);
+  }
+}
+
+// Migrate any existing templates and packs to replace hard-coded sender/company references with variables
+export async function migrateSenderVariablesInTemplates(database) {
+  try {
+    const templates = await database.all('SELECT * FROM email_templates');
+    for (const tpl of templates) {
+      let newSubject = tpl.subject;
+      let newBody = tpl.body;
+
+      newSubject = newSubject
+        .replace(/—\s*The Search Equation/gi, '— {{company_name}}')
+        .replace(/The Search Equation/gi, '{{company_name}}');
+
+      newBody = newBody
+        .replace(/At The Search Equation/gi, 'At {{company_name}}')
+        .replace(/The Search Equation/gi, '{{company_name}}')
+        .replace(/Mac McCarthy/gi, '{{sender_name}}')
+        .replace(/My name is Mac\b/gi, 'My name is {{sender_first_name}}')
+        .replace(/\nMac\n/g, '\n{{sender_name}}\n')
+        .replace(/\nMac\r\n/g, '\n{{sender_name}}\r\n');
+
+      if (newSubject !== tpl.subject || newBody !== tpl.body) {
+        await database.run(
+          'UPDATE email_templates SET subject = ?, body = ?, updatedAt = ? WHERE id = ?',
+          [newSubject, newBody, new Date().toISOString(), tpl.id]
+        );
+      }
+    }
+
+    const packs = await database.all('SELECT id, packId, templateSubject, templateBody FROM outreach_packs');
+    for (const p of packs) {
+      let newSub = p.templateSubject || '';
+      let newB = p.templateBody || '';
+
+      if (newSub) {
+        newSub = newSub
+          .replace(/—\s*The Search Equation/gi, '— {{company_name}}')
+          .replace(/The Search Equation/gi, '{{company_name}}');
+      }
+      if (newB) {
+        newB = newB
+          .replace(/At The Search Equation/gi, 'At {{company_name}}')
+          .replace(/The Search Equation/gi, '{{company_name}}')
+          .replace(/Mac McCarthy/gi, '{{sender_name}}')
+          .replace(/My name is Mac\b/gi, 'My name is {{sender_first_name}}')
+          .replace(/\nMac\n/g, '\n{{sender_name}}\n')
+          .replace(/\nMac\r\n/g, '\n{{sender_name}}\r\n');
+      }
+
+      if (newSub !== p.templateSubject || newB !== p.templateBody) {
+        await database.run(
+          'UPDATE outreach_packs SET templateSubject = ?, templateBody = ? WHERE id = ? OR packId = ?',
+          [newSub, newB, p.id, p.packId]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Error migrating sender variables in templates:', err);
   }
 }
 

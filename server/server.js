@@ -8,9 +8,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
-import util from 'util';
 import nodemailer from 'nodemailer';
-import { getDb } from './db.js';
+import { getDb, getSenderSettings, updateSenderSettings } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1714,7 +1713,7 @@ function stripLeadingGreeting(body) {
 }
 
 // Helper to render template variables for a specific prospect and recipient email
-function renderTemplate(templateStr, prospect, recipientEmail = null) {
+function renderTemplate(templateStr, prospect, recipientEmail = null, senderSettings = null) {
   if (!templateStr) return '';
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
@@ -1723,6 +1722,10 @@ function renderTemplate(templateStr, prospect, recipientEmail = null) {
   const domain = prospect?.domain || '';
   const location = prospect?.location || 'your area';
   const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
+
+  const senderFirstName = senderSettings?.sender_first_name || 'Mac';
+  const senderName = senderSettings?.sender_name || 'Mac McCarthy';
+  const companyName = senderSettings?.company_name || 'The Search Equation';
 
   return templateStr
     .replace(/Hi\s+\{\{\s*businessName\s*\}\}\s+Team,?\s*/gi, `${greeting}\n\n`)
@@ -1735,15 +1738,18 @@ function renderTemplate(templateStr, prospect, recipientEmail = null) {
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
-    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade);
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
+    .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
+    .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
+    .replace(/\{\{\s*(?:company_name|companyName)\s*\}\}/gi, companyName);
 }
 
 // Helper to render the complete email body with automatic separate greeting prepended
-function renderFullEmailBody(templateBody, prospect, recipientEmail = null) {
+function renderFullEmailBody(templateBody, prospect, recipientEmail = null, senderSettings = null) {
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
   const cleanBody = stripLeadingGreeting(templateBody || '');
-  const renderedBody = renderTemplate(cleanBody, prospect, email);
+  const renderedBody = renderTemplate(cleanBody, prospect, email, senderSettings);
   return `${greeting}\n\n${renderedBody}`.trim();
 }
 
@@ -1769,17 +1775,17 @@ function getOutboundEmailConfig() {
 }
 
 // Helper to generate a partnership outreach email template for a pack
-function generatePartnershipTemplate({ searchKeyword, location }) {
+function generatePartnershipTemplate({ searchKeyword, location } = {}) {
   const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
   const loc = location && location !== 'Anywhere' ? location : 'your area';
 
-  const subject = `Partnership enquiry: ${trade} in ${loc} — The Search Equation`;
+  const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
   
   const body = `I hope you're having a productive week.
 
 I'm reaching out directly because we are currently looking to partner with an established ${trade} company in ${loc} to generate and deliver additional high-intent client enquiries.
 
-At The Search Equation, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
+At {{company_name}}, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
 
 We came across {{domain}} while researching established providers in ${loc}, and thought there could be strong commercial synergy between what you do and our growth framework.
 
@@ -1789,9 +1795,8 @@ Would you be open to a brief 5-minute conversation next week?
 
 Best regards,
 
-Mac
-The Search Equation
-https://thesearchequation.co.uk`;
+{{sender_name}}
+{{company_name}}`;
 
   return { subject, body };
 }
@@ -2192,6 +2197,7 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       }
     });
 
+    const senderSettings = await getSenderSettings(db);
     const nowIso = new Date().toISOString();
     const sendResults = [];
 
@@ -2225,8 +2231,8 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
 
       for (const email of emails) {
         try {
-          const renderedSubject = renderTemplate(templateSubject, p, email);
-          const renderedBody = renderFullEmailBody(templateBody, p, email);
+          const renderedSubject = renderTemplate(templateSubject, p, email, senderSettings);
+          const renderedBody = renderFullEmailBody(templateBody, p, email, senderSettings);
 
           const mailOptions = {
             from: config.senderMailbox,
@@ -2257,21 +2263,20 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
         [
           `hist_${packRow.packId}_${p.domain}`,
           p.domain,
-          p.contactEmail || emails[0],
+          p.contactEmail || (emails.length > 0 ? emails[0] : null),
           packRow.packId,
           p.sendStatus,
           p.sentAt || null,
-          packRow.createdAt
+          nowIso
         ]
       );
 
       sendResults.push({ prospectId: p.id, domain: p.domain, emails: emailResults, status: p.sendStatus });
     }
 
-    // Determine overall pack status
-    const allSent = prospects.every(p => p.sendStatus === 'Sent');
     const anySent = prospects.some(p => p.sendStatus === 'Sent');
-    const newPackStatus = allSent ? 'Sent' : (anySent ? 'Partially Sent' : (packRow.status || 'Draft'));
+    const allSent = prospects.length > 0 && prospects.every(p => p.sendStatus === 'Sent');
+    const newPackStatus = allSent ? 'Sent' : (anySent ? 'Partially Sent' : packRow.status);
     const packSentAt = anySent ? (packRow.sentAt || nowIso) : packRow.sentAt;
 
     await db.run(
@@ -2321,6 +2326,51 @@ app.get('/api/outreach/history', async (req, res) => {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM outreach_contact_history ORDER BY createdAt DESC');
     res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== OUTREACH SETTINGS API ====================
+
+// GET outreach sender settings
+app.get('/api/settings/sender', async (req, res) => {
+  try {
+    const db = await getDb();
+    const settings = await getSenderSettings(db);
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT update outreach sender settings
+app.put('/api/settings/sender', async (req, res) => {
+  try {
+    const db = await getDb();
+    const { sender_first_name, sender_name, company_name } = req.body;
+    const updated = await updateSenderSettings(db, {
+      sender_first_name,
+      sender_name,
+      company_name
+    });
+    res.json({ success: true, settings: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST update outreach sender settings
+app.post('/api/settings/sender', async (req, res) => {
+  try {
+    const db = await getDb();
+    const { sender_first_name, sender_name, company_name } = req.body;
+    const updated = await updateSenderSettings(db, {
+      sender_first_name,
+      sender_name,
+      company_name
+    });
+    res.json({ success: true, settings: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
