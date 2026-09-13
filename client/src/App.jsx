@@ -1071,9 +1071,25 @@ function App() {
     const packParam = params.get('pack');
 
     if (viewParam && !searchIdParam) {
-      if (['saved', 'exclusions', 'settings', 'outreach'].includes(viewParam)) {
-        setCurrentView(viewParam);
-        if (viewParam === 'outreach' && packParam) {
+      if (['saved', 'exclusions', 'settings', 'outreach', 'shortlist', 'packs'].includes(viewParam)) {
+        if (viewParam === 'packs') {
+          setCurrentView('outreach');
+          setOutreachSubView('packs');
+        } else if (viewParam === 'shortlist') {
+          setCurrentView('outreach');
+          setOutreachSubView('shortlist');
+        } else {
+          setCurrentView(viewParam);
+        }
+
+        const tabParam = params.get('tab');
+        if (tabParam === 'packs') {
+          setOutreachSubView('packs');
+        } else if (tabParam === 'shortlist') {
+          setOutreachSubView('shortlist');
+        }
+
+        if ((viewParam === 'outreach' || viewParam === 'packs') && packParam) {
           fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packParam)}`)
             .then(r => r.ok ? r.json() : null)
             .then(p => {
@@ -2287,32 +2303,75 @@ function App() {
             >
               Manage Exclusions
             </button>
-            <button 
-              onClick={() => {
-                setCurrentView('outreach');
-                try {
-                  const u = new URL(window.location.href);
-                  u.search = '?view=outreach';
-                  window.history.replaceState(null, '', u.toString());
-                } catch (e) {}
-              }} 
-              className={`sidebar-item ${currentView === 'outreach' ? 'active' : ''}`}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <span>Outreach</span>
-              {outreachList.length > 0 && (
-                <span style={{ 
-                  backgroundColor: '#2563eb', 
-                  color: '#ffffff', 
-                  fontSize: '0.75rem', 
-                  fontWeight: 'bold', 
-                  padding: '0.1rem 0.45rem', 
-                  borderRadius: '10px' 
-                }}>
-                  {outreachList.length}
-                </span>
-              )}
-            </button>
+            {/* Outreach Section with Shortlist and Packs sub-items */}
+            <div className="sidebar-group">
+              <button 
+                onClick={() => {
+                  setCurrentView('outreach');
+                  setOutreachSubView('shortlist');
+                  setActivePack(null);
+                  try {
+                    const u = new URL(window.location.href);
+                    u.search = '?view=outreach&tab=shortlist';
+                    window.history.replaceState(null, '', u.toString());
+                  } catch (e) {}
+                }} 
+                className={`sidebar-item ${currentView === 'outreach' ? 'active-parent' : ''}`}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
+              >
+                <span>Outreach</span>
+              </button>
+              
+              <div className="sidebar-sub-menu">
+                <button 
+                  onClick={() => {
+                    setCurrentView('outreach');
+                    setOutreachSubView('shortlist');
+                    setActivePack(null);
+                    try {
+                      const u = new URL(window.location.href);
+                      u.search = '?view=outreach&tab=shortlist';
+                      window.history.replaceState(null, '', u.toString());
+                    } catch (e) {}
+                  }} 
+                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'shortlist' ? 'active' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Shortlist</span>
+                  {outreachList.length > 0 && (
+                    <span className="sidebar-badge" style={{ 
+                      backgroundColor: currentView === 'outreach' && outreachSubView === 'shortlist' ? 'rgba(255, 255, 255, 0.25)' : '#2563eb'
+                    }}>
+                      {outreachList.length}
+                    </span>
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setCurrentView('outreach');
+                    setOutreachSubView('packs');
+                    setActivePack(null);
+                    try {
+                      const u = new URL(window.location.href);
+                      u.search = '?view=outreach&tab=packs';
+                      window.history.replaceState(null, '', u.toString());
+                    } catch (e) {}
+                  }} 
+                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Outreach Packs</span>
+                  {outreachPacks.length > 0 && (
+                    <span className="sidebar-badge" style={{ 
+                      backgroundColor: currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'rgba(255, 255, 255, 0.25)' : '#475569'
+                    }}>
+                      {outreachPacks.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
             <button 
               onClick={() => {
                 setCurrentView('settings');
@@ -2876,45 +2935,50 @@ function App() {
             {outreachSubView !== 'pack-detail' && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: '#1e293b', padding: '1rem 1.5rem', borderRadius: '8px', border: '1px solid #334155' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  {outreachSubView === 'packs' ? (
-                    <button
-                      onClick={() => {
-                        setOutreachSubView('shortlist');
-                        setActivePack(null);
-                      }}
-                      className="table-btn"
-                      style={{
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #475569',
-                        color: '#cbd5e1',
-                        padding: '0.6rem 1.25rem',
-                        fontSize: '0.9rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem'
-                      }}
-                    >
-                      &larr; Back to Shortlist
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setOutreachSubView('packs');
-                        setActivePack(null);
-                      }}
-                      className="table-btn"
-                      style={{
-                        backgroundColor: '#0f172a',
-                        border: '1px solid #334155',
-                        color: '#ffffff',
-                        fontWeight: 'bold',
-                        padding: '0.6rem 1.25rem',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      Outreach Packs ({outreachPacks.length})
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      setOutreachSubView('shortlist');
+                      setActivePack(null);
+                      try {
+                        const u = new URL(window.location.href);
+                        u.search = '?view=outreach&tab=shortlist';
+                        window.history.replaceState(null, '', u.toString());
+                      } catch (e) {}
+                    }}
+                    className="table-btn"
+                    style={{
+                      backgroundColor: outreachSubView === 'shortlist' ? '#2563eb' : '#0f172a',
+                      border: outreachSubView === 'shortlist' ? '1px solid #3b82f6' : '1px solid #334155',
+                      color: '#ffffff',
+                      fontWeight: outreachSubView === 'shortlist' ? 'bold' : 'normal',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Shortlist ({outreachList.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOutreachSubView('packs');
+                      setActivePack(null);
+                      try {
+                        const u = new URL(window.location.href);
+                        u.search = '?view=outreach&tab=packs';
+                        window.history.replaceState(null, '', u.toString());
+                      } catch (e) {}
+                    }}
+                    className="table-btn"
+                    style={{
+                      backgroundColor: outreachSubView === 'packs' ? '#2563eb' : '#0f172a',
+                      border: outreachSubView === 'packs' ? '1px solid #3b82f6' : '1px solid #334155',
+                      color: '#ffffff',
+                      fontWeight: outreachSubView === 'packs' ? 'bold' : 'normal',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Outreach Packs ({outreachPacks.length})
+                  </button>
                 </div>
 
                 {outreachSubView === 'shortlist' && (
