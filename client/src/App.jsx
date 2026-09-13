@@ -347,6 +347,9 @@ function App() {
   const [editingTemplateBody, setEditingTemplateBody] = useState('');
   const [contactHistory, setContactHistory] = useState([]);
   const [newPackNameInput, setNewPackNameInput] = useState('');
+  const [newPackTemplateId, setNewPackTemplateId] = useState('');
+  const [newPackSubjectInput, setNewPackSubjectInput] = useState('');
+  const [newPackBodyInput, setNewPackBodyInput] = useState('');
   const [isCreatingPackModalOpen, setIsCreatingPackModalOpen] = useState(false);
   const [senderStatus, setSenderStatus] = useState({ configured: false, senderMailbox: null });
   const [isSendConfirmModalOpen, setIsSendConfirmModalOpen] = useState(false);
@@ -616,6 +619,22 @@ function App() {
       defaultName = `Outreach Pack - ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
     }
     setNewPackNameInput(defaultName);
+
+    const firstPhrase = selectedProspects[0]?.searchPhrase || selectedProspects[0]?.searchKeyword || '';
+    const firstLoc = selectedProspects[0]?.location || '';
+    const defaultGen = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+
+    const selectedMaster = masterTemplates.length > 0 ? masterTemplates[0] : null;
+    if (selectedMaster) {
+      setNewPackTemplateId(selectedMaster.id);
+      setNewPackSubjectInput(selectedMaster.subject);
+      setNewPackBodyInput(stripLeadingGreeting(selectedMaster.body));
+    } else {
+      setNewPackTemplateId('');
+      setNewPackSubjectInput(defaultGen.subject);
+      setNewPackBodyInput(stripLeadingGreeting(defaultGen.body));
+    }
+
     setIsCreatingPackModalOpen(true);
   };
 
@@ -959,7 +978,7 @@ function App() {
     return null;
   };
 
-  const handleCreatePackSubmit = async (customName) => {
+  const handleCreatePackSubmit = async (customName, customSubject, customBody) => {
     const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
     if (selectedProspects.length === 0) return;
 
@@ -969,6 +988,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: customName || undefined,
+          templateSubject: customSubject || undefined,
+          templateBody: customBody || undefined,
           prospects: selectedProspects
         })
       });
@@ -2845,26 +2866,55 @@ function App() {
                     <tbody>
                       {paginatedResults.map((item, index) => {
                         if (isOrganicResult) {
+                          const isItemShortlisted = isShortlisted(item.domain || item.url);
                           return (
-                            <tr key={index}>
+                            <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
                               <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
                               <td>
                                 {item.analysis ? (
                                   item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                      <span style={{ 
-                                        color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
-                                        marginRight: '6px',
-                                        fontSize: '1.1rem',
-                                        lineHeight: '1'
-                                      }}>●</span>
-                                      {item.analysis.leadOpportunityScore.score >= 60 && (
-                                        <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                      )}
-                                      <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                        {item.analysis.leadOpportunityScore?.score}
-                                      </span>
-                                    </span>
+                                    (() => {
+                                      const s = item.analysis.leadOpportunityScore.score;
+                                      const isHot = s >= 70;
+                                      return (
+                                        <span style={{ 
+                                          display: 'inline-flex', 
+                                          alignItems: 'center',
+                                          padding: isHot ? '2px 8px' : '0',
+                                          borderRadius: isHot ? '6px' : '0',
+                                          backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                                          border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
+                                          boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
+                                        }}>
+                                          <span style={{ 
+                                            color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                            marginRight: '6px',
+                                            fontSize: '1.1rem',
+                                            lineHeight: '1'
+                                          }}>●</span>
+                                          {s >= 60 && (
+                                            <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                          )}
+                                          <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                            {s}
+                                          </span>
+                                          {isHot && (
+                                            <span style={{ 
+                                              marginLeft: '6px', 
+                                              fontSize: '0.68rem', 
+                                              fontWeight: '800', 
+                                              letterSpacing: '0.04em',
+                                              color: '#ffffff',
+                                              backgroundColor: '#dc2626',
+                                              padding: '1px 5px',
+                                              borderRadius: '3px'
+                                            }}>
+                                              HOT
+                                            </span>
+                                          )}
+                                        </span>
+                                      );
+                                    })()
                                   ) : (
                                     <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
                                       N/A (Failed)
@@ -2895,7 +2945,7 @@ function App() {
                                 >
                                   {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
-                                {isShortlisted(item.domain || item.url) ? (
+                                {isItemShortlisted ? (
                                   <button 
                                     onClick={() => handleRemoveFromOutreach(item.domain || item.url)}
                                     className="table-btn"
@@ -2932,28 +2982,57 @@ function App() {
                               domain = item.website.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
                             }
                           }
+                          const isItemShortlisted = isShortlisted(domain || item.website || item.name);
                           return (
-                            <tr key={index}>
+                            <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
                               <td>
                                 {item.rating !== null && item.rating !== undefined ? `⭐ ${item.rating}` : "Not available"}
                               </td>
                               <td>
                                 {item.analysis ? (
                                   item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                    <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                      <span style={{ 
-                                        color: item.analysis.leadOpportunityScore?.score >= 70 ? '#ef4444' : (item.analysis.leadOpportunityScore?.score >= 40 ? '#f59e0b' : '#10b981'),
-                                        marginRight: '6px',
-                                        fontSize: '1.1rem',
-                                        lineHeight: '1'
-                                      }}>●</span>
-                                      {item.analysis.leadOpportunityScore.score >= 60 && (
-                                        <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                      )}
-                                      <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                        {item.analysis.leadOpportunityScore?.score}
-                                      </span>
-                                    </span>
+                                    (() => {
+                                      const s = item.analysis.leadOpportunityScore.score;
+                                      const isHot = s >= 70;
+                                      return (
+                                        <span style={{ 
+                                          display: 'inline-flex', 
+                                          alignItems: 'center',
+                                          padding: isHot ? '2px 8px' : '0',
+                                          borderRadius: isHot ? '6px' : '0',
+                                          backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                                          border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
+                                          boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
+                                        }}>
+                                          <span style={{ 
+                                            color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                            marginRight: '6px',
+                                            fontSize: '1.1rem',
+                                            lineHeight: '1'
+                                          }}>●</span>
+                                          {s >= 60 && (
+                                            <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                          )}
+                                          <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                            {s}
+                                          </span>
+                                          {isHot && (
+                                            <span style={{ 
+                                              marginLeft: '6px', 
+                                              fontSize: '0.68rem', 
+                                              fontWeight: '800', 
+                                              letterSpacing: '0.04em',
+                                              color: '#ffffff',
+                                              backgroundColor: '#dc2626',
+                                              padding: '1px 5px',
+                                              borderRadius: '3px'
+                                            }}>
+                                              HOT
+                                            </span>
+                                          )}
+                                        </span>
+                                      );
+                                    })()
                                   ) : (
                                     <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
                                       N/A (Failed)
@@ -2983,7 +3062,7 @@ function App() {
                                 >
                                   {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
                                 </button>
-                                {isShortlisted(domain || item.website || item.name) ? (
+                                {isItemShortlisted ? (
                                   <button 
                                     onClick={() => handleRemoveFromOutreach(domain || item.website || item.name)}
                                     className="table-btn"
@@ -3062,6 +3141,35 @@ function App() {
 
         {currentView === 'saved' && (
           <div className="results-table-container">
+            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#ffffff' }}>Saved Searches</h2>
+              </div>
+              {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                <button
+                  onClick={handleBackToResults}
+                  className="table-btn"
+                  style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #3b82f6',
+                    color: '#60a5fa',
+                    fontWeight: 'bold',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                  title="Return to the active search results without re-querying or consuming API credits"
+                >
+                  <span>&larr; Back to Search Results</span>
+                  {activeSearchId && activeSearchId !== 'Not available' && (
+                    <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+                  )}
+                </button>
+              )}
+            </div>
             <table className="results-table">
               <thead>
                 <tr>
@@ -3121,10 +3229,38 @@ function App() {
         )}
         {currentView === 'exclusions' && (
           <div className="results-table-container">
-            <h2 style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', margin: 0, color: '#ffffff' }}>Excluded Domains</h2>
-            <p style={{ padding: '0 1.5rem 1.5rem 1.5rem', margin: 0, color: '#94a3b8', fontSize: '0.95rem' }}>
-              These domains are filtered out of all GMB and Organic search results.
-            </p>
+            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#ffffff' }}>Excluded Domains</h2>
+                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                  These domains are filtered out of all GMB and Organic search results.
+                </p>
+              </div>
+              {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                <button
+                  onClick={handleBackToResults}
+                  className="table-btn"
+                  style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #3b82f6',
+                    color: '#60a5fa',
+                    fontWeight: 'bold',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer'
+                  }}
+                  title="Return to the active search results without re-querying or consuming API credits"
+                >
+                  <span>&larr; Back to Search Results</span>
+                  {activeSearchId && activeSearchId !== 'Not available' && (
+                    <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+                  )}
+                </button>
+              )}
+            </div>
             <table className="results-table">
               <thead>
                 <tr>
@@ -3233,8 +3369,33 @@ function App() {
                   </button>
                 </div>
 
-                {outreachSubView === 'shortlist' && (
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                    <button
+                      onClick={handleBackToResults}
+                      className="table-btn"
+                      style={{
+                        backgroundColor: '#0f172a',
+                        border: '1px solid #3b82f6',
+                        color: '#60a5fa',
+                        fontWeight: 'bold',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        cursor: 'pointer'
+                      }}
+                      title="Return to the active search results without re-querying or consuming API credits"
+                    >
+                      <span>&larr; Back to Search Results</span>
+                      {activeSearchId && activeSearchId !== 'Not available' && (
+                        <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+                      )}
+                    </button>
+                  )}
+
+                  {outreachSubView === 'shortlist' && (
                     <button
                       onClick={handleOpenCreatePackModal}
                       disabled={selectedShortlistIds.size === 0}
@@ -3248,11 +3409,9 @@ function App() {
                     >
                       + Create Outreach Pack ({selectedShortlistIds.size} Selected)
                     </button>
-                  </div>
-                )}
+                  )}
 
-                {outreachSubView === 'templates' && (
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {outreachSubView === 'templates' && (
                     <button
                       onClick={handleOpenCreateTemplateModal}
                       className="analyse-btn-green"
@@ -3263,8 +3422,8 @@ function App() {
                     >
                       + Create Master Template
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
@@ -3806,6 +3965,30 @@ function App() {
                     >
                       &larr; Back to Packs
                     </button>
+                    {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                      <button
+                        onClick={handleBackToResults}
+                        className="table-btn"
+                        style={{
+                          backgroundColor: '#0f172a',
+                          border: '1px solid #3b82f6',
+                          color: '#60a5fa',
+                          fontWeight: 'bold',
+                          padding: '0.5rem 1rem',
+                          fontSize: '0.85rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          cursor: 'pointer'
+                        }}
+                        title="Return to the active search results without re-querying or consuming API credits"
+                      >
+                        <span>&larr; Back to Search Results</span>
+                        {activeSearchId && activeSearchId !== 'Not available' && (
+                          <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+                        )}
+                      </button>
+                    )}
                     <span style={{
                       backgroundColor: 'rgba(59, 130, 246, 0.25)',
                       color: '#60a5fa',
@@ -4189,21 +4372,31 @@ function App() {
                   border: '1px solid #334155',
                   borderRadius: '10px',
                   width: '100%',
-                  maxWidth: '520px',
+                  maxWidth: '680px',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
                   padding: '2rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '1.5rem',
+                  gap: '1.25rem',
                   boxShadow: '0 20px 40px rgba(0,0,0,0.8)'
                 }}>
-                  <div>
-                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Create New Outreach Pack</h3>
-                    <p style={{ margin: '0.5rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
-                      Grouping <strong>{selectedShortlistIds.size} selected prospects</strong> into a permanent campaign pack.
-                    </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Create New Outreach Pack</h3>
+                      <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                        Grouping <strong>{selectedShortlistIds.size} selected prospects</strong> into an outreach campaign pack.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setIsCreatingPackModalOpen(false)}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                    >
+                      &times;
+                    </button>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Pack Name / Description</label>
                     <input
                       type="text"
@@ -4215,7 +4408,75 @@ function App() {
                     />
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  {/* Master Template Selector */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Choose Email Template</label>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Personalised per recipient upon sending</span>
+                    </div>
+                    <select
+                      value={newPackTemplateId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        setNewPackTemplateId(selectedId);
+                        const found = masterTemplates.find(t => t.id === selectedId);
+                        if (found) {
+                          setNewPackSubjectInput(found.subject);
+                          setNewPackBodyInput(stripLeadingGreeting(found.body));
+                        }
+                      }}
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: '#1e293b' }}
+                    >
+                      {masterTemplates.map(tpl => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} — {tpl.subject.substring(0, 45)}...
+                        </option>
+                      ))}
+                      {masterTemplates.length === 0 && (
+                        <option value="">Standard Partnership Template</option>
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Editable Template Subject */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Subject Line</label>
+                    <input
+                      type="text"
+                      value={newPackSubjectInput}
+                      onChange={(e) => setNewPackSubjectInput(e.target.value)}
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  {/* Editable Template Body */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>
+                      Email Body <span style={{ color: '#64748b', fontWeight: 'normal' }}>(Salutation is automatically prepended upon sending)</span>
+                    </label>
+                    <textarea
+                      value={newPackBodyInput}
+                      onChange={(e) => setNewPackBodyInput(e.target.value)}
+                      rows={8}
+                      style={{
+                        backgroundColor: '#1e293b',
+                        color: '#f8fafc',
+                        border: '1px solid #334155',
+                        borderRadius: '6px',
+                        padding: '0.85rem',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.5',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                     <button
                       onClick={() => setIsCreatingPackModalOpen(false)}
                       className="table-btn"
@@ -4224,9 +4485,9 @@ function App() {
                       Cancel
                     </button>
                     <button
-                      onClick={() => handleCreatePackSubmit(newPackNameInput.trim())}
+                      onClick={() => handleCreatePackSubmit(newPackNameInput.trim(), newPackSubjectInput.trim(), newPackBodyInput.trim())}
                       className="analyse-btn-green"
-                      style={{ padding: '0.6rem 1.5rem' }}
+                      style={{ padding: '0.6rem 1.5rem', fontWeight: 'bold' }}
                     >
                       Create Pack & Find Contacts
                     </button>
@@ -4295,6 +4556,35 @@ function App() {
                   }}>
                     <span style={{ color: '#38bdf8', fontSize: '1.1rem' }}>ℹ️</span>
                     <span><strong>Greeting is added automatically for each recipient.</strong> (e.g. <em>Hi Mark,</em> or <em>Hi there,</em>). Email body begins directly after the greeting.</span>
+                  </div>
+
+                  {/* Load from Master Template */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Load from Master Template</label>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Populates subject and body below for this pack</span>
+                    </div>
+                    <select
+                      value={selectedMasterTemplateIdForPack}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        setSelectedMasterTemplateIdForPack(selectedId);
+                        const found = masterTemplates.find(t => t.id === selectedId);
+                        if (found) {
+                          setEditingTemplateSubject(found.subject);
+                          setEditingTemplateBody(stripLeadingGreeting(found.body));
+                        }
+                      }}
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: '#1e293b' }}
+                    >
+                      <option value="">-- Choose a Master Template --</option>
+                      {masterTemplates.map(tpl => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} — {tpl.subject.substring(0, 45)}...
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -5570,6 +5860,113 @@ function App() {
                       {(!activeAnalysisItem.h1 || activeAnalysisItem.h1 === 'Not Found' || activeAnalysisItem.h1 === 'Loading...') ? (
                         <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
                       ) : activeAnalysisItem.h1}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Website Desktop Preview Card */}
+              <div className="analysis-section" style={{ gridColumn: '1 / -1', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #334155', paddingBottom: '0.65rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>🖥️</span>
+                    <h3 style={{ margin: 0, border: 'none', padding: 0, fontSize: '1.15rem', color: '#ffffff' }}>Website Desktop Preview</h3>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {activeAnalysisItem.url && (
+                      <a 
+                        href={activeAnalysisItem.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="table-btn"
+                        style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#38bdf8', textDecoration: 'none', fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <span>Open Live Site ↗</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mock Browser Frame */}
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  overflow: 'hidden',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+                }}>
+                  {/* Browser Header Bar */}
+                  <div style={{
+                    backgroundColor: '#1e293b',
+                    padding: '0.5rem 0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    borderBottom: '1px solid #334155'
+                  }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+                    </div>
+                    <div style={{
+                      flex: 1,
+                      backgroundColor: '#090d16',
+                      borderRadius: '4px',
+                      padding: '0.25rem 0.75rem',
+                      fontSize: '0.8rem',
+                      color: '#94a3b8',
+                      fontFamily: 'monospace',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      🔒 {activeAnalysisItem.url || (`https://${activeAnalysisItem.domain}`)}
+                    </div>
+                  </div>
+
+                  {/* Screenshot Image Container */}
+                  <div style={{
+                    minHeight: '280px',
+                    maxHeight: '520px',
+                    overflowY: 'auto',
+                    backgroundColor: '#090d16',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    position: 'relative'
+                  }}>
+                    <img
+                      src={`${API_BASE}/api/screenshot?url=${encodeURIComponent(activeAnalysisItem.url || ('https://' + activeAnalysisItem.domain))}`}
+                      alt={`Website Preview for ${activeAnalysisItem.domain}`}
+                      style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextSibling) {
+                          e.currentTarget.nextSibling.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div style={{
+                      display: 'none',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '3rem 1.5rem',
+                      color: '#94a3b8',
+                      textAlign: 'center',
+                      gap: '0.5rem',
+                      width: '100%'
+                    }}>
+                      <span style={{ fontSize: '2.5rem' }}>🌐</span>
+                      <span style={{ fontWeight: 'bold', color: '#cbd5e1' }}>Desktop Preview Unavailable</span>
+                      <span style={{ fontSize: '0.85rem' }}>Direct connection or security restrictions prevented live screenshot capture.</span>
+                      {activeAnalysisItem.url && (
+                        <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-btn" style={{ marginTop: '0.75rem', backgroundColor: '#2563eb', color: '#ffffff' }}>
+                          Visit {activeAnalysisItem.domain} ↗
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -2377,6 +2377,74 @@ app.post('/api/settings/sender', async (req, res) => {
   }
 });
 
+// GET website screenshot endpoint (captures and caches desktop screenshot of target URL)
+app.get('/api/screenshot', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  let validUrl = targetUrl;
+  if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+    validUrl = 'https://' + validUrl;
+  }
+
+  try {
+    const domainKey = crypto.createHash('md5').update(validUrl.toLowerCase()).digest('hex');
+    const screenshotsDir = process.env.DB_PATH 
+      ? path.join(path.dirname(process.env.DB_PATH), 'screenshots')
+      : path.join(__dirname, 'screenshots');
+    
+    await fs.mkdir(screenshotsDir, { recursive: true });
+    const cachedFile = path.join(screenshotsDir, `${domainKey}.jpg`);
+
+    try {
+      const stats = await fs.stat(cachedFile);
+      // Serve cached if less than 7 days old
+      if (Date.now() - stats.mtimeMs < 7 * 24 * 60 * 60 * 1000) {
+        const data = await fs.readFile(cachedFile);
+        res.set('Content-Type', 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(data);
+      }
+    } catch (e) {}
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 800 });
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      try {
+        await page.goto(validUrl, { waitUntil: 'domcontentloaded', timeout: 8000 });
+      } catch (gotoErr) {
+        if (validUrl.startsWith('https://')) {
+          const httpUrl = validUrl.replace(/^https:\/\//i, 'http://');
+          await page.goto(httpUrl, { waitUntil: 'domcontentloaded', timeout: 6000 });
+        } else {
+          throw gotoErr;
+        }
+      }
+
+      const buffer = await page.screenshot({ type: 'jpeg', quality: 75 });
+      await fs.writeFile(cachedFile, buffer);
+      
+      res.set('Content-Type', 'image/jpeg');
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  } catch (error) {
+    console.error(`[Screenshot Error for ${targetUrl}]:`, error.message);
+    res.status(500).send('Screenshot capture failed: ' + error.message);
+  }
+});
+
 // Root check endpoint
 app.get('/', (req, res) => {
   res.send('Lead Gen Backend is running.');
