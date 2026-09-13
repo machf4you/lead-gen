@@ -1734,6 +1734,35 @@ function App() {
     } catch (e) {}
   };
 
+  const handleBackToResults = async () => {
+    setCurrentView('search');
+    try {
+      const u = new URL(window.location.href);
+      if (activeSearchId && activeSearchId !== 'Not available') {
+        u.search = `?searchId=${encodeURIComponent(activeSearchId)}`;
+      } else {
+        u.search = '';
+      }
+      window.history.replaceState(null, '', u.toString());
+    } catch (e) {}
+
+    // If searchResults is empty in state but activeSearchId exists, restore saved search
+    if ((!searchResults || searchResults.length === 0) && activeSearchId && activeSearchId !== 'Not available') {
+      const existingSaved = savedSearches.find(s => s.searchId === activeSearchId);
+      if (existingSaved) {
+        handleLoadSavedSearch(existingSaved);
+      } else {
+        try {
+          const res = await fetch(`${API_BASE}/api/saved-searches/${encodeURIComponent(activeSearchId)}`);
+          if (res.ok) {
+            const savedData = await res.json();
+            handleLoadSavedSearch(savedData);
+          }
+        } catch (err) {}
+      }
+    }
+  };
+
   const handleDeleteSavedSearch = (id) => {
     // Delete from backend database
     fetch(`${API_BASE}/api/saved-searches/${id}`, {
@@ -2775,7 +2804,7 @@ function App() {
 
               return (
                 <>
-                <div style={{ marginBottom: '0.75rem', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500' }}>
+                <div style={{ width: '100%', maxWidth: '1440px', margin: '0 auto 0.75rem auto', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500', boxSizing: 'border-box' }}>
                   Opportunity Score: The higher the score, the better the lead opportunity. ★ = score 60+.
                 </div>
                 <div className="results-table-container">
@@ -5267,18 +5296,7 @@ function App() {
                   </button>
                 )}
                 <button 
-                  onClick={() => {
-                    setCurrentView('search');
-                    try {
-                      const u = new URL(window.location.href);
-                      if (activeSearchId) {
-                        u.search = `?searchId=${encodeURIComponent(activeSearchId)}`;
-                      } else {
-                        u.search = '';
-                      }
-                      window.history.replaceState(null, '', u.toString());
-                    } catch (e) {}
-                  }} 
+                  onClick={handleBackToResults} 
                   className="table-btn"
                   style={{ backgroundColor: '#475569' }}
                 >
