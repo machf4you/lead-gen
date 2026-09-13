@@ -1713,6 +1713,54 @@ function stripLeadingGreeting(body) {
   return cleaned.trimStart();
 }
 
+function deriveLocation(prospect) {
+  if (!prospect) return 'your area';
+  const loc = (typeof prospect === 'string' ? prospect : (prospect.location || '')).trim();
+  if (!loc || loc.toLowerCase() === 'anywhere' || loc.toLowerCase() === 'not available') {
+    return 'your area';
+  }
+  return loc;
+}
+
+function deriveTrade(prospect) {
+  if (!prospect) return 'services';
+
+  let rawTrade = '';
+  if (typeof prospect === 'string') {
+    rawTrade = prospect.trim();
+  } else {
+    // 1. Check explicit trade / businessType / searchKeyword
+    rawTrade = (prospect.trade || prospect.businessType || prospect.searchKeyword || '').trim();
+
+    // 2. Check searchPhrase if rawTrade is empty
+    if (!rawTrade && prospect.searchPhrase) {
+      rawTrade = (prospect.searchPhrase || '').trim();
+    }
+
+    // 3. Check analysisData if available
+    if (!rawTrade && prospect.analysisData) {
+      rawTrade = (prospect.analysisData.trade || prospect.analysisData.businessType || prospect.analysisData.searchKeyword || '').trim();
+    }
+  }
+
+  if (!rawTrade || rawTrade.toLowerCase() === 'any' || rawTrade.toLowerCase() === 'not available') {
+    return 'services';
+  }
+
+  // If rawTrade contains or ends with the location, strip the location portion out
+  const loc = (typeof prospect === 'object' && prospect ? prospect.location : '') || '';
+  const cleanLoc = loc.trim();
+  if (cleanLoc && cleanLoc.toLowerCase() !== 'anywhere' && cleanLoc.toLowerCase() !== 'your area') {
+    const escapedLoc = cleanLoc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexEnd = new RegExp(`\\s+${escapedLoc}$`, 'i');
+    rawTrade = rawTrade.replace(regexEnd, '').trim();
+    const regexStart = new RegExp(`^${escapedLoc}\\s+`, 'i');
+    rawTrade = rawTrade.replace(regexStart, '').trim();
+  }
+
+  return rawTrade || 'services';
+}
+
 // Helper to render template variables for a specific prospect and recipient email
 function renderTemplate(templateStr, prospect, recipientEmail = null, senderSettings = null) {
   if (!templateStr) return '';
@@ -1721,8 +1769,8 @@ function renderTemplate(templateStr, prospect, recipientEmail = null, senderSett
   const firstName = deriveFirstName(email) || 'there';
   const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
   const domain = prospect?.domain || '';
-  const location = prospect?.location || 'your area';
-  const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
+  const location = deriveLocation(prospect);
+  const trade = deriveTrade(prospect);
 
   const senderFirstName = senderSettings?.sender_first_name || 'Mac';
   const senderName = senderSettings?.sender_name || 'Mac McCarthy';
@@ -1738,6 +1786,7 @@ function renderTemplate(templateStr, prospect, recipientEmail = null, senderSett
     .replace(/\{\{\s*domain\s*\}\}/gi, domain)
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
+    .replace(/\{\{\s*businessType\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
     .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
@@ -1776,9 +1825,9 @@ function getOutboundEmailConfig() {
 }
 
 // Helper to generate a partnership outreach email template for a pack
-function generatePartnershipTemplate({ searchKeyword, location } = {}) {
-  const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
-  const loc = location && location !== 'Anywhere' ? location : 'your area';
+function generatePartnershipTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
   
@@ -1965,7 +2014,9 @@ app.post('/api/outreach-packs', async (req, res) => {
       const pDomain = normalizeDomain(p.domain || p.url || '');
       const pUrl = p.url || (pDomain ? `https://${pDomain}` : '');
       const pBusinessName = p.businessName || p.name || pDomain;
-      const pSearchKeyword = p.searchKeyword || p.searchPhrase || '';
+      const pTrade = p.trade || p.businessType || p.searchKeyword || '';
+      const pSearchKeyword = pTrade || p.searchPhrase || '';
+      const pSearchPhrase = p.searchPhrase || '';
       const pLocation = p.location || '';
 
       const hasEmail = Boolean(p.contactEmail);
@@ -1977,7 +2028,10 @@ app.post('/api/outreach-packs', async (req, res) => {
         url: pUrl,
         businessName: pBusinessName,
         searchId: p.searchId || '',
-        searchPhrase: p.searchPhrase || '',
+        searchPhrase: pSearchPhrase,
+        trade: pTrade,
+        businessType: pTrade,
+        searchKeyword: pSearchKeyword,
         location: pLocation,
         searchType: p.searchType || 'Organic',
         rank: p.rank || 0,

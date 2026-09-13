@@ -233,6 +233,54 @@ const stripLeadingGreeting = (body) => {
   return cleaned.trimStart();
 };
 
+const deriveLocation = (prospect) => {
+  if (!prospect) return 'your area';
+  const loc = (typeof prospect === 'string' ? prospect : (prospect.location || '')).trim();
+  if (!loc || loc.toLowerCase() === 'anywhere' || loc.toLowerCase() === 'not available') {
+    return 'your area';
+  }
+  return loc;
+};
+
+const deriveTrade = (prospect) => {
+  if (!prospect) return 'services';
+
+  let rawTrade = '';
+  if (typeof prospect === 'string') {
+    rawTrade = prospect.trim();
+  } else {
+    // 1. Check explicit trade / businessType / searchKeyword
+    rawTrade = (prospect.trade || prospect.businessType || prospect.searchKeyword || '').trim();
+
+    // 2. Check searchPhrase if rawTrade is empty
+    if (!rawTrade && prospect.searchPhrase) {
+      rawTrade = (prospect.searchPhrase || '').trim();
+    }
+
+    // 3. Check analysisData if available
+    if (!rawTrade && prospect.analysisData) {
+      rawTrade = (prospect.analysisData.trade || prospect.analysisData.businessType || prospect.analysisData.searchKeyword || '').trim();
+    }
+  }
+
+  if (!rawTrade || rawTrade.toLowerCase() === 'any' || rawTrade.toLowerCase() === 'not available') {
+    return 'services';
+  }
+
+  // If rawTrade contains or ends with the location, strip the location portion out
+  const loc = (typeof prospect === 'object' && prospect ? prospect.location : '') || '';
+  const cleanLoc = loc.trim();
+  if (cleanLoc && cleanLoc.toLowerCase() !== 'anywhere' && cleanLoc.toLowerCase() !== 'your area') {
+    const escapedLoc = cleanLoc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regexEnd = new RegExp(`\\s+${escapedLoc}$`, 'i');
+    rawTrade = rawTrade.replace(regexEnd, '').trim();
+    const regexStart = new RegExp(`^${escapedLoc}\\s+`, 'i');
+    rawTrade = rawTrade.replace(regexStart, '').trim();
+  }
+
+  return rawTrade || 'services';
+};
+
 // Helper to render template variables for a specific prospect
 const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSettings = null) => {
   if (!templateStr) return '';
@@ -241,8 +289,8 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
   const firstName = deriveFirstName(email) || 'there';
   const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
   const domain = prospect?.domain || '';
-  const location = prospect?.location || 'your area';
-  const trade = prospect?.searchPhrase || prospect?.searchKeyword || 'services';
+  const location = deriveLocation(prospect);
+  const trade = deriveTrade(prospect);
 
   const senderFirstName = senderSettings?.sender_first_name || 'Mac';
   const senderName = senderSettings?.sender_name || 'Mac McCarthy';
@@ -258,6 +306,7 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
     .replace(/\{\{\s*domain\s*\}\}/gi, domain)
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
+    .replace(/\{\{\s*businessType\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
     .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
@@ -275,9 +324,9 @@ const renderFullEmailBody = (templateBody, prospect, recipientEmail = null, send
 };
 
 // Helper to generate a partnership outreach email template for a pack
-const generatePartnershipTemplate = ({ searchKeyword, location } = {}) => {
-  const trade = searchKeyword && searchKeyword !== 'Any' ? searchKeyword : 'services';
-  const loc = location && location !== 'Anywhere' ? location : 'your area';
+const generatePartnershipTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
 
   const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
   
@@ -851,8 +900,9 @@ function App() {
     const url = item.url || item.website || (domain ? `https://${domain}` : '');
     const businessName = item.name || item.analysis?.gbp?.businessName || item.analysis?.pageTitle || domain;
     const searchId = activeSearchId || item.searchId || 'Not available';
-    const searchPhrase = getSearchPhrase(businessType || item.searchKeyword || item.businessType, location || item.location);
+    const rawTrade = businessType || item.searchKeyword || item.businessType || item.trade || '';
     const loc = location || item.location || 'Anywhere';
+    const searchPhrase = getSearchPhrase(rawTrade, loc);
     const searchType = searchMode === 'organic' || item.searchType === 'Organic' ? 'Organic' : 'GMB';
     const rank = item.rank || item.analysis?.rank || 0;
     const oppScore = item.analysis?.leadOpportunityScore?.score !== undefined ? item.analysis.leadOpportunityScore.score : null;
@@ -872,6 +922,9 @@ function App() {
           businessName,
           searchId,
           searchPhrase,
+          trade: rawTrade,
+          businessType: rawTrade,
+          searchKeyword: rawTrade,
           location: loc,
           searchType,
           rank,
