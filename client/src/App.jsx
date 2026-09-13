@@ -2384,7 +2384,7 @@ function App() {
       {/* Sidebar Navigation */}
       <div className="sidebar">
         <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-          <h2 className="sidebar-title">TSE Leads</h2>
+          <h2 className="sidebar-title">Lead Gen</h2>
           <div className="sidebar-menu">
             <button 
               onClick={handleNewSearchNav} 
@@ -3669,9 +3669,7 @@ function App() {
                             fontSize: '0.875rem',
                             color: '#cbd5e1',
                             whiteSpace: 'pre-wrap',
-                            lineHeight: '1.5',
-                            maxHeight: '220px',
-                            overflowY: 'auto'
+                            lineHeight: '1.5'
                           }}>
                             {tpl.body}
                           </div>
