@@ -145,7 +145,7 @@ app.post('/api/search', async (req, res) => {
             keyword: searchPhrase,
             language_name: "English",
             location_name: "United Kingdom",
-            depth: 50
+            depth: 100
           }
         ])
       });
@@ -169,7 +169,7 @@ app.post('/api/search', async (req, res) => {
       const excludedList = excRows.map(r => r.domain);
 
       for (const item of pageOrganic) {
-        if (organicResults.length >= 50) break;
+        if (organicResults.length >= 100) break;
 
         const url = item.url || "";
         const itemDomain = item.domain || getDomain(url);
