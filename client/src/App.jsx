@@ -2646,7 +2646,7 @@ function App() {
         {currentView === 'search' && (
           <>
             <div className="search-header-container">
-              <h1 className="header-title">TSE Lead Generation Finder</h1>
+              <h1 className="header-title">Lead Generation Finder</h1>
               <p className="header-subtitle">Find local businesses ready for SEO, AI and digital growth.</p>
               
               <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.5rem' }}>
