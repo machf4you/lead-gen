@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import './App.css'
+import GlobalDeploymentIndicator from './components/GlobalDeploymentIndicator'
 
 // Helper to construct a natural UK English Contact Strategy summary (2-4 sentences)
 const getContactStrategySummary = (item) => {
@@ -296,6 +297,9 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
   const senderName = senderSettings?.sender_name || 'Mac McCarthy';
   const companyName = senderSettings?.company_name || 'The Search Equation';
 
+  const phone = prospect?.phone || '';
+  const rating = prospect?.rating !== null && prospect?.rating !== undefined ? prospect.rating : '';
+
   return templateStr
     .replace(/Hi\s+\{\{\s*businessName\s*\}\}\s+Team,?\s*/gi, `${greeting}\n\n`)
     .replace(/Hi\s+\{\{\s*businessName\s*\}\},?\s*/gi, `${greeting}\n\n`)
@@ -309,6 +313,8 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
     .replace(/\{\{\s*businessType\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
     .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
+    .replace(/\{\{\s*phone\s*\}\}/gi, phone)
+    .replace(/\{\{\s*rating\s*\}\}/gi, String(rating))
     .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
     .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
     .replace(/\{\{\s*(?:company_name|companyName)\s*\}\}/gi, companyName);
@@ -323,7 +329,7 @@ const renderFullEmailBody = (templateBody, prospect, recipientEmail = null, send
   return `${greeting}\n\n${renderedBody}`.trim();
 };
 
-// Helper to generate a partnership outreach email template for a pack
+// Organic Templates
 const generatePartnershipTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
   const loc = deriveLocation({ location });
   const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
@@ -348,6 +354,166 @@ Best regards,
 {{company_name}}`;
 
   return { subject, body };
+};
+
+const generateOrganicStandardShortTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+  const subject = `Quick question regarding search visibility for {{domain}}`;
+  const body = `I was researching local ${trade} providers in ${loc} and noticed {{domain}} ranking in Google search results.
+
+You have a strong foundation, but there are a few straightforward technical and local search adjustments that would significantly increase your direct customer enquiries.
+
+I've put together a brief checklist of the highest-impact opportunities for your site. Would it be alright if I sent that over?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+  return { subject, body };
+};
+
+const generateOrganicPartnershipShortTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+  const subject = `Partnership enquiry for {{domain}} — {{company_name}}`;
+  const body = `I'm reaching out because we are looking to partner with an established ${trade} company in ${loc} to deliver exclusive customer enquiries.
+
+At {{company_name}}, we invest our own resources into driving qualified client enquiries for one trusted partner per area.
+
+We noticed {{domain}} and thought there could be strong synergy. If you have capacity for more ${trade} work, would you be open to a quick 5-minute chat next week?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+  return { subject, body };
+};
+
+// Local Business Listings Templates
+const generateLocalPartnershipTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
+  const body = `I hope you're having a productive week.
+
+I'm reaching out directly because we are currently looking to partner with an established ${trade} specialist in ${loc} to generate and deliver additional direct customer enquiries.
+
+At {{company_name}}, we work with high-performing local service businesses to maximise their Google Business Profile and local search visibility. Rather than offering standard marketing retainers or agency contracts, our model is to invest our own expertise directly into driving exclusive customer enquiries for a single trusted partner in each local area.
+
+We noticed {{businessName}} while reviewing local providers in ${loc}, and your strong local presence and customer reputation stood out.
+
+If you have capacity for additional ${trade} work in ${loc} and are open to exploring a commercial partnership, I’d be glad to share a quick overview of how we operate.
+
+Would you be open to a brief 5-minute conversation next week?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+};
+
+const generateLocalStandardShortTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Quick question regarding local visibility for {{businessName}} in ${loc}`;
+  const body = `I came across {{businessName}} while reviewing local ${trade} businesses in ${loc}.
+
+You have a solid local presence, but there are a few straightforward optimizations to your Google Business Profile and local visibility that could significantly increase your incoming customer enquiries from Google Maps.
+
+I’ve put together a brief checklist of the highest-impact opportunities for {{businessName}} in ${loc}. Would it be alright if I sent that over for you to take a look?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+};
+
+const generateLocalPartnershipShortTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Exclusive ${trade} partner in ${loc} — {{businessName}}`;
+  const body = `I'm reaching out because we are currently looking for a single trusted ${trade} company in ${loc} to partner with.
+
+At {{company_name}}, we invest our own resources into driving exclusive local customer enquiries for one partner per trade and region.
+
+We came across {{businessName}} and thought you would be an ideal fit. If you currently have capacity for more enquiries in ${loc}, would you be open to a brief 5-minute chat next week to see if there's synergy?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+};
+
+// Helper to classify template based on LOCAL - / ORGANIC - prefix or stored type
+export const getTemplateClassification = (t) => {
+  if (!t) return 'master';
+  const name = (t.name || '').trim().toLowerCase();
+  if (name.startsWith('local -') || name.startsWith('local-') || name.startsWith('local:')) return 'local';
+  if (name.startsWith('organic -') || name.startsWith('organic-') || name.startsWith('organic:')) return 'organic';
+  if (name.startsWith('master -') || name.startsWith('master-') || name.startsWith('master:')) return 'master';
+  if (t.templateType === 'local') return 'local';
+  if (t.templateType === 'organic') return 'organic';
+  if (t.templateType === 'master') return 'master';
+  if (t.id?.startsWith('tpl_local') || name.includes('(local)')) return 'local';
+  if (t.id?.startsWith('tpl_organic') || name.includes('(organic)')) return 'organic';
+  return 'master';
+};
+
+const renderTemplateOptions = (templates, placeholder = '-- Select Template --') => {
+  const local = (templates || []).filter(t => getTemplateClassification(t) === 'local');
+  const organic = (templates || []).filter(t => getTemplateClassification(t) === 'organic');
+  const master = (templates || []).filter(t => getTemplateClassification(t) === 'master');
+
+  return (
+    <>
+      {placeholder && <option value="" disabled>{placeholder}</option>}
+      {local.length > 0 && (
+        <optgroup label="📍 Local Business Listings Templates (GBP / Google Maps)">
+          {local.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </optgroup>
+      )}
+      {organic.length > 0 && (
+        <optgroup label="🌐 Google Organic SERP Templates">
+          {organic.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </optgroup>
+      )}
+      {master.length > 0 && (
+        <optgroup label="General / Master Templates">
+          {master.map(t => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
+};
+
+const isPackLocal = (pack) => {
+  if (!pack) return false;
+  if (typeof pack === 'string') {
+    return pack.startsWith('GM');
+  }
+  if (pack.packId?.startsWith('GM')) return true;
+  if (pack.searchType === 'GMB' || pack.searchType === 'local') return true;
+  if (pack.prospects && Array.isArray(pack.prospects)) {
+    return pack.prospects.some(p => p.searchType === 'GMB' || p.searchType === 'local');
+  }
+  if (pack.templateId?.startsWith('tpl_local') || pack.name?.toLowerCase().includes('(local)')) return true;
+  return false;
 };
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
@@ -411,10 +577,12 @@ function App() {
 
   // Master Email Templates state
   const [masterTemplates, setMasterTemplates] = useState([]);
+  const [templateTab, setTemplateTab] = useState('master'); // 'master' | 'organic' | 'local'
   const [isTemplatesLoading, setIsTemplatesLoading] = useState(false);
   const [isTemplateEditorModalOpen, setIsTemplateEditorModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [templateNameInput, setTemplateNameInput] = useState('');
+  const [templateTypeInput, setTemplateTypeInput] = useState('organic'); // 'organic' | 'local' | 'master'
   const [templateSubjectInput, setTemplateSubjectInput] = useState('');
   const [templateBodyInput, setTemplateBodyInput] = useState('');
   const [selectedMasterTemplateIdForPack, setSelectedMasterTemplateIdForPack] = useState('');
@@ -433,13 +601,7 @@ function App() {
       const res = await fetch(`${API_BASE}/api/settings/sender`);
       if (res.ok) {
         const data = await res.json();
-        if (data && (data.sender_first_name || data.sender_name || data.company_name)) {
-          setSenderSettings({
-            sender_first_name: data.sender_first_name || 'Mac',
-            sender_name: data.sender_name || 'Mac McCarthy',
-            company_name: data.company_name || 'The Search Equation'
-          });
-        }
+        setSenderSettings(data);
       }
     } catch (err) {
       console.error('Error fetching sender settings:', err);
@@ -452,19 +614,18 @@ function App() {
     setSenderSettingsSavedMsg(false);
     try {
       const res = await fetch(`${API_BASE}/api/settings/sender`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(senderSettings)
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.settings) {
-          setSenderSettings(data.settings);
-        }
+        if (data.settings) setSenderSettings(data.settings);
         setSenderSettingsSavedMsg(true);
         setTimeout(() => setSenderSettingsSavedMsg(false), 3000);
       } else {
-        alert('Failed to save sender settings.');
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to save sender settings');
       }
     } catch (err) {
       console.error('Error saving sender settings:', err);
@@ -492,6 +653,7 @@ function App() {
   const handleOpenCreateTemplateModal = () => {
     setEditingTemplate(null);
     setTemplateNameInput('');
+    setTemplateTypeInput(templateTab === 'local' ? 'local' : templateTab === 'organic' ? 'organic' : 'organic');
     setTemplateSubjectInput('');
     setTemplateBodyInput('');
     setIsTemplateEditorModalOpen(true);
@@ -500,6 +662,7 @@ function App() {
   const handleOpenEditTemplateModal = (tpl) => {
     setEditingTemplate(tpl);
     setTemplateNameInput(tpl.name || '');
+    setTemplateTypeInput(getTemplateClassification(tpl));
     setTemplateSubjectInput(tpl.subject || '');
     setTemplateBodyInput(tpl.body || '');
     setIsTemplateEditorModalOpen(true);
@@ -512,6 +675,17 @@ function App() {
       return;
     }
 
+    const trimmedName = templateNameInput.trim();
+    const lowerName = trimmedName.toLowerCase();
+    let computedType = templateTypeInput;
+    if (lowerName.startsWith('local -') || lowerName.startsWith('local-') || lowerName.startsWith('local:')) {
+      computedType = 'local';
+    } else if (lowerName.startsWith('organic -') || lowerName.startsWith('organic-') || lowerName.startsWith('organic:')) {
+      computedType = 'organic';
+    } else if (lowerName.startsWith('master -') || lowerName.startsWith('master-')) {
+      computedType = 'master';
+    }
+
     try {
       const url = editingTemplate 
         ? `${API_BASE}/api/email-templates/${encodeURIComponent(editingTemplate.id)}`
@@ -522,7 +696,8 @@ function App() {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: templateNameInput.trim(),
+          name: trimmedName,
+          templateType: computedType,
           subject: templateSubjectInput.trim(),
           body: templateBodyInput.trim()
         })
@@ -571,7 +746,10 @@ function App() {
     if (!activePack) return;
     const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
     const firstLoc = activePack.prospects?.[0]?.location || '';
-    const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+    const isLocalPack = activePack.prospects?.some(p => p.searchType === 'GMB' || p.searchType === 'local');
+    const defaultTpl = isLocalPack
+      ? generateLocalPartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc })
+      : generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
 
     const subject = (activePack.templateSubject && activePack.templateSubject.trim())
       ? activePack.templateSubject
@@ -589,7 +767,10 @@ function App() {
     if (isTemplateModalOpen && activePack) {
       const firstPhrase = activePack.prospects?.[0]?.searchPhrase || activePack.prospects?.[0]?.searchKeyword || '';
       const firstLoc = activePack.prospects?.[0]?.location || '';
-      const defaultTpl = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+      const isLocalPack = activePack.prospects?.some(p => p.searchType === 'GMB' || p.searchType === 'local');
+      const defaultTpl = isLocalPack
+        ? generateLocalPartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc })
+        : generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
 
       const subject = (activePack.templateSubject && activePack.templateSubject.trim())
         ? activePack.templateSubject
@@ -633,6 +814,12 @@ function App() {
     return recipients;
   };
 
+  useEffect(() => {
+    if (isSendConfirmModalOpen) {
+      fetchSenderStatus();
+    }
+  }, [isSendConfirmModalOpen]);
+
   const fetchSenderStatus = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/outreach/sender-status`);
@@ -671,9 +858,20 @@ function App() {
 
     const firstPhrase = selectedProspects[0]?.searchPhrase || selectedProspects[0]?.searchKeyword || '';
     const firstLoc = selectedProspects[0]?.location || '';
-    const defaultGen = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+    const isLocalPack = selectedProspects.some(p => p.searchType === 'GMB' || p.searchType === 'local');
 
-    const selectedMaster = masterTemplates.length > 0 ? masterTemplates[0] : null;
+    const defaultGen = isLocalPack
+      ? generateLocalPartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc })
+      : generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+
+    // Choose appropriate master template based on isLocalPack
+    let selectedMaster = null;
+    if (isLocalPack) {
+      selectedMaster = masterTemplates.find(t => t.id === 'tpl_local_partnership_long' || t.name.includes('(Local)')) || masterTemplates[0];
+    } else {
+      selectedMaster = masterTemplates.find(t => t.id === 'tpl_warm_partnership' || t.name.includes('(Organic)')) || masterTemplates[0];
+    }
+
     if (selectedMaster) {
       setNewPackTemplateId(selectedMaster.id);
       setNewPackSubjectInput(selectedMaster.subject);
@@ -905,6 +1103,13 @@ function App() {
     const searchPhrase = getSearchPhrase(rawTrade, loc);
     const searchType = searchMode === 'organic' || item.searchType === 'Organic' ? 'Organic' : 'GMB';
     const rank = item.rank || item.analysis?.rank || 0;
+    const phone = item.phone || item.analysis?.phone || null;
+    const address = item.address || item.analysis?.address || null;
+    const rating = item.rating ?? item.analysis?.rating ?? null;
+    const reviewsCount = item.reviewsCount ?? item.analysis?.reviewsCount ?? null;
+    const contactEmail = item.contactEmail || item.analysis?.contactEmail || null;
+    const allFoundEmails = item.allFoundEmails || item.analysis?.allFoundEmails || (contactEmail ? [contactEmail] : []);
+    const emailStatus = contactEmail ? 'Email Found' : (item.emailStatus || 'No Email');
     const oppScore = item.analysis?.leadOpportunityScore?.score !== undefined ? item.analysis.leadOpportunityScore.score : null;
     const oppBand = item.analysis?.leadOpportunityScore?.band || '';
     const strengthStars = item.analysis?.leadPriority?.stars || '★★★☆☆';
@@ -928,6 +1133,13 @@ function App() {
           location: loc,
           searchType,
           rank,
+          phone,
+          address,
+          rating,
+          reviewsCount,
+          contactEmail,
+          allFoundEmails,
+          emailStatus,
           opportunityScore: oppScore,
           opportunityBand: oppBand,
           commercialStrengthStars: strengthStars,
@@ -1006,8 +1218,9 @@ function App() {
     const itemDomain = normalizeDomain(item.domain || item.url || '');
     const itemId = item.id;
 
-    // First check across all loaded outreachPacks
+    // 1. Primary check across all loaded outreachPacks
     for (const pack of outreachPacks) {
+      if (!pack.packId || pack.packId.startsWith('TEMP_') || pack.packId.startsWith('OP')) continue;
       if (pack.prospects && Array.isArray(pack.prospects)) {
         const found = pack.prospects.some(p => {
           const pDomain = normalizeDomain(p.domain || p.url || '');
@@ -1019,12 +1232,12 @@ function App() {
       }
     }
 
-    // Fallback check in contactHistory
+    // 2. Fallback check in contactHistory: only for valid GM/OR pack IDs
     if (contactHistory && contactHistory.length) {
       const hist = contactHistory.find(h => normalizeDomain(h.domain) === itemDomain);
-      if (hist) {
+      if (hist && hist.packId && (hist.packId.startsWith('GM') || hist.packId.startsWith('OR'))) {
         const matchedPack = outreachPacks.find(p => p.packId === hist.packId);
-        return matchedPack || { packId: hist.packId, status: hist.status };
+        return matchedPack || { packId: hist.packId, status: hist.status, searchType: hist.packId.startsWith('GM') ? 'GMB' : 'Organic' };
       }
     }
 
@@ -1111,6 +1324,8 @@ function App() {
       });
       if (res.ok) {
         await fetchOutreachPacks();
+        await fetchOutreachList();
+        await fetchContactHistory();
         if (activePack?.packId === packId) {
           setActivePack(null);
           setOutreachSubView('packs');
@@ -1327,17 +1542,25 @@ function App() {
         } else if (viewParam === 'templates') {
           setCurrentView('outreach');
           setOutreachSubView('templates');
+          const contextParam = params.get('context');
+          if (contextParam === 'local') setTemplateTab('local');
+          else if (contextParam === 'organic') setTemplateTab('organic');
+          else setTemplateTab('master');
         } else {
           setCurrentView(viewParam);
         }
 
         const tabParam = params.get('tab');
+        const contextParam = params.get('context');
         if (tabParam === 'packs') {
           setOutreachSubView('packs');
         } else if (tabParam === 'shortlist') {
           setOutreachSubView('shortlist');
         } else if (tabParam === 'templates') {
           setOutreachSubView('templates');
+          if (contextParam === 'local') setTemplateTab('local');
+          else if (contextParam === 'organic') setTemplateTab('organic');
+          else setTemplateTab('master');
         }
 
         if ((viewParam === 'outreach' || viewParam === 'packs') && packParam) {
@@ -1972,7 +2195,11 @@ function App() {
         aiReport: data.aiReport || null,
         gbp: data.gbp || null,
         leadOpportunityScore: data.leadOpportunityScore || null,
-        leadPriority: data.leadPriority || null
+        leadPriority: data.leadPriority || null,
+        contactEmail: data.contactEmail || null,
+        allFoundEmails: data.allFoundEmails || [],
+        emailStatus: data.emailStatus || (data.contactEmail ? 'Email Found' : 'No Email'),
+        emailSource: data.emailSource || null
       };
 
       updateItemAnalysis(itemKey, completedAnalysis, targetSearchId, item.rank);
@@ -2555,7 +2782,7 @@ function App() {
               onClick={handleNewSearchNav} 
               className={`sidebar-item ${currentView === 'search' && !activeSearchId ? 'active' : ''}`}
             >
-              New Search
+              Home
             </button>
             <button 
               onClick={() => {
@@ -2655,6 +2882,7 @@ function App() {
                   onClick={() => {
                     setCurrentView('outreach');
                     setOutreachSubView('templates');
+                    setTemplateTab('master');
                     setActivePack(null);
                     try {
                       const u = new URL(window.location.href);
@@ -2746,6 +2974,19 @@ function App() {
 
       {/* Main Content */}
       <div className="main-content">
+        {/* Top Header Bar: Far-Right Version & Status Controls */}
+        <div className="main-top-bar" style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          marginBottom: '1rem',
+          width: '100%',
+          maxWidth: '1440px',
+          marginLeft: 'auto',
+          marginRight: 'auto'
+        }}>
+          <GlobalDeploymentIndicator />
+        </div>
         {currentView === 'search' && (
           <>
             <div className="search-header-container">
@@ -3098,7 +3339,14 @@ function App() {
                               <td><strong>{item.name || "Not available"}</strong></td>
                               <td>
                                 {item.website ? (
-                                  <a href={item.website} target="_blank" rel="noopener noreferrer" className="table-link">{domain || item.website}</a>
+                                  <div>
+                                    <a href={item.website} target="_blank" rel="noopener noreferrer" className="table-link">{domain || item.website}</a>
+                                    {(item.analysis?.contactEmail || item.contactEmail) && (
+                                      <div style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '2px', fontWeight: '600' }}>
+                                        ✉ {item.analysis?.contactEmail || item.contactEmail}
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : "Not available"}
                               </td>
                               <td>
@@ -3401,6 +3649,7 @@ function App() {
                   <button
                     onClick={() => {
                       setOutreachSubView('templates');
+                      setTemplateTab('master');
                       setActivePack(null);
                       try {
                         const u = new URL(window.location.href);
@@ -3544,15 +3793,16 @@ function App() {
                             style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                           />
                         </th>
-                        <th>Domain</th>
+                        <th>Domain / Business</th>
+                        <th>Source</th>
+                        <th>Contact / Email</th>
                         <th>Pack Status</th>
                         <th>Search ID</th>
                         <th>Search Phrase</th>
                         <th>Location</th>
-                        <th>Rank</th>
+                        <th>Rank / Rating</th>
                         <th>Opportunity Score</th>
                         <th>Commercial Strength</th>
-                        <th>GBP Match</th>
                         <th>Date Shortlisted</th>
                         <th className="action-cell">Actions</th>
                       </tr>
@@ -3560,13 +3810,13 @@ function App() {
                     <tbody>
                       {isOutreachLoading && outreachList.length === 0 ? (
                         <tr>
-                          <td colSpan="12" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                          <td colSpan="13" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                             Loading outreach shortlist...
                           </td>
                         </tr>
                       ) : outreachList.length === 0 ? (
                         <tr>
-                          <td colSpan="12" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                          <td colSpan="13" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
                             <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
                             <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
                           </td>
@@ -3574,13 +3824,24 @@ function App() {
                       ) : (
                         outreachList.map((item, idx) => {
                           const score = item.opportunityScore;
-                          const gbpStatus = item.gbpStatus || 'No Profile Matched';
                           const itemKey = item.id || item.domain;
                           const isSelected = selectedShortlistIds.has(itemKey);
                           const assignedPack = getProspectAssignedPack(item);
+                          const isLocal = item.searchType === 'GMB' || item.searchType === 'local';
+
+                          const contactEmail = item.contactEmail || (item.allFoundEmails && item.allFoundEmails[0]) || item.analysisData?.contactEmail;
+                          const phone = item.phone || item.analysisData?.phone;
+                          const isAssignedPackLocal = assignedPack && isPackLocal(assignedPack);
+
+                          let rowBg = 'transparent';
+                          if (isSelected) {
+                            rowBg = isLocal ? 'rgba(16, 185, 129, 0.16)' : 'rgba(37, 99, 235, 0.12)';
+                          } else if (isLocal) {
+                            rowBg = 'rgba(16, 185, 129, 0.05)';
+                          }
 
                           return (
-                            <tr key={item.id || idx} style={{ backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent' }}>
+                            <tr key={item.id || idx} style={{ backgroundColor: rowBg }}>
                               <td style={{ textAlign: 'center' }}>
                                 <input
                                   type="checkbox"
@@ -3598,10 +3859,46 @@ function App() {
                                 <div>
                                   {item.url ? (
                                     <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
-                                      {item.domain || item.url}
+                                      {item.businessName || item.domain || item.url}
                                     </a>
                                   ) : (
-                                    <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.domain}</span>
+                                    <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.businessName || item.domain}</span>
+                                  )}
+                                  {item.businessName && item.domain && item.businessName !== item.domain && (
+                                    <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
+                                      {item.domain}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td>
+                                <span style={{
+                                  backgroundColor: isLocal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                  color: isLocal ? '#34d399' : '#38bdf8',
+                                  border: isLocal ? '1px solid #10b981' : '1px solid #0284c7',
+                                  padding: '0.15rem 0.5rem',
+                                  borderRadius: '4px',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.8rem'
+                                }}>
+                                  {isLocal ? 'Local' : 'Organic'}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  {contactEmail ? (
+                                    <span style={{ color: '#38bdf8', fontWeight: '600', fontSize: '0.85rem' }}>
+                                      ✉ {contactEmail}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                      No email found
+                                    </span>
+                                  )}
+                                  {phone && (
+                                    <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
+                                      📞 {phone}
+                                    </span>
                                   )}
                                 </div>
                               </td>
@@ -3612,39 +3909,30 @@ function App() {
                                     onClick={() => handleOpenPack(assignedPack)}
                                     className="table-btn"
                                     style={{
-                                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                                      color: '#60a5fa',
-                                      border: '1px solid #3b82f6',
+                                      backgroundColor: isAssignedPackLocal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                      color: isAssignedPackLocal ? '#34d399' : '#38bdf8',
+                                      border: isAssignedPackLocal ? '1px solid #10b981' : '1px solid #0284c7',
                                       padding: '0.2rem 0.6rem',
                                       borderRadius: '4px',
                                       fontWeight: 'bold',
                                       fontSize: '0.85rem',
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.35rem'
+                                      cursor: 'pointer'
                                     }}
                                     title={`Assigned to Outreach Pack ${assignedPack.packId} — click to view pack`}
                                   >
-                                    <span>📦</span> In {assignedPack.packId}
+                                    {assignedPack.packId}
                                   </button>
                                 ) : (
                                   <span
                                     style={{
-                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                      color: '#34d399',
-                                      border: '1px solid #10b981',
-                                      padding: '0.2rem 0.6rem',
-                                      borderRadius: '4px',
-                                      fontWeight: 'bold',
-                                      fontSize: '0.85rem',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.35rem'
+                                      color: '#f59e0b',
+                                      fontWeight: '600',
+                                      fontSize: '0.875rem',
+                                      whiteSpace: 'nowrap'
                                     }}
                                     title="Not yet assigned to any outreach pack"
                                   >
-                                    <span>✨</span> Ready for Pack
+                                    Waiting
                                   </span>
                                 )}
                               </td>
@@ -3667,7 +3955,11 @@ function App() {
                             <td>{item.searchPhrase || 'Not available'}</td>
                             <td>{item.location || 'Anywhere'}</td>
                             <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
-                              {item.rank ? `#${item.rank}` : '-'}
+                              {isLocal && item.rating !== null && item.rating !== undefined ? (
+                                <span>⭐ {item.rating}</span>
+                              ) : (
+                                item.rank ? `#${item.rank}` : '-'
+                              )}
                             </td>
                             <td>
                               {score !== null && score !== undefined ? (
@@ -3698,15 +3990,6 @@ function App() {
                                   {item.commercialStrengthLabel || 'Good Lead'}
                                 </span>
                               </div>
-                            </td>
-                            <td>
-                              <span style={{ 
-                                color: gbpStatus === 'Found' ? '#10b981' : (gbpStatus === 'Multiple Matches' ? '#f59e0b' : '#ef4444'),
-                                fontWeight: 'bold',
-                                fontSize: '0.85rem'
-                              }}>
-                                {gbpStatus}
-                              </span>
                             </td>
                             <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
                               {formatLastAnalysed(item.shortlistedAt)}
@@ -3803,6 +4086,7 @@ function App() {
                         };
                         const sc = statusColors[pack.status] || statusColors['Draft'];
 
+                        const isLocal = isPackLocal(pack);
                         return (
                           <tr key={pack.packId || pack.id}>
                             <td>
@@ -3810,9 +4094,9 @@ function App() {
                                 onClick={() => handleOpenPack(pack)}
                                 className="table-btn"
                                 style={{
-                                  backgroundColor: '#1e293b',
-                                  border: '1px solid #3b82f6',
-                                  color: '#38bdf8',
+                                  backgroundColor: isLocal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                  border: isLocal ? '1px solid #10b981' : '1px solid #0284c7',
+                                  color: isLocal ? '#34d399' : '#38bdf8',
                                   fontWeight: 'bold',
                                   fontSize: '0.95rem'
                                 }}
@@ -3824,7 +4108,7 @@ function App() {
                               <span style={{ fontWeight: '600', color: '#f8fafc' }}>{pack.name}</span>
                             </td>
                             <td>{formatLastAnalysed(pack.createdAt)}</td>
-                            <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
+                            <td style={{ fontWeight: 'bold', color: isLocal ? '#34d399' : '#60a5fa' }}>
                               {pack.prospectsCount || pack.prospects?.length || 0} Prospects
                             </td>
                             <td>
@@ -3868,121 +4152,257 @@ function App() {
             )}
 
             {/* Sub-view 3: Master Email Templates Management */}
-            {outreachSubView === 'templates' && (
-              <div className="results-table-container">
-                <div style={{ padding: '1.5rem 1.5rem 0.75rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Master Email Templates</h2>
-                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-                      Reusable master templates for outreach campaigns. Selecting a template in a pack creates an independent pack copy.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                      {masterTemplates.length} {masterTemplates.length === 1 ? 'template' : 'templates'}
-                    </span>
-                    <button
-                      onClick={handleOpenCreateTemplateModal}
-                      className="analyse-btn-green"
-                      style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                    >
-                      + Create Master Template
-                    </button>
-                  </div>
-                </div>
+            {outreachSubView === 'templates' && (() => {
+              const organicTemplates = masterTemplates.filter(t => getTemplateClassification(t) === 'organic');
+              const localTemplates = masterTemplates.filter(t => getTemplateClassification(t) === 'local');
+              const masterTemplatesList = masterTemplates.filter(t => getTemplateClassification(t) === 'master');
+              
+              let displayedTemplates = [];
+              if (templateTab === 'organic') {
+                displayedTemplates = organicTemplates;
+              } else if (templateTab === 'local') {
+                displayedTemplates = localTemplates;
+              } else if (templateTab === 'master') {
+                displayedTemplates = masterTemplatesList;
+              }
 
-                <div style={{ padding: '1rem 1.5rem 2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  {isTemplatesLoading && masterTemplates.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                      Loading email templates...
+              return (
+                <div className="results-table-container">
+                  <div style={{ padding: '1.5rem 1.5rem 0.75rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Master Email Templates</h2>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                        Reusable master templates for outreach campaigns. Selecting a template in a pack creates an independent pack copy.
+                      </p>
                     </div>
-                  ) : masterTemplates.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
-                      <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No Master Templates found.</p>
-                      <button onClick={handleOpenCreateTemplateModal} className="analyse-btn-green" style={{ marginTop: '0.5rem' }}>
-                        Create First Template
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                        {displayedTemplates.length} {displayedTemplates.length === 1 ? 'template' : 'templates'}
+                      </span>
+                      <button
+                        onClick={handleOpenCreateTemplateModal}
+                        className="analyse-btn-green"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                      >
+                        + Create Master Template
                       </button>
                     </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '1.25rem' }}>
-                      {masterTemplates.map((tpl) => (
-                        <div
-                          key={tpl.id}
-                          style={{
-                            backgroundColor: '#0f172a',
-                            border: '1px solid #334155',
-                            borderRadius: '8px',
-                            padding: '1.25rem',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '1rem',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-                            <div>
-                              <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.15rem', fontWeight: '700' }}>
-                                {tpl.name}
-                              </h3>
-                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                ID: {tpl.id} &bull; Updated: {formatLastAnalysed(tpl.updatedAt || tpl.createdAt)}
-                              </span>
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                              <button
-                                onClick={() => handleOpenEditTemplateModal(tpl)}
-                                className="table-btn"
-                                style={{
-                                  backgroundColor: '#1e293b',
-                                  border: '1px solid #3b82f6',
-                                  color: '#60a5fa',
-                                  padding: '0.35rem 0.75rem',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTemplate(tpl.id)}
-                                className="table-btn"
-                                style={{
-                                  backgroundColor: '#1e293b',
-                                  border: '1px solid #ef4444',
-                                  color: '#f87171',
-                                  padding: '0.35rem 0.75rem',
-                                  fontSize: '0.85rem'
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
+                  </div>
 
-                          <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', borderRadius: '6px', border: '1px solid #334155', fontSize: '0.875rem' }}>
-                            <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject: </span>
-                            <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{tpl.subject}</span>
-                          </div>
+                  {/* 3 Tabs: MASTER EMAIL TEMPLATES | ORGANIC | LOCAL */}
+                  <div style={{ padding: '0 1.5rem', display: 'flex', gap: '0.5rem', borderBottom: '1px solid #334155' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateTab('master')}
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        border: 'none',
+                        borderBottom: templateTab === 'master' ? '3px solid #3b82f6' : '3px solid transparent',
+                        backgroundColor: 'transparent',
+                        color: templateTab === 'master' ? '#ffffff' : '#94a3b8',
+                        fontWeight: templateTab === 'master' ? 'bold' : '500',
+                        fontSize: '0.95rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.15s ease'
+                      }}
+                      id="tab-templates-master"
+                    >
+                      <span>MASTER EMAIL TEMPLATES</span>
+                      <span style={{
+                        backgroundColor: templateTab === 'master' ? '#2563eb' : '#334155',
+                        color: '#ffffff',
+                        fontSize: '0.75rem',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: '9999px',
+                        fontWeight: 'bold'
+                      }}>
+                        {masterTemplatesList.length}
+                      </span>
+                    </button>
 
-                          <div style={{
-                            backgroundColor: '#1e293b',
-                            padding: '0.85rem 1rem',
-                            borderRadius: '6px',
-                            border: '1px solid #334155',
-                            fontSize: '0.875rem',
-                            color: '#cbd5e1',
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: '1.5'
-                          }}>
-                            {tpl.body}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setTemplateTab('organic')}
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        border: 'none',
+                        borderBottom: templateTab === 'organic' ? '3px solid #3b82f6' : '3px solid transparent',
+                        backgroundColor: 'transparent',
+                        color: templateTab === 'organic' ? '#ffffff' : '#94a3b8',
+                        fontWeight: templateTab === 'organic' ? 'bold' : '500',
+                        fontSize: '0.95rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.15s ease'
+                      }}
+                      id="tab-templates-organic"
+                    >
+                      <span>ORGANIC</span>
+                      <span style={{
+                        backgroundColor: templateTab === 'organic' ? '#2563eb' : '#334155',
+                        color: '#ffffff',
+                        fontSize: '0.75rem',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: '9999px',
+                        fontWeight: 'bold'
+                      }}>
+                        {organicTemplates.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTemplateTab('local')}
+                      style={{
+                        padding: '0.65rem 1.25rem',
+                        border: 'none',
+                        borderBottom: templateTab === 'local' ? '3px solid #10b981' : '3px solid transparent',
+                        backgroundColor: 'transparent',
+                        color: templateTab === 'local' ? '#ffffff' : '#94a3b8',
+                        fontWeight: templateTab === 'local' ? 'bold' : '500',
+                        fontSize: '0.95rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.15s ease'
+                      }}
+                      id="tab-templates-local"
+                    >
+                      <span>LOCAL</span>
+                      <span style={{
+                        backgroundColor: templateTab === 'local' ? '#059669' : '#334155',
+                        color: '#ffffff',
+                        fontSize: '0.75rem',
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: '9999px',
+                        fontWeight: 'bold'
+                      }}>
+                        {localTemplates.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div style={{ padding: '1.25rem 1.5rem 2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {isTemplatesLoading && masterTemplates.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                        Loading email templates...
+                      </div>
+                    ) : displayedTemplates.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', backgroundColor: '#0f172a', borderRadius: '8px', border: '1px solid #334155' }}>
+                        <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No templates found in {templateTab === 'master' ? 'MASTER' : templateTab.toUpperCase()} tab.</p>
+                        <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '0 0 1rem 0' }}>
+                          {templateTab === 'master' 
+                            ? 'No general / master templates currently stored. Create one or select Organic / Local tab.' 
+                            : `No ${templateTab} templates currently stored.`}
+                        </p>
+                        <button onClick={handleOpenCreateTemplateModal} className="analyse-btn-green">
+                          + Create {templateTab === 'master' ? 'Master' : templateTab === 'local' ? 'Local' : 'Organic'} Template
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '1.25rem' }}>
+                        {displayedTemplates.map((tpl) => {
+                          const isTplLocal = tpl.templateType === 'local';
+                          const isTplOrganic = tpl.templateType === 'organic';
+                          return (
+                            <div
+                              key={tpl.id}
+                              style={{
+                                backgroundColor: '#0f172a',
+                                border: '1px solid #334155',
+                                borderRadius: '8px',
+                                padding: '1.25rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '1rem',
+                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.15rem', fontWeight: '700' }}>
+                                      {tpl.name}
+                                    </h3>
+                                    <span style={{
+                                      backgroundColor: isTplLocal ? 'rgba(16, 185, 129, 0.15)' : isTplOrganic ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+                                      color: isTplLocal ? '#34d399' : isTplOrganic ? '#60a5fa' : '#94a3b8',
+                                      border: isTplLocal ? '1px solid #10b981' : isTplOrganic ? '1px solid #3b82f6' : '1px solid #475569',
+                                      padding: '0.15rem 0.5rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      {isTplLocal ? 'Local' : isTplOrganic ? 'Organic' : 'Master'}
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                    ID: {tpl.id} &bull; Updated: {formatLastAnalysed(tpl.updatedAt || tpl.createdAt)}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                  <button
+                                    onClick={() => handleOpenEditTemplateModal(tpl)}
+                                    className="table-btn"
+                                    style={{
+                                      backgroundColor: '#1e293b',
+                                      border: '1px solid #3b82f6',
+                                      color: '#60a5fa',
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTemplate(tpl.id)}
+                                    className="table-btn"
+                                    style={{
+                                      backgroundColor: '#1e293b',
+                                      border: '1px solid #ef4444',
+                                      color: '#f87171',
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.85rem'
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', borderRadius: '6px', border: '1px solid #334155', fontSize: '0.875rem' }}>
+                                <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject: </span>
+                                <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{tpl.subject}</span>
+                              </div>
+
+                              <div style={{
+                                backgroundColor: '#1e293b',
+                                padding: '0.85rem 1rem',
+                                borderRadius: '6px',
+                                border: '1px solid #334155',
+                                fontSize: '0.875rem',
+                                color: '#cbd5e1',
+                                whiteSpace: 'pre-wrap',
+                                lineHeight: '1.5'
+                              }}>
+                                {tpl.body}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Outreach Subview: Pack Detail */}
             {outreachSubView === 'pack-detail' && activePack && (
@@ -4043,9 +4463,9 @@ function App() {
                       </button>
                     )}
                     <span style={{
-                      backgroundColor: 'rgba(59, 130, 246, 0.25)',
-                      color: '#60a5fa',
-                      border: '1px solid #3b82f6',
+                      backgroundColor: isPackLocal(activePack) ? 'rgba(16, 185, 129, 0.18)' : 'rgba(59, 130, 246, 0.25)',
+                      color: isPackLocal(activePack) ? '#34d399' : '#60a5fa',
+                      border: isPackLocal(activePack) ? '1px solid #10b981' : '1px solid #3b82f6',
                       padding: '0.4rem 0.9rem',
                       borderRadius: '6px',
                       fontWeight: 'bold',
@@ -4101,12 +4521,7 @@ function App() {
                             cursor: 'pointer'
                           }}
                         >
-                          <option value="" disabled>-- Select Reusable Master Template --</option>
-                          {masterTemplates.map(t => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
+                          {renderTemplateOptions(masterTemplates, '-- Select Reusable Master Template --')}
                         </select>
                       </div>
 
@@ -4183,7 +4598,7 @@ function App() {
                       👁️ Preview Emails ({selectedProspectIdsInPack.size})
                     </button>
                     <button
-                      onClick={() => setIsSendConfirmModalOpen(true)}
+                      onClick={() => { fetchSenderStatus(); setIsSendConfirmModalOpen(true); }}
                       disabled={selectedProspectIdsInPack.size === 0}
                       className={selectedProspectIdsInPack.size > 0 ? "analyse-btn-green" : "table-btn"}
                       style={{
@@ -4271,21 +4686,39 @@ function App() {
                               <div>
                                 {prospect.url ? (
                                   <a href={prospect.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold' }}>
-                                    {prospect.domain || prospect.url}
+                                    {prospect.businessName || prospect.domain || prospect.url}
                                   </a>
                                 ) : (
-                                  <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{prospect.domain}</span>
+                                  <span style={{ fontWeight: 'bold', color: '#ffffff' }}>{prospect.businessName || prospect.domain}</span>
+                                )}
+                                {prospect.businessName && prospect.domain && prospect.businessName !== prospect.domain && (
+                                  <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
+                                    {prospect.domain}
+                                  </div>
                                 )}
                                 {warning && (
-                                  <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.1rem 0.4rem', borderRadius: '4px' }} title={`Already in Pack ${warning.packId}`}>
-                                    ⚠️ In {warning.packId}
+                                  <span style={{
+                                    marginLeft: '6px',
+                                    fontSize: '0.75rem',
+                                    color: isPackLocal(warning.packId) ? '#34d399' : '#38bdf8',
+                                    backgroundColor: isPackLocal(warning.packId) ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                    border: isPackLocal(warning.packId) ? '1px solid #10b981' : '1px solid #0284c7',
+                                    padding: '0.1rem 0.4rem',
+                                    borderRadius: '4px',
+                                    fontWeight: 'bold'
+                                  }} title={`Already in Pack ${warning.packId}`}>
+                                    {warning.packId}
                                   </span>
                                 )}
                               </div>
                             </td>
                             <td>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
+                                {prospect.rating !== null && prospect.rating !== undefined ? (
+                                  <span style={{ color: '#fbbf24', fontWeight: 'bold', fontSize: '0.85rem' }}>⭐ {prospect.rating}</span>
+                                ) : (
+                                  <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
+                                )}
                                 {prospect.opportunityScore !== null && prospect.opportunityScore !== undefined ? (
                                   <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.9rem' }}>
                                     <span style={{ color: prospect.opportunityScore >= 70 ? '#ef4444' : (prospect.opportunityScore >= 40 ? '#f59e0b' : '#10b981'), marginRight: '4px' }}>●</span>
@@ -4358,6 +4791,11 @@ function App() {
                                         Manual
                                       </span>
                                     )}
+                                    {prospect.phone && (
+                                      <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
+                                        📞 {prospect.phone}
+                                      </div>
+                                    )}
                                   </div>
                                   <button
                                     onClick={() => {
@@ -4407,7 +4845,7 @@ function App() {
 
             {/* Modal: Create Outreach Pack */}
             {isCreatingPackModalOpen && (
-              <div style={{
+              <div className="modal-overlay" style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
@@ -4481,14 +4919,7 @@ function App() {
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: '#1e293b' }}
                     >
-                      {masterTemplates.map(tpl => (
-                        <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} — {tpl.subject.substring(0, 45)}...
-                        </option>
-                      ))}
-                      {masterTemplates.length === 0 && (
-                        <option value="">Standard Partnership Template</option>
-                      )}
+                      {renderTemplateOptions(masterTemplates, '-- Choose a Master Template --')}
                     </select>
                   </div>
 
@@ -4551,7 +4982,7 @@ function App() {
 
             {/* Modal: View / Edit Pack Email Template */}
             {isTemplateModalOpen && activePack && (
-              <div style={{
+              <div className="modal-overlay" style={{
                 position: 'fixed',
                 top: 0,
                 left: 0,
@@ -4631,12 +5062,7 @@ function App() {
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: '#1e293b' }}
                     >
-                      <option value="">-- Choose a Master Template --</option>
-                      {masterTemplates.map(tpl => (
-                        <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} — {tpl.subject.substring(0, 45)}...
-                        </option>
-                      ))}
+                      {renderTemplateOptions(masterTemplates, '-- Choose a Master Template --')}
                     </select>
                   </div>
 
@@ -4722,7 +5148,7 @@ function App() {
               const current = recipients[currentIndex];
 
               return (
-                <div style={{
+                <div className="modal-overlay" style={{
                   position: 'fixed',
                   top: 0,
                   left: 0,
@@ -4972,6 +5398,7 @@ function App() {
                         <button
                           onClick={() => {
                             setIsPreviewModalOpen(false);
+                            fetchSenderStatus();
                             setIsSendConfirmModalOpen(true);
                           }}
                           className="analyse-btn-green"
@@ -5003,7 +5430,7 @@ function App() {
               });
 
               return (
-                <div style={{
+                <div className="modal-overlay" style={{
                   position: 'fixed',
                   top: 0,
                   left: 0,
@@ -5102,14 +5529,19 @@ function App() {
                       </div>
                     ) : (
                       <div style={{
-                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
                         borderRadius: '6px',
                         padding: '0.85rem 1rem',
                         color: '#cbd5e1',
                         fontSize: '0.85rem'
                       }}>
-                        ℹ️ Live emails will be rendered individually per prospect and dispatched to all discovered contact addresses.
+                        <div style={{ color: '#34d399', fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                          ✓ Outbound SMTP Configured & Ready ({senderStatus.senderMailbox || 'mac@thesearchequation.co.uk'})
+                        </div>
+                        <div>
+                          Live emails will be rendered individually per prospect and dispatched to all discovered contact addresses.
+                        </div>
                       </div>
                     )}
 
@@ -5176,7 +5608,7 @@ function App() {
                   border: '1px solid #334155',
                   borderRadius: '12px',
                   width: '100%',
-                  maxWidth: '720px',
+                  maxWidth: '1180px',
                   maxHeight: '92vh',
                   overflowY: 'auto',
                   padding: '2rem',
@@ -5202,102 +5634,198 @@ function App() {
                     </button>
                   </div>
 
-                  <form onSubmit={handleSaveTemplateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Template Name</label>
-                      <input
-                        type="text"
-                        value={templateNameInput}
-                        onChange={(e) => setTemplateNameInput(e.target.value)}
-                        placeholder="e.g. Warm Partnership / Investment Approach"
-                        className="search-input"
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                        required
-                      />
-                    </div>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 0.95fr)',
+                    gap: '1.75rem',
+                    alignItems: 'start'
+                  }}>
+                    {/* LEFT: Existing Template Form */}
+                    <form onSubmit={handleSaveTemplateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Template Name</label>
+                        <input
+                          type="text"
+                          value={templateNameInput}
+                          onChange={(e) => setTemplateNameInput(e.target.value)}
+                          placeholder="e.g. Warm Partnership / Investment Approach"
+                          className="search-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          required
+                        />
+                      </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Subject Line</label>
-                      <input
-                        type="text"
-                        value={templateSubjectInput}
-                        onChange={(e) => setTemplateSubjectInput(e.target.value)}
-                        placeholder="Partnership enquiry: {{trade}} in {{location}} — {{company_name}}"
-                        className="search-input"
-                        style={{ width: '100%', boxSizing: 'border-box' }}
-                        required
-                      />
-                    </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Template Classification</label>
+                        <select
+                          value={templateTypeInput}
+                          onChange={(e) => setTemplateTypeInput(e.target.value)}
+                          className="search-input"
+                          style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#1e293b', color: '#ffffff', cursor: 'pointer' }}
+                        >
+                          <option value="organic">Google Organic SERP (Organic)</option>
+                          <option value="local">Local Business Listings (GBP / Local)</option>
+                          <option value="master">General / Master Template</option>
+                        </select>
+                      </div>
 
-                    {/* Helper Insert Tokens */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
-                        Click to insert personalisation variables:
-                      </span>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                        {['{{trade}}', '{{location}}', '{{domain}}', '{{businessName}}', '{{firstName}}', '{{sender_first_name}}', '{{sender_name}}', '{{company_name}}'].map(tag => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={() => {
-                              setTemplateBodyInput(prev => `${prev} ${tag} `);
-                            }}
-                            className="table-btn"
-                            style={{
-                              backgroundColor: '#1e293b',
-                              border: '1px solid #475569',
-                              color: '#38bdf8',
-                              padding: '0.25rem 0.6rem',
-                              fontSize: '0.8rem',
-                              fontFamily: 'monospace',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            + {tag}
-                          </button>
-                        ))}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Subject Line</label>
+                        <input
+                          type="text"
+                          value={templateSubjectInput}
+                          onChange={(e) => setTemplateSubjectInput(e.target.value)}
+                          placeholder="Partnership enquiry: {{trade}} in {{location}} — {{company_name}}"
+                          className="search-input"
+                          style={{ width: '100%', boxSizing: 'border-box' }}
+                          required
+                        />
+                      </div>
+
+                      {/* Helper Insert Tokens */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
+                          Click to insert personalisation variables:
+                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                          {['{{trade}}', '{{location}}', '{{domain}}', '{{businessName}}', '{{firstName}}', '{{sender_first_name}}', '{{sender_name}}', '{{company_name}}'].map(tag => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => {
+                                setTemplateBodyInput(prev => `${prev} ${tag} `);
+                              }}
+                              className="table-btn"
+                              style={{
+                                backgroundColor: '#1e293b',
+                                border: '1px solid #475569',
+                                color: '#38bdf8',
+                                padding: '0.25rem 0.6rem',
+                                fontSize: '0.8rem',
+                                fontFamily: 'monospace',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              + {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                          Email Body <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(Salutation like "Hi Paul," or "Hi there," is automatically prepended upon sending)</span>
+                        </label>
+                        <textarea
+                          value={templateBodyInput}
+                          onChange={(e) => setTemplateBodyInput(e.target.value)}
+                          placeholder="Write your email body here..."
+                          className="analysis-notes-area"
+                          style={{
+                            height: '240px',
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            fontFamily: 'inherit',
+                            fontSize: '0.925rem',
+                            lineHeight: '1.5'
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsTemplateEditorModalOpen(false)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#334155', color: '#cbd5e1', padding: '0.5rem 1.25rem' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="analyse-btn-green"
+                          style={{ padding: '0.5rem 1.5rem', fontWeight: 'bold' }}
+                        >
+                          Save Master Template
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* RIGHT: Personalisation Variables Reference Panel */}
+                    <div style={{
+                      backgroundColor: '#1e293b',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      padding: '1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.85rem',
+                      minWidth: 0
+                    }}>
+                      <h4 style={{ margin: 0, color: '#f8fafc', fontSize: '1.05rem', fontWeight: 600 }}>
+                        Personalisation Variables
+                      </h4>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          fontSize: '0.8125rem',
+                          textAlign: 'left'
+                        }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid #475569' }}>
+                              <th style={{ padding: '8px 8px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>VARIABLE</th>
+                              <th style={{ padding: '8px 8px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>WHAT IT USES</th>
+                              <th style={{ padding: '8px 8px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>EXAMPLE</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{trade}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Search trade/service</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Window Shutters</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{location}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Search location</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Portsmouth</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{domain}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Prospect website domain</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>example.co.uk</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{businessName}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Prospect business name</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Diamond Window Shutters</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{firstName}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Prospect/contact first name</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Paul</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{sender_first_name}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Settings → Sender First Name</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Mac</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{sender_name}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Settings → Sender Full Name</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>Mac McCarthy</td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '8px 8px', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 600 }}>{'{{company_name}}'}</td>
+                              <td style={{ padding: '8px 8px', color: '#cbd5e1' }}>Settings → Company Name</td>
+                              <td style={{ padding: '8px 8px', color: '#94a3b8' }}>The Search Equation</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
-                        Email Body <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>(Salutation like "Hi Paul," or "Hi there," is automatically prepended upon sending)</span>
-                      </label>
-                      <textarea
-                        value={templateBodyInput}
-                        onChange={(e) => setTemplateBodyInput(e.target.value)}
-                        placeholder="Write your email body here..."
-                        className="analysis-notes-area"
-                        style={{
-                          height: '240px',
-                          width: '100%',
-                          boxSizing: 'border-box',
-                          fontFamily: 'inherit',
-                          fontSize: '0.925rem',
-                          lineHeight: '1.5'
-                        }}
-                        required
-                      />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                      <button
-                        type="button"
-                        onClick={() => setIsTemplateEditorModalOpen(false)}
-                        className="table-btn"
-                        style={{ backgroundColor: '#334155', color: '#cbd5e1', padding: '0.5rem 1.25rem' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="analyse-btn-green"
-                        style={{ padding: '0.5rem 1.5rem', fontWeight: 'bold' }}
-                      >
-                        Save Master Template
-                      </button>
-                    </div>
-                  </form>
+                  </div>
                 </div>
               </div>
             )}
