@@ -3713,18 +3713,7 @@ function App() {
                     </button>
                   )}
 
-                  {outreachSubView === 'templates' && (
-                    <button
-                      onClick={handleOpenCreateTemplateModal}
-                      className="analyse-btn-green"
-                      style={{
-                        padding: '0.5rem 1.1rem',
-                        fontSize: '0.9rem'
-                      }}
-                    >
-                      + Create Master Template
-                    </button>
-                  )}
+
                 </div>
               </div>
             )}
@@ -4301,9 +4290,7 @@ function App() {
                             ? 'No general / master templates currently stored. Create one or select Organic / Local tab.' 
                             : `No ${templateTab} templates currently stored.`}
                         </p>
-                        <button onClick={handleOpenCreateTemplateModal} className="analyse-btn-green">
-                          + Create {templateTab === 'master' ? 'Master' : templateTab === 'local' ? 'Local' : 'Organic'} Template
-                        </button>
+
                       </div>
                     ) : (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '1.25rem' }}>
