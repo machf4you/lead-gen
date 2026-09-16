@@ -1,10 +1,10 @@
 {
   "id": "tse_lead_gen",
   "name": "TSE Lead Gen",
-  "commit_hash": "leadgen-v146-refresh-indicator-1789552900000",
-  "version": "1.46",
-  "version_tag": "v1.46-refresh-indicator",
-  "build_time": "2026-09-16T09:59:00.000Z",
-  "buildTimestamp": 1789552900000,
+  "commit_hash": "leadgen-v147-opportunity-score-diagnostic-1789553600000",
+  "version": "1.47",
+  "version_tag": "v1.47-opportunity-score-diagnostic",
+  "build_time": "2026-09-16T10:12:00.000Z",
+  "buildTimestamp": 1789553600000,
   "isDeploymentInProgress": false
 }

@@ -84,7 +84,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
 // Workspace & User identification middleware
@@ -885,48 +886,29 @@ app.post('/api/analyse', async (req, res) => {
       externalLinksCount: 0
     };
     const gbp = await performGbpMatching(targetUrl, '', '', '', location);
+    const leadOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, targetUrl);
+    const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank);
+    const leadPriority = getPriorityRating(fallbackHealth, gbp, rank);
 
     return res.json({
-      pageTitle: 'Not Found',
+      pageTitle: title || 'Not Found',
       metaDescription: 'Not Found',
       h1: 'Not Found',
       httpStatus: statusText,
       canonicalUrl: 'Not Found',
       indexable: 'No',
       lastAnalysed: new Date().toISOString(),
-      error: `Could not fetch website: ${fetchError?.message || statusText}`,
+      error: `Could not inspect website content: ${fetchError?.message || statusText}`,
+      diagnosticFailureReason: statusText,
       seoHealth: fallbackHealth,
       aiReport: {
-        execSummary: `Website analysis failed (${statusText}). Technical metrics could not be gathered.`,
-        opportunities: [`Unable to inspect ${targetUrl} due to connection failure or security restrictions.`]
+        execSummary: `Website inspection limited (${statusText}). Technical metrics calculated from HTTP response status and search ranking.`,
+        opportunities: [`Website returned status ${statusText} or restricted automated inspection. This indicates a high-priority technical or hosting opportunity for client outreach.`]
       },
-      leadOpportunity: {
-        rank: rank || 'Not available',
-        gbpDetected: gbp?.status === 'Found' ? 'Yes' : (gbp?.status === 'Multiple Matches' ? 'Multiple' : 'No'),
-        titlePresent: 'N/A',
-        descriptionPresent: 'N/A',
-        h1Present: 'N/A',
-        pageType: 'Homepage',
-        overallOpportunity: 'N/A',
-        reasonToContact: `Unable to access website: ${statusText}.`,
-        suggestedEmailAngle: 'Reach out to check if their website server is experiencing downtime.'
-      },
+      leadOpportunity: leadOpportunity,
       gbp: gbp,
-      leadOpportunityScore: {
-        score: null,
-        band: 'N/A',
-        reasons: [
-          `Website analysis failed (${statusText})`,
-          "Technical SEO signals could not be gathered due to connection or accessibility failure",
-          "No artificial score is assigned to inaccessible websites"
-        ]
-      },
-      leadPriority: {
-        stars: '☆☆☆☆☆',
-        label: 'Analysis Failed',
-        explanation: `Unable to inspect website due to ${statusText}. Analysis can be retried.`,
-        points: 0
-      }
+      leadOpportunityScore: leadScore,
+      leadPriority: leadPriority
     });
   }
 
