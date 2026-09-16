@@ -3122,6 +3122,14 @@ app.post('/api/milestones/create', async (req, res) => {
   }
 });
 
+// SPA catch-all fallback handler for clean frontend routes
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });

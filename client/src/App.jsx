@@ -576,11 +576,43 @@ const getDomain = (url) => {
   return normalizeDomain(url);
 };
 
+const getInitialRouteState = () => {
+  const pathname = typeof window !== 'undefined' ? (window.location.pathname.replace(/\/+$/, '') || '/') : '/';
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const viewParam = params.get('view');
+  const tabParam = params.get('tab');
+  const searchIdParam = params.get('searchId');
+
+  if (pathname === '/saved-searches' || pathname === '/saved' || viewParam === 'saved') {
+    return { view: 'saved', subView: 'shortlist', templateTab: 'master' };
+  }
+  if (pathname === '/domain-exclusions' || pathname === '/exclusions' || viewParam === 'exclusions') {
+    return { view: 'exclusions', subView: 'shortlist', templateTab: 'master' };
+  }
+  if (pathname === '/outreach-shortlist' || (pathname === '/outreach' && tabParam === 'shortlist') || viewParam === 'shortlist' || (viewParam === 'outreach' && tabParam === 'shortlist')) {
+    return { view: 'outreach', subView: 'shortlist', templateTab: 'master' };
+  }
+  if (pathname === '/outreach-packs' || (pathname === '/outreach' && tabParam === 'packs') || viewParam === 'packs' || (viewParam === 'outreach' && tabParam === 'packs')) {
+    return { view: 'outreach', subView: 'packs', templateTab: 'master' };
+  }
+  if (pathname === '/outreach-email-templates' || (pathname === '/outreach' && tabParam === 'templates') || viewParam === 'templates' || (viewParam === 'outreach' && tabParam === 'templates')) {
+    return { view: 'outreach', subView: 'templates', templateTab: 'master' };
+  }
+  if (pathname === '/settings' || viewParam === 'settings') {
+    return { view: 'settings', subView: 'shortlist', templateTab: 'master' };
+  }
+  if (searchIdParam && viewParam === 'analyse') {
+    return { view: 'analyse', subView: 'shortlist', templateTab: 'master' };
+  }
+  return { view: 'search', subView: 'shortlist', templateTab: 'master' };
+};
+
 function App() {
+  const initialRoute = getInitialRouteState();
   const [searchResults, setSearchResults] = useState([])
   const [businessType, setBusinessType] = useState('')
   const [location, setLocation] = useState('')
-  const [currentView, setCurrentView] = useState('search')
+  const [currentView, setCurrentView] = useState(initialRoute.view)
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
@@ -591,7 +623,7 @@ function App() {
   const [outreachPacks, setOutreachPacks] = useState([]);
   const [isPacksLoading, setIsPacksLoading] = useState(false);
   const [activePack, setActivePack] = useState(null);
-  const [outreachSubView, setOutreachSubView] = useState('shortlist'); // 'shortlist' | 'packs' | 'pack-detail'
+  const [outreachSubView, setOutreachSubView] = useState(initialRoute.subView); // 'shortlist' | 'packs' | 'pack-detail' | 'templates'
   const [selectedShortlistIds, setSelectedShortlistIds] = useState(new Set());
   const [selectedProspectIdsInPack, setSelectedProspectIdsInPack] = useState(new Set());
   const [isFindingContacts, setIsFindingContacts] = useState(false);
@@ -657,6 +689,91 @@ function App() {
     } catch (err) {
       console.error('Error fetching current user:', err);
     }
+  };
+
+  const applyRouteFromLocation = () => {
+    const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+    const params = new URLSearchParams(window.location.search);
+    const searchIdParam = params.get('searchId');
+    const viewParam = params.get('view');
+    const tabParam = params.get('tab');
+    const packParam = params.get('pack');
+    const itemParam = params.get('item');
+    const contextParam = params.get('context');
+
+    if (pathname === '/saved-searches' || pathname === '/saved' || viewParam === 'saved') {
+      setCurrentView('saved');
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/domain-exclusions' || pathname === '/exclusions' || viewParam === 'exclusions') {
+      setCurrentView('exclusions');
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/outreach-shortlist' || (pathname === '/outreach' && tabParam === 'shortlist') || viewParam === 'shortlist' || (viewParam === 'outreach' && tabParam === 'shortlist')) {
+      setCurrentView('outreach');
+      setOutreachSubView('shortlist');
+      setActivePack(null);
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/outreach-packs' || (pathname === '/outreach' && tabParam === 'packs') || viewParam === 'packs' || (viewParam === 'outreach' && tabParam === 'packs')) {
+      setCurrentView('outreach');
+      if (!packParam) {
+        setOutreachSubView('packs');
+        setActivePack(null);
+      }
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/outreach-email-templates' || (pathname === '/outreach' && tabParam === 'templates') || viewParam === 'templates' || (viewParam === 'outreach' && tabParam === 'templates')) {
+      setCurrentView('outreach');
+      setOutreachSubView('templates');
+      if (contextParam === 'local') setTemplateTab('local');
+      else if (contextParam === 'organic') setTemplateTab('organic');
+      else setTemplateTab('master');
+      setActivePack(null);
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/settings' || viewParam === 'settings') {
+      setCurrentView('settings');
+      setActiveAnalysisItem(null);
+      return;
+    }
+
+    if (searchIdParam) {
+      if (viewParam === 'analyse' && itemParam) {
+        setCurrentView('analyse');
+      } else {
+        setCurrentView('search');
+      }
+      return;
+    }
+
+    if (pathname === '/' || pathname === '') {
+      if (viewParam === 'outreach') {
+        setCurrentView('outreach');
+        setOutreachSubView('shortlist');
+      } else if (viewParam === 'analyse') {
+        setCurrentView('analyse');
+      } else {
+        setCurrentView('search');
+      }
+    }
+  };
+
+  const navigate = (path, { replace = false } = {}) => {
+    if (replace) {
+      window.history.replaceState(null, '', path);
+    } else {
+      const currentFull = window.location.pathname + window.location.search;
+      if (currentFull !== path) {
+        window.history.pushState(null, '', path);
+      }
+    }
+    applyRouteFromLocation();
   };
 
   // Outreach Sender Details state
@@ -1599,55 +1716,24 @@ function App() {
     fetchEmailTemplates();
     fetchSenderSettings();
 
+    applyRouteFromLocation();
+
+    const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
     const params = new URLSearchParams(window.location.search);
     const searchIdParam = params.get('searchId');
     const viewParam = params.get('view');
     const itemParam = params.get('item');
     const packParam = params.get('pack');
 
-    if (viewParam && !searchIdParam) {
-      if (['saved', 'exclusions', 'settings', 'outreach', 'shortlist', 'packs', 'templates'].includes(viewParam)) {
-        if (viewParam === 'packs') {
-          setCurrentView('outreach');
-          setOutreachSubView('packs');
-        } else if (viewParam === 'shortlist') {
-          setCurrentView('outreach');
-          setOutreachSubView('shortlist');
-        } else if (viewParam === 'templates') {
-          setCurrentView('outreach');
-          setOutreachSubView('templates');
-          const contextParam = params.get('context');
-          if (contextParam === 'local') setTemplateTab('local');
-          else if (contextParam === 'organic') setTemplateTab('organic');
-          else setTemplateTab('master');
-        } else {
-          setCurrentView(viewParam);
-        }
-
-        const tabParam = params.get('tab');
-        const contextParam = params.get('context');
-        if (tabParam === 'packs') {
-          setOutreachSubView('packs');
-        } else if (tabParam === 'shortlist') {
-          setOutreachSubView('shortlist');
-        } else if (tabParam === 'templates') {
-          setOutreachSubView('templates');
-          if (contextParam === 'local') setTemplateTab('local');
-          else if (contextParam === 'organic') setTemplateTab('organic');
-          else setTemplateTab('master');
-        }
-
-        if ((viewParam === 'outreach' || viewParam === 'packs') && packParam) {
-          fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packParam)}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(p => {
-              if (p) {
-                setActivePack(p);
-                setOutreachSubView('pack-detail');
-              }
-            }).catch(() => {});
-        }
-      }
+    if (packParam && (pathname === '/outreach-packs' || viewParam === 'packs' || viewParam === 'outreach')) {
+      fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packParam)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(p => {
+          if (p) {
+            setActivePack(p);
+            setOutreachSubView('pack-detail');
+          }
+        }).catch(() => {});
     }
 
     if (searchIdParam) {
@@ -2013,9 +2099,7 @@ function App() {
     setActiveAnalysisItem(null);
     setCurrentView('search');
     try {
-      const u = new URL(window.location.href);
-      u.search = '';
-      window.history.replaceState(null, '', u.toString());
+      window.history.pushState(null, '', '/');
     } catch (e) {}
   };
 
@@ -2106,22 +2190,18 @@ function App() {
     }
 
     try {
-      const u = new URL(window.location.href);
-      u.search = `?searchId=${encodeURIComponent(saved.searchId)}`;
-      window.history.replaceState(null, '', u.toString());
+      window.history.pushState(null, '', `/?searchId=${encodeURIComponent(saved.searchId)}`);
     } catch (e) {}
   };
 
   const handleBackToResults = async () => {
     setCurrentView('search');
     try {
-      const u = new URL(window.location.href);
       if (activeSearchId && activeSearchId !== 'Not available') {
-        u.search = `?searchId=${encodeURIComponent(activeSearchId)}`;
+        window.history.pushState(null, '', `/?searchId=${encodeURIComponent(activeSearchId)}`);
       } else {
-        u.search = '';
+        window.history.pushState(null, '', '/');
       }
-      window.history.replaceState(null, '', u.toString());
     } catch (e) {}
 
     // If searchResults is empty in state but activeSearchId exists, restore saved search
@@ -2987,19 +3067,17 @@ function App() {
           </div>
           <div className="sidebar-menu">
             <button 
-              onClick={handleNewSearchNav} 
+              onClick={() => {
+                handleNewSearchNav();
+                navigate('/');
+              }} 
               className={`sidebar-item ${currentView === 'search' && !activeSearchId ? 'active' : ''}`}
             >
               Home
             </button>
             <button 
               onClick={() => {
-                setCurrentView('saved');
-                try {
-                  const u = new URL(window.location.href);
-                  u.search = '?view=saved';
-                  window.history.replaceState(null, '', u.toString());
-                } catch (e) {}
+                navigate('/saved-searches');
               }} 
               className={`sidebar-item ${currentView === 'saved' ? 'active' : ''}`}
             >
@@ -3007,29 +3085,17 @@ function App() {
             </button>
             <button 
               onClick={() => {
-                setCurrentView('exclusions');
-                try {
-                  const u = new URL(window.location.href);
-                  u.search = '?view=exclusions';
-                  window.history.replaceState(null, '', u.toString());
-                } catch (e) {}
+                navigate('/domain-exclusions');
               }} 
               className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
             >
               Manage Exclusions ({excludedDomains.length})
             </button>
-            {/* Outreach Section with Shortlist and Packs sub-items */}
+            {/* Outreach Section with Shortlist, Packs, and Templates sub-items */}
             <div className="sidebar-group">
               <button 
                 onClick={() => {
-                  setCurrentView('outreach');
-                  setOutreachSubView('shortlist');
-                  setActivePack(null);
-                  try {
-                    const u = new URL(window.location.href);
-                    u.search = '?view=outreach&tab=shortlist';
-                    window.history.replaceState(null, '', u.toString());
-                  } catch (e) {}
+                  navigate('/outreach-shortlist');
                 }} 
                 className={`sidebar-item ${currentView === 'outreach' ? 'active-parent' : ''}`}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
@@ -3040,14 +3106,7 @@ function App() {
               <div className="sidebar-sub-menu">
                 <button 
                   onClick={() => {
-                    setCurrentView('outreach');
-                    setOutreachSubView('shortlist');
-                    setActivePack(null);
-                    try {
-                      const u = new URL(window.location.href);
-                      u.search = '?view=outreach&tab=shortlist';
-                      window.history.replaceState(null, '', u.toString());
-                    } catch (e) {}
+                    navigate('/outreach-shortlist');
                   }} 
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'shortlist' ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -3057,14 +3116,7 @@ function App() {
 
                 <button 
                   onClick={() => {
-                    setCurrentView('outreach');
-                    setOutreachSubView('packs');
-                    setActivePack(null);
-                    try {
-                      const u = new URL(window.location.href);
-                      u.search = '?view=outreach&tab=packs';
-                      window.history.replaceState(null, '', u.toString());
-                    } catch (e) {}
+                    navigate('/outreach-packs');
                   }} 
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -3074,15 +3126,7 @@ function App() {
 
                 <button 
                   onClick={() => {
-                    setCurrentView('outreach');
-                    setOutreachSubView('templates');
-                    setTemplateTab('master');
-                    setActivePack(null);
-                    try {
-                      const u = new URL(window.location.href);
-                      u.search = '?view=outreach&tab=templates';
-                      window.history.replaceState(null, '', u.toString());
-                    } catch (e) {}
+                    navigate('/outreach-email-templates');
                   }} 
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'templates' ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -3093,12 +3137,7 @@ function App() {
             </div>
             <button 
               onClick={() => {
-                setCurrentView('settings');
-                try {
-                  const u = new URL(window.location.href);
-                  u.search = '?view=settings';
-                  window.history.replaceState(null, '', u.toString());
-                } catch (e) {}
+                navigate('/settings');
               }} 
               className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
             >
@@ -4672,6 +4711,7 @@ function App() {
                       onClick={() => {
                         setOutreachSubView('packs');
                         setSelectedProspectIdsInPack(new Set());
+                        navigate('/outreach-packs');
                       }}
                       className="table-btn"
                       style={{
