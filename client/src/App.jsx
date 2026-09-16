@@ -3313,8 +3313,8 @@ function App() {
                                       );
                                     })()
                                   ) : (
-                                    <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                      N/A (Failed)
+                                    <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                      N/A
                                     </span>
                                   )
                                 ) : (
@@ -3441,8 +3441,8 @@ function App() {
                                       );
                                     })()
                                   ) : (
-                                    <span style={{ color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                      N/A (Failed)
+                                    <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                      N/A
                                     </span>
                                   )
                                 ) : (
@@ -6382,7 +6382,7 @@ function App() {
                     </>
                   ) : (
                     <>
-                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: '#ef4444', lineHeight: '1' }}>
+                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: '#94a3b8', lineHeight: '1' }}>
                         N/A
                       </span>
                       <span style={{ 
@@ -6391,10 +6391,10 @@ function App() {
                         fontSize: '1.05rem',
                         padding: '0.25rem 0.75rem', 
                         borderRadius: '20px', 
-                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                        color: '#ef4444'
+                        backgroundColor: 'rgba(148, 163, 184, 0.2)',
+                        color: '#94a3b8'
                       }}>
-                        Analysis Failed
+                        N/A
                       </span>
                     </>
                   )}

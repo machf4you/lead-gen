@@ -1,10 +1,10 @@
 {
   "id": "tse_lead_gen",
   "name": "TSE Lead Gen",
-  "commit_hash": "leadgen-v148-master-exclusions-and-nav-counts-1789554600000",
-  "version": "1.48",
-  "version_tag": "v1.48-master-exclusions-and-nav-counts",
-  "build_time": "2026-09-16T10:35:00.000Z",
-  "buildTimestamp": 1789554600000,
+  "commit_hash": "leadgen-v149-opportunity-score-factual-fix-1789556000000",
+  "version": "1.49",
+  "version_tag": "v1.49-opportunity-score-factual-fix",
+  "build_time": "2026-09-16T10:45:00.000Z",
+  "buildTimestamp": 1789556000000,
   "isDeploymentInProgress": false
 }

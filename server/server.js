@@ -574,50 +574,11 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
   return gbp;
 };
 
-function getOpportunityScoreAndReasons(health, gbp, rank) {
+function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, crawlStatusText = '') {
   let score = 0;
   const reasonsList = [];
 
-  // 1. Technical Health (Max 15 points)
-  if (health.statusCode !== 200 && health.statusCode !== 0) {
-    score += 15;
-    reasonsList.push({ points: 15, text: `Non-200 HTTP response code (${health.statusCode}) indicates server errors` });
-  } else if (health.statusCode === 0) {
-    score += 15;
-    reasonsList.push({ points: 15, text: "Website connection failed or timed out" });
-  }
-
-  if (!health.isHttps) {
-    score += 8;
-    reasonsList.push({ points: 8, text: "Website lacks HTTPS encryption, showing security warnings" });
-  }
-
-  if (!health.indexable) {
-    score += 7;
-    reasonsList.push({ points: 7, text: "Page is blocked from indexation by noindex tags" });
-  }
-
-  // 2. Google Business Profile Quality (Max 20 points)
-  if (!gbp || gbp.status === 'Not Found') {
-    score += 20;
-    reasonsList.push({ points: 20, text: "No Google Business Profile was detected for the business" });
-  } else if (gbp.status === 'Multiple Matches') {
-    score += 10;
-    reasonsList.push({ points: 10, text: "Multiple matching business profiles found, causing listing confusion" });
-  } else if (gbp.status === 'Found') {
-    const ratingVal = parseFloat(gbp.rating);
-    const votesCount = parseInt(gbp.reviewCount, 10);
-    
-    if (!isNaN(ratingVal) && ratingVal < 4.0) {
-      score += 10;
-      reasonsList.push({ points: 10, text: `Google Business Profile rating is low (${ratingVal} stars)` });
-    } else if (!isNaN(votesCount) && votesCount < 30) {
-      score += 10;
-      reasonsList.push({ points: 10, text: `Google Business Profile has a low review count (${votesCount} reviews)` });
-    }
-  }
-
-  // 3. Organic Ranking (Max 15 points)
+  // 1. Organic Ranking (Max 15 points) — Factual from SERP
   const rankNum = parseInt(rank, 10);
   if (isNaN(rankNum) || rankNum <= 0) {
     score += 15;
@@ -633,49 +594,98 @@ function getOpportunityScoreAndReasons(health, gbp, rank) {
     reasonsList.push({ points: 5, text: `Organic ranking position (#${rankNum}) is on page 1 but outside the top 3` });
   }
 
-  // 4. Metadata (Max 20 points)
-  if (!health.titlePresent || health.titleLength === 0) {
-    score += 10;
-    reasonsList.push({ points: 10, text: "HTML meta title tag is missing" });
-  } else if (health.titleLength < 50 || health.titleLength > 60) {
-    score += 4;
-    reasonsList.push({ points: 4, text: `HTML meta title length (${health.titleLength} chars) is outside optimal 50-60 range` });
+  // 2. HTTPS Security (Max 8 points) — Factual from URL
+  if (health && !health.isHttps) {
+    score += 8;
+    reasonsList.push({ points: 8, text: "Website lacks HTTPS encryption, showing security warnings" });
   }
 
-  if (!health.descriptionPresent || health.descriptionLength === 0) {
-    score += 10;
-    reasonsList.push({ points: 10, text: "HTML meta description tag is missing" });
-  } else if (health.descriptionLength < 120 || health.descriptionLength > 160) {
-    score += 4;
-    reasonsList.push({ points: 4, text: `HTML meta description length (${health.descriptionLength} chars) is outside optimal 120-160 range` });
+  // 3. Google Business Profile Quality (Max 20 points) — Factual from GBP matching
+  if (gbp) {
+    if (gbp.status === 'Not Found') {
+      score += 20;
+      reasonsList.push({ points: 20, text: "No Google Business Profile was detected for the business" });
+    } else if (gbp.status === 'Multiple Matches') {
+      score += 10;
+      reasonsList.push({ points: 10, text: "Multiple matching business profiles found, causing listing confusion" });
+    } else if (gbp.status === 'Found') {
+      const ratingVal = parseFloat(gbp.rating);
+      const votesCount = parseInt(gbp.reviewCount, 10);
+      
+      if (!isNaN(ratingVal) && ratingVal < 4.0) {
+        score += 10;
+        reasonsList.push({ points: 10, text: `Google Business Profile rating is low (${ratingVal} stars)` });
+      } else if (!isNaN(votesCount) && votesCount < 30) {
+        score += 10;
+        reasonsList.push({ points: 10, text: `Google Business Profile has a low review count (${votesCount} reviews)` });
+      }
+    }
   }
 
-  // 5. Heading Structure (Max 10 points)
-  if (!health.h1Present || health.h1Count === 0) {
-    score += 10;
-    reasonsList.push({ points: 10, text: "First H1 heading tag is missing" });
-  } else if (health.h1Count > 1) {
-    score += 4;
-    reasonsList.push({ points: 4, text: `Duplicate H1 heading tags found (${health.h1Count} tags)` });
-  }
+  // 4. On-Page / Crawl-dependent Technical Health & SEO Factors
+  // RULE: If crawl was blocked/failed, do NOT penalize or award points for uninspected elements!
+  if (crawlFailed) {
+    if (crawlStatusText) {
+      reasonsList.push({ points: 0, text: `On-page content inspection restricted by server (${crawlStatusText})` });
+    }
+  } else if (health) {
+    if (health.statusCode !== 200 && health.statusCode !== 0) {
+      score += 15;
+      reasonsList.push({ points: 15, text: `Non-200 HTTP response code (${health.statusCode}) indicates server errors` });
+    } else if (health.statusCode === 0) {
+      score += 15;
+      reasonsList.push({ points: 15, text: "Website connection failed or timed out" });
+    }
 
-  // 6. Content Depth (Max 10 points)
-  if (health.wordCount < 300) {
-    score += 10;
-    reasonsList.push({ points: 10, text: `Page content is thin (${health.wordCount} words, recommend 600+)` });
-  } else if (health.wordCount < 600) {
-    score += 5;
-    reasonsList.push({ points: 5, text: `Page content is moderate (${health.wordCount} words, recommend 600+)` });
-  }
+    if (health.indexable === false) {
+      score += 7;
+      reasonsList.push({ points: 7, text: "Page is blocked from indexation by noindex tags" });
+    }
 
-  // 7. Internal & External Linking (Max 10 points)
-  if (health.internalLinksCount < 5) {
-    score += 5;
-    reasonsList.push({ points: 5, text: `Low internal linking count (${health.internalLinksCount} links)` });
-  }
-  if (health.externalLinksCount < 1) {
-    score += 5;
-    reasonsList.push({ points: 5, text: "Low external linking count (0 links)" });
+    // Metadata (Max 20 points)
+    if (!health.titlePresent || health.titleLength === 0) {
+      score += 10;
+      reasonsList.push({ points: 10, text: "HTML meta title tag is missing" });
+    } else if (health.titleLength < 50 || health.titleLength > 60) {
+      score += 4;
+      reasonsList.push({ points: 4, text: `HTML meta title length (${health.titleLength} chars) is outside optimal 50-60 range` });
+    }
+
+    if (!health.descriptionPresent || health.descriptionLength === 0) {
+      score += 10;
+      reasonsList.push({ points: 10, text: "HTML meta description tag is missing" });
+    } else if (health.descriptionLength < 120 || health.descriptionLength > 160) {
+      score += 4;
+      reasonsList.push({ points: 4, text: `HTML meta description length (${health.descriptionLength} chars) is outside optimal 120-160 range` });
+    }
+
+    // Heading Structure (Max 10 points)
+    if (!health.h1Present || health.h1Count === 0) {
+      score += 10;
+      reasonsList.push({ points: 10, text: "First H1 heading tag is missing" });
+    } else if (health.h1Count > 1) {
+      score += 4;
+      reasonsList.push({ points: 4, text: `Duplicate H1 heading tags found (${health.h1Count} tags)` });
+    }
+
+    // Content Depth (Max 10 points)
+    if (health.wordCount < 300) {
+      score += 10;
+      reasonsList.push({ points: 10, text: `Page content is thin (${health.wordCount} words, recommend 600+)` });
+    } else if (health.wordCount < 600) {
+      score += 5;
+      reasonsList.push({ points: 5, text: `Page content is moderate (${health.wordCount} words, recommend 600+)` });
+    }
+
+    // Internal & External Linking (Max 10 points)
+    if (health.internalLinksCount < 5) {
+      score += 5;
+      reasonsList.push({ points: 5, text: `Low internal linking count (${health.internalLinksCount} links)` });
+    }
+    if (health.externalLinksCount < 1) {
+      score += 5;
+      reasonsList.push({ points: 5, text: "Low external linking count (0 links)" });
+    }
   }
 
   // Ensure score is capped at 100
@@ -707,13 +717,13 @@ function getOpportunityScoreAndReasons(health, gbp, rank) {
   };
 }
 
-function getPriorityRating(health, gbp, rank) {
+function getPriorityRating(health, gbp, rank, crawlFailed = false) {
   let points = 0;
 
   // 1. Business Size / Online Footprint (Max 40 points)
   if (gbp) {
     if (gbp.status === 'Multiple Matches') {
-      points += 30; // Automatically high priority for multi-location firms
+      points += 30;
     } else if (gbp.status === 'Found') {
       const reviews = parseInt(gbp.reviewCount, 10);
       if (!isNaN(reviews)) {
@@ -726,10 +736,12 @@ function getPriorityRating(health, gbp, rank) {
   }
 
   // 2. Website Quality & Authority (Max 25 points)
-  if (health.isHttps) points += 5;
-  if (health.statusCode === 200) points += 10;
-  if (health.internalLinksCount > 100) points += 10;
-  else if (health.internalLinksCount > 20) points += 5;
+  if (health && health.isHttps) points += 5;
+  if (!crawlFailed && health) {
+    if (health.statusCode === 200) points += 10;
+    if (health.internalLinksCount > 100) points += 10;
+    else if (health.internalLinksCount > 20) points += 5;
+  }
 
   // 3. Organic Ranking & Visibility (Max 20 points)
   const rankNum = parseInt(rank, 10);
@@ -743,7 +755,7 @@ function getPriorityRating(health, gbp, rank) {
   // 4. Contact & Professionalism (Max 15 points)
   if (gbp && gbp.phoneNumber && gbp.phoneNumber !== 'Not Found') points += 5;
   if (gbp && gbp.address && gbp.address !== 'Not Found') points += 5;
-  if (health.hasCanonical) points += 5;
+  if (!crawlFailed && health && health.hasCanonical) points += 5;
 
   let stars = '★★★☆☆';
   let label = 'Good Lead';
@@ -870,40 +882,42 @@ app.post('/api/analyse', async (req, res) => {
     const fallbackHealth = {
       isHttps,
       statusCode: statusCode >= 400 ? statusCode : (statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 0 : 0),
-      indexable: false,
-      hasCanonical: false,
-      titlePresent: false,
+      indexable: null,
+      hasCanonical: null,
+      titlePresent: null,
       titleLength: 0,
-      descriptionPresent: false,
+      descriptionPresent: null,
       descriptionLength: 0,
-      h1Present: false,
+      h1Present: null,
       h1Count: 0,
       h2Count: 0,
       wordCount: 0,
       imageCount: 0,
       missingAltCount: 0,
       internalLinksCount: 0,
-      externalLinksCount: 0
+      externalLinksCount: 0,
+      crawlBlocked: true,
+      crawlStatus: statusText
     };
     const gbp = await performGbpMatching(targetUrl, '', '', '', location);
     const leadOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, targetUrl);
-    const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank);
-    const leadPriority = getPriorityRating(fallbackHealth, gbp, rank);
+    const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank, true, statusText);
+    const leadPriority = getPriorityRating(fallbackHealth, gbp, rank, true);
 
     return res.json({
-      pageTitle: title || 'Not Found',
-      metaDescription: 'Not Found',
-      h1: 'Not Found',
+      pageTitle: 'Unknown (Crawl Blocked)',
+      metaDescription: 'Unknown (Crawl Blocked)',
+      h1: 'Unknown (Crawl Blocked)',
       httpStatus: statusText,
-      canonicalUrl: 'Not Found',
-      indexable: 'No',
+      canonicalUrl: 'Unknown (Crawl Blocked)',
+      indexable: 'Unknown',
       lastAnalysed: new Date().toISOString(),
-      error: `Could not inspect website content: ${fetchError?.message || statusText}`,
-      diagnosticFailureReason: statusText,
+      error: null,
+      diagnosticFailureReason: `Server restricted crawling (${statusText}). Score calculated from known factual signals (SERP rank #${rank}, GBP, HTTPS).`,
       seoHealth: fallbackHealth,
       aiReport: {
-        execSummary: `Website inspection limited (${statusText}). Technical metrics calculated from HTTP response status and search ranking.`,
-        opportunities: [`Website returned status ${statusText} or restricted automated inspection. This indicates a high-priority technical or hosting opportunity for client outreach.`]
+        execSummary: `Website inspection restricted (${statusText}). Factual opportunity score calculated from search ranking (#${rank}), Google Business Profile, and security protocol.`,
+        opportunities: [`Website returned status ${statusText} or restricted automated crawler inspection. Known search position and profile signals evaluated.`]
       },
       leadOpportunity: leadOpportunity,
       gbp: gbp,
