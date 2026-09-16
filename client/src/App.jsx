@@ -913,38 +913,14 @@ function App() {
     setIsCreatingPackModalOpen(true);
   };
 
-  // Initial load: Fetch server exclusions & perform one-time migration of legacy localStorage exclusions if present
+  // Initial load: Fetch server exclusions & clear legacy localStorage keys so they never overwrite server master baseline
   useEffect(() => {
     const initExclusions = async () => {
       try {
-        let legacyDomains = [];
         try {
-          const saved = localStorage.getItem('tse_excluded_domains');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              legacyDomains = parsed;
-            }
-          }
-        } catch (e) {
-          console.error('Error reading legacy localStorage exclusions:', e);
-        }
-
-        if (legacyDomains.length > 0) {
-          console.log(`[Migration] Migrating ${legacyDomains.length} legacy exclusions from localStorage to SQLite...`);
-          const res = await fetch(`${API_BASE}/api/exclusions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ domains: legacyDomains })
-          });
-          if (res.ok) {
-            const updated = await res.json();
-            setExcludedDomains(updated);
-            localStorage.removeItem('tse_excluded_domains');
-            console.log('[Migration] Migration complete. tse_excluded_domains removed from localStorage.');
-            return;
-          }
-        }
+          localStorage.removeItem('tse_excluded_domains');
+          localStorage.removeItem('leadgen_excluded_domains');
+        } catch (e) {}
 
         const res = await fetch(`${API_BASE}/api/exclusions`);
         if (res.ok) {
@@ -2923,7 +2899,7 @@ function App() {
               }} 
               className={`sidebar-item ${currentView === 'saved' ? 'active' : ''}`}
             >
-              Saved Searches
+              Saved Searches ({savedSearches.length})
             </button>
             <button 
               onClick={() => {
@@ -2936,7 +2912,7 @@ function App() {
               }} 
               className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
             >
-              Manage Exclusions
+              Manage Exclusions ({excludedDomains.length})
             </button>
             {/* Outreach Section with Shortlist and Packs sub-items */}
             <div className="sidebar-group">
@@ -2972,14 +2948,7 @@ function App() {
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'shortlist' ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>Shortlist</span>
-                  {outreachList.length > 0 && (
-                    <span className="sidebar-badge" style={{ 
-                      backgroundColor: currentView === 'outreach' && outreachSubView === 'shortlist' ? 'rgba(255, 255, 255, 0.25)' : '#2563eb'
-                    }}>
-                      {outreachList.length}
-                    </span>
-                  )}
+                  <span>Shortlist ({outreachList.length})</span>
                 </button>
 
                 <button 
@@ -2996,14 +2965,7 @@ function App() {
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>Outreach Packs</span>
-                  {outreachPacks.length > 0 && (
-                    <span className="sidebar-badge" style={{ 
-                      backgroundColor: currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'rgba(255, 255, 255, 0.25)' : '#475569'
-                    }}>
-                      {outreachPacks.length}
-                    </span>
-                  )}
+                  <span>Outreach Packs ({outreachPacks.length})</span>
                 </button>
 
                 <button 
@@ -3021,14 +2983,7 @@ function App() {
                   className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'templates' ? 'active' : ''}`}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>Email Templates</span>
-                  {masterTemplates.length > 0 && (
-                    <span className="sidebar-badge" style={{ 
-                      backgroundColor: currentView === 'outreach' && outreachSubView === 'templates' ? 'rgba(255, 255, 255, 0.25)' : '#475569'
-                    }}>
-                      {masterTemplates.length}
-                    </span>
-                  )}
+                  <span>Email Templates ({masterTemplates.length})</span>
                 </button>
               </div>
             </div>
