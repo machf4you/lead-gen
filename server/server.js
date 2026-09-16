@@ -2225,6 +2225,106 @@ app.delete('/api/email-templates/:id', async (req, res) => {
   }
 });
 
+// Helper for demonstration preview on server
+function renderTemplateDemoPreviewServer(text, workspace = 'tse') {
+  if (!text) return '';
+  const isChili = workspace === 'smoking_chili';
+  const senderName = isChili ? 'Darren' : 'Mac McCarthy';
+  const senderFirstName = isChili ? 'Darren' : 'Mac';
+  const companyName = isChili ? 'Smoking Chili Media' : 'The Search Equation';
+  const trade = 'Window Shutters';
+  const location = 'London';
+  const domain = 'londonshutters.co.uk';
+  const businessName = 'London Shutters Ltd';
+  const firstName = 'John';
+  const phone = '020 7946 0123';
+  const rating = '4.9';
+
+  return text
+    .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
+    .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
+    .replace(/\{\{\s*(?:company_name|companyName|company)\s*\}\}/gi, companyName)
+    .replace(/\{\{\s*(?:trade|businessType|searchPhrase|searchKeyword)\s*\}\}/gi, trade)
+    .replace(/\{\{\s*location\s*\}\}/gi, location)
+    .replace(/\{\{\s*domain\s*\}\}/gi, domain)
+    .replace(/\{\{\s*(?:businessName|business_name)\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*(?:firstName|first_name)\s*\}\}/gi, firstName)
+    .replace(/\{\{\s*greeting\s*\}\}/gi, `Hi ${firstName}`)
+    .replace(/\{\{\s*phone\s*\}\}/gi, phone)
+    .replace(/\{\{\s*rating\s*\}\}/gi, rating);
+}
+
+// POST send test email for a master email template (demonstration preview transmission)
+app.post('/api/email-templates/send-test', async (req, res) => {
+  try {
+    const { recipientEmail, subject, body, templateId } = req.body || {};
+
+    if (!recipientEmail || !recipientEmail.trim() || !recipientEmail.includes('@')) {
+      return res.status(400).json({ success: false, error: 'A valid recipient email address is required.' });
+    }
+
+    let finalSubject = (subject || '').trim();
+    let finalBody = (body || '').trim();
+
+    if (!finalSubject || !finalBody) {
+      if (templateId) {
+        const db = await getDb();
+        const tpl = await db.get('SELECT * FROM email_templates WHERE id = ?', [templateId]);
+        if (tpl) {
+          finalSubject = finalSubject || renderTemplateDemoPreviewServer(tpl.subject, req.workspace);
+          finalBody = finalBody || renderTemplateDemoPreviewServer(tpl.body, req.workspace);
+        }
+      }
+    }
+
+    if (!finalSubject || !finalBody) {
+      return res.status(400).json({ success: false, error: 'Email subject and body are required.' });
+    }
+
+    const config = getOutboundEmailConfig();
+    if (!config.isConfigured) {
+      return res.status(400).json({
+        success: false,
+        error: 'Outbound email sending is not fully configured on the server. Please check SMTP configuration.'
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    const info = await transporter.sendMail({
+      from: config.senderMailbox,
+      to: recipientEmail.trim(),
+      subject: finalSubject,
+      text: finalBody
+    });
+
+    console.log(`[Test Email Sent] Template test sent to ${recipientEmail.trim()} (MessageID: ${info.messageId}) for workspace: ${req.workspace}`);
+
+    res.json({
+      success: true,
+      recipientEmail: recipientEmail.trim(),
+      messageId: info.messageId
+    });
+  } catch (err) {
+    console.error('[Send Test Email Error]:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to send test email.'
+    });
+  }
+});
+
 // POST endpoint to generate partnership outreach email template
 app.post('/api/outreach-packs/generate-template', (req, res) => {
   try {

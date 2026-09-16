@@ -1,10 +1,10 @@
 {
   "id": "tse_lead_gen",
   "name": "TSE Lead Gen",
-  "commit_hash": "leadgen-v150-email-template-2col-preview-1789560000000",
-  "version": "1.50",
-  "version_tag": "v1.50-email-template-2col-preview",
-  "build_time": "2026-09-16T12:45:00.000Z",
-  "buildTimestamp": 1789560000000,
+  "commit_hash": "leadgen-v151-template-send-test-email-1789565000000",
+  "version": "1.51",
+  "version_tag": "v1.51-template-send-test-email",
+  "build_time": "2026-09-16T13:45:00.000Z",
+  "buildTimestamp": 1789565000000,
   "isDeploymentInProgress": false
 }

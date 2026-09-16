@@ -625,6 +625,11 @@ function App() {
   const [templateSubjectInput, setTemplateSubjectInput] = useState('');
   const [templateBodyInput, setTemplateBodyInput] = useState('');
   const [selectedMasterTemplateIdForPack, setSelectedMasterTemplateIdForPack] = useState('');
+  const [isTestEmailModalOpen, setIsTestEmailModalOpen] = useState(false);
+  const [testEmailTemplate, setTestEmailTemplate] = useState(null);
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailStatusMsg, setTestEmailStatusMsg] = useState(null);
 
   // Current authenticated user & workspace (persists instantly across page/view navigation)
   const [currentUser, setCurrentUser] = useState(() => {
@@ -733,6 +738,66 @@ function App() {
     setTemplateSubjectInput(tpl.subject || '');
     setTemplateBodyInput(tpl.body || '');
     setIsTemplateEditorModalOpen(true);
+  };
+
+  const handleOpenTestEmailModal = (tpl) => {
+    setTestEmailTemplate(tpl);
+    const defaultEmail = currentUser?.email || (currentUser?.workspace === 'smoking_chili' ? 'darren@smokingchilimedia.com' : 'mac@thesearchequation.co.uk');
+    setTestEmailRecipient(defaultEmail || '');
+    setTestEmailStatusMsg(null);
+    setIsTestEmailModalOpen(true);
+  };
+
+  const handleSendTestEmail = async (e) => {
+    if (e) e.preventDefault();
+    if (!testEmailTemplate || !testEmailRecipient || !testEmailRecipient.trim()) {
+      setTestEmailStatusMsg({ type: 'error', text: 'Please enter a valid recipient email address.' });
+      return;
+    }
+
+    setIsSendingTestEmail(true);
+    setTestEmailStatusMsg(null);
+
+    try {
+      const personalisedSubject = renderTemplateDemoPreview(testEmailTemplate.subject, currentUser?.workspace);
+      const personalisedBody = renderTemplateDemoPreview(testEmailTemplate.body, currentUser?.workspace);
+
+      const res = await fetch(`${API_BASE}/api/email-templates/send-test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-user': currentUser?.username || 'mac',
+          'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
+          'x-auth-role': currentUser?.role || 'admin'
+        },
+        body: JSON.stringify({
+          recipientEmail: testEmailRecipient.trim(),
+          subject: personalisedSubject,
+          body: personalisedBody,
+          templateId: testEmailTemplate.id
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestEmailStatusMsg({
+          type: 'success',
+          text: `Test email sent to ${testEmailRecipient.trim()}`
+        });
+      } else {
+        setTestEmailStatusMsg({
+          type: 'error',
+          text: data.error || 'Failed to send test email.'
+        });
+      }
+    } catch (err) {
+      setTestEmailStatusMsg({
+        type: 'error',
+        text: err.message || 'Failed to send test email.'
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
   };
 
   const handleSaveTemplateSubmit = async (e) => {
@@ -4483,7 +4548,21 @@ function App() {
                                     ID: {tpl.id} &bull; Updated: {formatLastAnalysed(tpl.updatedAt || tpl.createdAt)}
                                   </span>
                                 </div>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                  <button
+                                    onClick={() => handleOpenTestEmailModal(tpl)}
+                                    className="table-btn"
+                                    style={{
+                                      backgroundColor: '#1e293b',
+                                      border: '1px solid #10b981',
+                                      color: '#34d399',
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    Send Test Email
+                                  </button>
                                   <button
                                     onClick={() => handleOpenEditTemplateModal(tpl)}
                                     className="table-btn"
@@ -6005,6 +6084,118 @@ function App() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Send Test Email */}
+            {isTestEmailModalOpen && testEmailTemplate && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  width: '100%',
+                  maxWidth: '480px',
+                  padding: '1.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.25rem', fontWeight: 'bold' }}>
+                        Send Test Email
+                      </h3>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        Send the personalised demonstration preview of this template to your inbox.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!isSendingTestEmail) {
+                          setIsTestEmailModalOpen(false);
+                          setTestEmailTemplate(null);
+                          setTestEmailStatusMsg(null);
+                        }
+                      }}
+                      disabled={isSendingTestEmail}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: isSendingTestEmail ? 'not-allowed' : 'pointer' }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSendTestEmail} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                        Recipient Email:
+                      </label>
+                      <input
+                        type="email"
+                        value={testEmailRecipient}
+                        onChange={(e) => setTestEmailRecipient(e.target.value)}
+                        placeholder="e.g. mac@thesearchequation.co.uk"
+                        className="search-input"
+                        style={{ width: '100%', boxSizing: 'border-box' }}
+                        autoComplete="off"
+                        required
+                        autoFocus
+                      />
+                    </div>
+
+                    {testEmailStatusMsg && (
+                      <div style={{
+                        padding: '0.75rem 1rem',
+                        borderRadius: '6px',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        backgroundColor: testEmailStatusMsg.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                        border: testEmailStatusMsg.type === 'success' ? '1px solid #10b981' : '1px solid #ef4444',
+                        color: testEmailStatusMsg.type === 'success' ? '#34d399' : '#f87171'
+                      }}>
+                        {testEmailStatusMsg.type === 'success' ? '✓ ' : '❌ '}
+                        {testEmailStatusMsg.text}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.25rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsTestEmailModalOpen(false);
+                          setTestEmailTemplate(null);
+                          setTestEmailStatusMsg(null);
+                        }}
+                        disabled={isSendingTestEmail}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#cbd5e1', padding: '0.5rem 1.25rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSendingTestEmail}
+                        className="analyse-btn-green"
+                        style={{ padding: '0.5rem 1.5rem', fontWeight: 'bold' }}
+                      >
+                        {isSendingTestEmail ? 'Sending...' : 'SEND TEST'}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}
