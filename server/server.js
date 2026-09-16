@@ -1979,13 +1979,13 @@ function getOutboundEmailConfig(workspace = 'tse') {
 
   if (ws === 'smoking_chili') {
     const host = process.env.SMOKING_CHILI_SMTP_HOST || 'smtp.gmail.com';
-    const port = process.env.SMOKING_CHILI_SMTP_PORT ? parseInt(process.env.SMOKING_CHILI_SMTP_PORT, 10) : 465;
+    const port = process.env.SMOKING_CHILI_SMTP_PORT ? parseInt(process.env.SMOKING_CHILI_SMTP_PORT, 10) : 587;
     const user = process.env.SMOKING_CHILI_SMTP_USER || 'darren@smokingchilimedia.com';
     const pass = process.env.SMOKING_CHILI_SMTP_PASS || '';
     const fromName = process.env.SMOKING_CHILI_SMTP_FROM_NAME || 'Darren';
     const fromEmail = process.env.SMOKING_CHILI_SMTP_FROM || 'darren@smokingchilimedia.com';
     const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;
-    const secure = process.env.SMOKING_CHILI_SMTP_SECURE === 'false' ? false : (port === 465 || process.env.SMOKING_CHILI_SMTP_SECURE === 'true' || true);
+    const secure = process.env.SMOKING_CHILI_SMTP_SECURE === 'true' || (port === 465 && process.env.SMOKING_CHILI_SMTP_SECURE !== 'false');
 
     const isConfigured = Boolean(host && user && pass && fromEmail);
 
@@ -2339,6 +2339,9 @@ app.post('/api/email-templates/send-test', async (req, res) => {
         user: config.user,
         pass: config.pass
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false
       }
@@ -2702,6 +2705,9 @@ app.post('/api/outreach/test-smtp', async (req, res) => {
         user: config.user,
         pass: config.pass
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false
       }
@@ -2780,6 +2786,9 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
         user: config.user,
         pass: config.pass
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false
       }

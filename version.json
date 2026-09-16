@@ -1,10 +1,10 @@
 {
   "id": "tse_lead_gen",
   "name": "TSE Lead Gen",
-  "commit_hash": "leadgen-v153-smoking-chili-smtp-routing-1789574000000",
-  "version": "1.53",
-  "version_tag": "v1.53-smoking-chili-smtp-routing",
-  "build_time": "2026-09-16T15:30:00.000Z",
-  "buildTimestamp": 1789574000000,
+  "commit_hash": "leadgen-v154-smoking-chili-smtp-port587-1789576000000",
+  "version": "1.54",
+  "version_tag": "v1.54-smoking-chili-smtp-port587",
+  "build_time": "2026-09-16T16:00:00.000Z",
+  "buildTimestamp": 1789576000000,
   "isDeploymentInProgress": false
 }

@@ -885,18 +885,28 @@ function App() {
           'Content-Type': 'application/json',
           'x-auth-user': currentUser?.username || 'mac',
           'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
-          'x-auth-role': currentUser?.role || 'admin'
+          'x-auth-role': currentUser?.role || 'admin',
+          'x-workspace': currentUser?.workspace || 'tse'
         },
         body: JSON.stringify({
           recipientEmail: testEmailRecipient.trim(),
           subject: personalisedSubject,
           body: personalisedBody,
-          templateId: testEmailTemplate.id
+          templateId: testEmailTemplate.id,
+          workspace: currentUser?.workspace || 'tse'
         })
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const contentType = res.headers.get('content-type') || '';
+      let data = null;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text();
+        throw new Error(`Server returned status ${res.status}: ${rawText.slice(0, 120)}`);
+      }
+
+      if (res.ok && data?.success) {
         setTestEmailStatusMsg({
           type: 'success',
           text: `Test email sent to ${testEmailRecipient.trim()}`
@@ -904,7 +914,7 @@ function App() {
       } else {
         setTestEmailStatusMsg({
           type: 'error',
-          text: data.error || 'Failed to send test email.'
+          text: data?.error || 'Failed to send test email.'
         });
       }
     } catch (err) {
