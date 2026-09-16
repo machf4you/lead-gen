@@ -1071,7 +1071,14 @@ function App() {
 
   const fetchSenderStatus = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/outreach/sender-status`);
+      const res = await fetch(`${API_BASE}/api/outreach/sender-status`, {
+        headers: {
+          'x-auth-user': currentUser?.username || 'mac',
+          'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
+          'x-auth-role': currentUser?.role || 'admin',
+          'x-workspace': currentUser?.workspace || 'tse'
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setSenderStatus(data);
@@ -1533,7 +1540,13 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(activePack.packId)}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-user': currentUser?.username || 'mac',
+          'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
+          'x-auth-role': currentUser?.role || 'admin',
+          'x-workspace': currentUser?.workspace || 'tse'
+        },
         body: JSON.stringify({
           selectedProspectIds: Array.from(selectedProspectIdsInPack)
         })
@@ -5816,7 +5829,9 @@ function App() {
                       }}>
                         <strong>Outbound Email Provider Not Configured:</strong>
                         <p style={{ margin: '0.4rem 0 0 0' }}>
-                          No SMTP or outbound email credentials are currently configured in the server environment. To enable live sending, configure <code>SMTP_HOST</code>, <code>SMTP_PORT</code>, <code>SMTP_USER</code>, <code>SMTP_PASS</code>, and <code>SMTP_FROM</code> on the server.
+                          {currentUser?.workspace === 'smoking_chili'
+                            ? 'Google Workspace SMTP is not configured for Smoking Chili Media. Please ensure SMOKING_CHILI_SMTP_PASS (Google App Password) is set on the server.'
+                            : 'No SMTP or outbound email credentials are currently configured on the server. To enable live sending, configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM.'}
                         </p>
                       </div>
                     ) : (

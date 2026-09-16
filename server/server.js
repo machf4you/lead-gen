@@ -93,6 +93,9 @@ app.use((req, res, next) => {
   const headerUser = req.headers['x-auth-user'] || '';
   const headerEmail = req.headers['x-auth-email'] || '';
   const headerRole = req.headers['x-auth-role'] || '';
+  const headerWorkspace = req.headers['x-workspace'] || '';
+  const queryWorkspace = req.query?.workspace || '';
+  const bodyWorkspace = req.body && typeof req.body === 'object' ? req.body.workspace : '';
 
   let cookieUser = '';
   if (req.headers.cookie) {
@@ -102,6 +105,7 @@ app.use((req, res, next) => {
 
   const rawUser = (headerUser || cookieUser || '').toLowerCase().trim();
   const rawEmail = (headerEmail || '').toLowerCase().trim();
+  const explicitWs = (headerWorkspace || queryWorkspace || bodyWorkspace || '').toLowerCase().trim();
 
   let workspace = 'tse';
   let workspaceLabel = 'The Search Equation';
@@ -109,12 +113,12 @@ app.use((req, res, next) => {
   let email = rawEmail || 'mac@thesearchequation.co.uk';
   let role = headerRole || 'admin';
 
-  if (rawUser === 'darren' || rawEmail.includes('smokingchilimedia') || rawEmail === 'darren@smokingchilimedia.com') {
+  if (explicitWs === 'smoking_chili' || rawUser === 'darren' || rawEmail.includes('smokingchilimedia') || rawEmail === 'darren@smokingchilimedia.com') {
     workspace = 'smoking_chili';
     workspaceLabel = 'Smoking Chili Media';
-    username = 'darren';
+    username = rawUser || 'darren';
     email = rawEmail || 'darren@smokingchilimedia.com';
-    role = 'user';
+    role = headerRole || 'user';
   } else if (rawUser === 'deb' || rawEmail.includes('deb@')) {
     workspace = 'tse';
     workspaceLabel = 'The Search Equation';
@@ -1969,23 +1973,58 @@ function renderFullEmailBody(templateBody, prospect, recipientEmail = null, send
   return `${greeting}\n\n${renderedBody}`.trim();
 }
 
-// Helper to check outbound email provider configuration
-function getOutboundEmailConfig() {
+// Helper to check outbound email provider configuration per workspace
+function getOutboundEmailConfig(workspace = 'tse') {
+  const ws = (workspace || 'tse').toLowerCase().trim();
+
+  if (ws === 'smoking_chili') {
+    const host = process.env.SMOKING_CHILI_SMTP_HOST || 'smtp.gmail.com';
+    const port = process.env.SMOKING_CHILI_SMTP_PORT ? parseInt(process.env.SMOKING_CHILI_SMTP_PORT, 10) : 465;
+    const user = process.env.SMOKING_CHILI_SMTP_USER || 'darren@smokingchilimedia.com';
+    const pass = process.env.SMOKING_CHILI_SMTP_PASS || '';
+    const fromName = process.env.SMOKING_CHILI_SMTP_FROM_NAME || 'Darren';
+    const fromEmail = process.env.SMOKING_CHILI_SMTP_FROM || 'darren@smokingchilimedia.com';
+    const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;
+    const secure = process.env.SMOKING_CHILI_SMTP_SECURE === 'false' ? false : (port === 465 || process.env.SMOKING_CHILI_SMTP_SECURE === 'true' || true);
+
+    const isConfigured = Boolean(host && user && pass && fromEmail);
+
+    return {
+      workspace: 'smoking_chili',
+      isConfigured,
+      senderMailbox: from,
+      fromEmail,
+      fromName,
+      host,
+      port,
+      user,
+      pass,
+      secure
+    };
+  }
+
+  // TSE Workspace (Existing working configuration unchanged)
   const host = process.env.SMTP_HOST || 'mail.thesearchequation.co.uk';
   const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
   const user = process.env.SMTP_USER || 'mac@thesearchequation.co.uk';
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || process.env.OUTBOUND_EMAIL_FROM || 'mac@thesearchequation.co.uk';
+  const pass = process.env.SMTP_PASS || '';
+  const fromName = process.env.SMTP_FROM_NAME || 'Mac McCarthy';
+  const fromEmail = process.env.SMTP_FROM || process.env.OUTBOUND_EMAIL_FROM || 'mac@thesearchequation.co.uk';
+  const from = fromEmail.includes('<') ? fromEmail : (fromName ? `"${fromName}" <${fromEmail}>` : fromEmail);
   const secure = process.env.SMTP_SECURE === 'false' ? false : (port === 465 || process.env.SMTP_SECURE === 'true');
 
-  const isConfigured = Boolean(host && user && pass && from);
+  const isConfigured = Boolean(host && user && pass && fromEmail);
 
   return {
+    workspace: 'tse',
     isConfigured,
-    senderMailbox: from || null,
-    host: host || null,
-    port: port || null,
-    user: user || null,
+    senderMailbox: from,
+    fromEmail,
+    fromName,
+    host,
+    port,
+    user,
+    pass,
     secure
   };
 }
@@ -2281,11 +2320,14 @@ app.post('/api/email-templates/send-test', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email subject and body are required.' });
     }
 
-    const config = getOutboundEmailConfig();
+    const config = getOutboundEmailConfig(req.workspace);
     if (!config.isConfigured) {
+      const missingMsg = req.workspace === 'smoking_chili'
+        ? 'Smoking Chili SMTP is not configured on the server. Google App Password is required in the server environment (SMOKING_CHILI_SMTP_PASS).'
+        : 'TSE SMTP is not configured on the server. Please check SMTP configuration.';
       return res.status(400).json({
         success: false,
-        error: 'Outbound email sending is not fully configured on the server. Please check SMTP configuration.'
+        error: missingMsg
       });
     }
 
@@ -2295,7 +2337,7 @@ app.post('/api/email-templates/send-test', async (req, res) => {
       secure: config.secure,
       auth: {
         user: config.user,
-        pass: process.env.SMTP_PASS
+        pass: config.pass
       },
       tls: {
         rejectUnauthorized: false
@@ -2626,8 +2668,9 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
 
 // GET sender status
 app.get('/api/outreach/sender-status', (req, res) => {
-  const config = getOutboundEmailConfig();
+  const config = getOutboundEmailConfig(req.workspace);
   res.json({
+    workspace: req.workspace,
     configured: config.isConfigured,
     senderMailbox: config.senderMailbox,
     host: config.host,
@@ -2639,12 +2682,15 @@ app.get('/api/outreach/sender-status', (req, res) => {
 app.post('/api/outreach/test-smtp', async (req, res) => {
   try {
     const { testEmail } = req.body || {};
-    const config = getOutboundEmailConfig();
+    const config = getOutboundEmailConfig(req.workspace);
 
     if (!config.isConfigured) {
+      const missingMsg = req.workspace === 'smoking_chili'
+        ? 'Smoking Chili SMTP is not configured. Ensure SMOKING_CHILI_SMTP_PASS is configured in the server environment.'
+        : 'TSE SMTP is not configured. Ensure SMTP_PASS is configured in the server environment.';
       return res.status(400).json({
         success: false,
-        error: 'SMTP is not fully configured. Ensure SMTP_PASS is configured in the server environment.'
+        error: missingMsg
       });
     }
 
@@ -2654,7 +2700,7 @@ app.post('/api/outreach/test-smtp', async (req, res) => {
       secure: config.secure,
       auth: {
         user: config.user,
-        pass: process.env.SMTP_PASS
+        pass: config.pass
       },
       tls: {
         rejectUnauthorized: false
@@ -2669,8 +2715,8 @@ app.post('/api/outreach/test-smtp', async (req, res) => {
       const info = await transporter.sendMail({
         from: config.senderMailbox,
         to: testEmail,
-        subject: `TSE Lead Generator SMTP Verification Test — ${new Date().toISOString()}`,
-        text: `This is a controlled verification test email from TSE Lead Generator.\n\nConfiguration:\nHost: ${config.host}\nPort: ${config.port}\nSender: ${config.senderMailbox}\nTimestamp: ${new Date().toISOString()}`
+        subject: `${req.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'TSE'} Lead Generator SMTP Verification Test — ${new Date().toISOString()}`,
+        text: `This is a controlled verification test email from ${req.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation'} Lead Generator.\n\nConfiguration:\nWorkspace: ${req.workspace}\nHost: ${config.host}\nPort: ${config.port}\nSender: ${config.senderMailbox}\nTimestamp: ${new Date().toISOString()}`
       });
       sendResult = { messageId: info.messageId, to: testEmail };
     }
@@ -2678,6 +2724,7 @@ app.post('/api/outreach/test-smtp', async (req, res) => {
     res.json({
       success: true,
       verified: true,
+      workspace: req.workspace,
       config: {
         host: config.host,
         port: config.port,
@@ -2697,13 +2744,16 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
   try {
     const { packId } = req.params;
     const { selectedProspectIds = [] } = req.body;
-    const config = getOutboundEmailConfig();
+    const config = getOutboundEmailConfig(req.workspace);
 
     if (!config.isConfigured) {
+      const missingMsg = req.workspace === 'smoking_chili'
+        ? 'Smoking Chili SMTP is not configured on the server. Ensure SMOKING_CHILI_SMTP_PASS is set to enable outreach sending.'
+        : 'TSE SMTP is not configured on the server. Ensure SMTP_PASS is set to enable outreach sending.';
       return res.status(400).json({
         success: false,
         configured: false,
-        error: 'No outbound email provider is currently configured in the server environment. Configure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, and SMTP_FROM to enable sending.'
+        error: missingMsg
       });
     }
 
@@ -2728,7 +2778,7 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       secure: config.secure,
       auth: {
         user: config.user,
-        pass: process.env.SMTP_PASS
+        pass: config.pass
       },
       tls: {
         rejectUnauthorized: false
