@@ -1,0 +1,46 @@
+{
+  "application": "lead-generator",
+  "baselineTag": "lg-v1.42-full-disaster-recovery",
+  "baselineVersion": "v1.42-lg-stable",
+  "baselineCommit": "4f7b121",
+  "acceptedDate": "16 SEP 2026",
+  "macAccepted": true,
+  "macAcceptedTimestamp": 1789548777000,
+  "status": "Authoritative Accepted Production Baseline",
+  "protectedFeatures": {
+    "views": [
+      "SEARCH PROSPECTS",
+      "MASTER TEMPLATES",
+      "OUTREACH PACKS",
+      "SAVED SEARCHES",
+      "SETTINGS"
+    ],
+    "components": [
+      "client/src/App.jsx",
+      "client/src/config/version.js",
+      "server/server.js",
+      "server/db.js"
+    ],
+    "apiEndpoints": [
+      "/api/search",
+      "/api/email-templates",
+      "/api/saved-searches",
+      "/api/outreach-packs",
+      "/api/health",
+      "/api/version"
+    ],
+    "databaseTables": [
+      "saved_searches",
+      "email_templates",
+      "outreach_packs",
+      "outreach_shortlist",
+      "outreach_contact_history",
+      "app_settings"
+    ],
+    "invariants": {
+      "minimumMasterTemplates": 8,
+      "score70Highlighting": true,
+      "workspaceIsolation": true
+    }
+  }
+}

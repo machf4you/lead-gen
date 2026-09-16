@@ -1,0 +1,13 @@
+{
+  "app": "lead-generator",
+  "task": "Implement Production Baseline Lock for Lead Generator V1.42",
+  "baselineTag": "lg-v1.42-full-disaster-recovery",
+  "candidateCommit": "HEAD",
+  "allowedFiles": [
+    "scripts/lg_production_baseline.json",
+    "scripts/tse_baseline_lock.py",
+    "scripts/advance_production_baseline.py",
+    "tse-manifest.json",
+    "RESTORE-POINT-v1.42-full-disaster-recovery-lead-generator.md"
+  ]
+}
