@@ -29,17 +29,20 @@ export async function getDb() {
       searchMode TEXT NOT NULL,
       dateTime TEXT NOT NULL,
       count INTEGER NOT NULL,
-      data TEXT NOT NULL
+      data TEXT NOT NULL,
+      workspace TEXT NOT NULL DEFAULT 'tse'
     );
 
     CREATE TABLE IF NOT EXISTS excluded_domains (
-      domain TEXT PRIMARY KEY,
-      createdAt TEXT NOT NULL
+      domain TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      workspace TEXT NOT NULL DEFAULT 'tse',
+      PRIMARY KEY (domain, workspace)
     );
 
     CREATE TABLE IF NOT EXISTS outreach_shortlist (
       id TEXT PRIMARY KEY,
-      domain TEXT NOT NULL UNIQUE,
+      domain TEXT NOT NULL,
       url TEXT,
       businessName TEXT,
       searchId TEXT,
@@ -54,12 +57,13 @@ export async function getDb() {
       commercialStrengthPoints INTEGER,
       gbpStatus TEXT,
       analysisData TEXT,
-      shortlistedAt TEXT NOT NULL
+      shortlistedAt TEXT NOT NULL,
+      workspace TEXT NOT NULL DEFAULT 'tse'
     );
 
     CREATE TABLE IF NOT EXISTS outreach_packs (
       id TEXT PRIMARY KEY,
-      packId TEXT NOT NULL UNIQUE,
+      packId TEXT NOT NULL,
       name TEXT,
       templateSubject TEXT,
       templateBody TEXT,
@@ -67,7 +71,8 @@ export async function getDb() {
       sentAt TEXT,
       status TEXT NOT NULL DEFAULT 'Draft',
       prospectsCount INTEGER NOT NULL DEFAULT 0,
-      prospects TEXT NOT NULL
+      prospects TEXT NOT NULL,
+      workspace TEXT NOT NULL DEFAULT 'tse'
     );
 
     CREATE TABLE IF NOT EXISTS outreach_contact_history (
@@ -77,7 +82,8 @@ export async function getDb() {
       packId TEXT NOT NULL,
       status TEXT NOT NULL,
       sentAt TEXT,
-      createdAt TEXT NOT NULL
+      createdAt TEXT NOT NULL,
+      workspace TEXT NOT NULL DEFAULT 'tse'
     );
 
     CREATE TABLE IF NOT EXISTS email_templates (
@@ -90,8 +96,10 @@ export async function getDb() {
     );
 
     CREATE TABLE IF NOT EXISTS app_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
+      workspace TEXT NOT NULL DEFAULT 'tse',
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (workspace, key)
     );
   `);
 
@@ -101,28 +109,106 @@ export async function getDb() {
   try {
     await db.exec(`ALTER TABLE outreach_packs ADD COLUMN templateBody TEXT;`);
   } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_packs ADD COLUMN searchType TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN phone TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN address TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN rating REAL;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN reviewsCount INTEGER;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN contactEmail TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN emailStatus TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN allFoundEmails TEXT;`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE email_templates ADD COLUMN templateType TEXT DEFAULT 'master';`);
+  } catch (e) {}
+
+  // Workspace migrations for multi-user workspace separation
+  try {
+    await db.exec(`ALTER TABLE saved_searches ADD COLUMN workspace TEXT DEFAULT 'tse';`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN workspace TEXT DEFAULT 'tse';`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_packs ADD COLUMN workspace TEXT DEFAULT 'tse';`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE outreach_contact_history ADD COLUMN workspace TEXT DEFAULT 'tse';`);
+  } catch (e) {}
+  try {
+    await db.exec(`ALTER TABLE excluded_domains ADD COLUMN workspace TEXT DEFAULT 'tse';`);
+  } catch (e) {}
+
+  // Migrate app_settings to composite primary key (workspace, key)
+  try {
+    const cols = await db.all("PRAGMA table_info(app_settings)");
+    const colNames = cols.map(c => c.name);
+    if (!colNames.includes('workspace')) {
+      await db.exec(`
+        CREATE TABLE IF NOT EXISTS app_settings_workspace_mig (
+          workspace TEXT NOT NULL DEFAULT 'tse',
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          PRIMARY KEY (workspace, key)
+        );
+        INSERT OR REPLACE INTO app_settings_workspace_mig (workspace, key, value)
+        SELECT 'tse', key, value FROM app_settings;
+        DROP TABLE app_settings;
+        ALTER TABLE app_settings_workspace_mig RENAME TO app_settings;
+      `);
+    }
+  } catch (e) {
+    console.error('Migration note for app_settings:', e);
+  }
 
   await initDefaultSettings(db);
   await cleanNonDomainEmails(db);
   await cleanPackTemplateGreetings(db);
   await seedDefaultEmailTemplates(db);
   await migrateSenderVariablesInTemplates(db);
+  await migrateTemplateClassifications(db);
+  await repairAndMigratePackIds(db);
   
   return db;
 }
 
-// Initialize default app settings in database
+// Initialize default app settings in database per workspace
 export async function initDefaultSettings(database) {
   try {
-    const defaults = {
-      sender_first_name: 'Mac',
-      sender_name: 'Mac McCarthy',
-      company_name: 'The Search Equation'
+    const workspaceDefaults = {
+      tse: {
+        sender_first_name: 'Mac',
+        sender_name: 'Mac McCarthy',
+        company_name: 'The Search Equation'
+      },
+      smoking_chili: {
+        sender_first_name: 'Darren',
+        sender_name: 'Darren',
+        company_name: 'Smoking Chili Media'
+      }
     };
-    for (const [key, val] of Object.entries(defaults)) {
-      const existing = await database.get('SELECT key FROM app_settings WHERE key = ?', [key]);
-      if (!existing) {
-        await database.run('INSERT INTO app_settings (key, value) VALUES (?, ?)', [key, val]);
+
+    for (const [ws, defaults] of Object.entries(workspaceDefaults)) {
+      for (const [key, val] of Object.entries(defaults)) {
+        const existing = await database.get('SELECT key FROM app_settings WHERE workspace = ? AND key = ?', [ws, key]);
+        if (!existing) {
+          await database.run('INSERT INTO app_settings (workspace, key, value) VALUES (?, ?, ?)', [ws, key, val]);
+        }
       }
     }
   } catch (e) {
@@ -130,15 +216,22 @@ export async function initDefaultSettings(database) {
   }
 }
 
-// Get outreach sender settings from database
-export async function getSenderSettings(database) {
+// Get outreach sender settings from database for specific workspace
+export async function getSenderSettings(database, workspace = 'tse') {
+  const ws = String(workspace || 'tse').trim().toLowerCase();
+  const defaultForWs = ws === 'smoking_chili' ? {
+    sender_first_name: 'Darren',
+    sender_name: 'Darren',
+    company_name: 'Smoking Chili Media'
+  } : {
+    sender_first_name: 'Mac',
+    sender_name: 'Mac McCarthy',
+    company_name: 'The Search Equation'
+  };
+
   try {
-    const rows = await database.all('SELECT key, value FROM app_settings');
-    const settings = {
-      sender_first_name: 'Mac',
-      sender_name: 'Mac McCarthy',
-      company_name: 'The Search Equation'
-    };
+    const rows = await database.all('SELECT key, value FROM app_settings WHERE workspace = ?', [ws]);
+    const settings = { ...defaultForWs };
     for (const r of rows) {
       if (r.key in settings) {
         settings[r.key] = r.value;
@@ -146,82 +239,29 @@ export async function getSenderSettings(database) {
     }
     return settings;
   } catch (e) {
-    return {
-      sender_first_name: 'Mac',
-      sender_name: 'Mac McCarthy',
-      company_name: 'The Search Equation'
-    };
+    return defaultForWs;
   }
 }
 
-// Update outreach sender settings in database
-export async function updateSenderSettings(database, newSettings) {
+// Update outreach sender settings in database for specific workspace
+export async function updateSenderSettings(database, newSettings, workspace = 'tse') {
+  const ws = String(workspace || 'tse').trim().toLowerCase();
   for (const key of ['sender_first_name', 'sender_name', 'company_name']) {
     if (newSettings[key] !== undefined) {
       await database.run(
-        'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-        [key, String(newSettings[key]).trim()]
+        'INSERT INTO app_settings (workspace, key, value) VALUES (?, ?, ?) ON CONFLICT(workspace, key) DO UPDATE SET value = excluded.value',
+        [ws, key, String(newSettings[key]).trim()]
       );
     }
   }
-  return getSenderSettings(database);
+  return getSenderSettings(database, ws);
 }
 
-// Seed default master email templates if none exist
+// Seed default master email templates - DISABLED (no automatic template creation)
 export async function seedDefaultEmailTemplates(database) {
-  try {
-    const existing = await database.all('SELECT id, name FROM email_templates');
-    const existingNames = new Set(existing.map(t => t.name.toLowerCase()));
-
-    const defaults = [
-      {
-        id: 'tpl_warm_partnership',
-        name: 'Warm Partnership / Investment Approach',
-        subject: 'Partnership enquiry: {{trade}} in {{location}} — {{company_name}}',
-        body: `I hope you're having a productive week.
-
-I'm reaching out directly because we are currently looking to partner with an established {{trade}} company in {{location}} to generate and deliver additional high-intent client enquiries.
-
-At {{company_name}}, we specialise in SEO and digital growth. Rather than offering standard marketing or agency retainers, our model is to invest our own time and digital expertise directly into driving exclusive customer enquiries for a single trusted partner in each sector and region.
-
-We came across {{domain}} while researching established providers in {{location}}, and thought there could be strong commercial synergy between what you do and our growth framework.
-
-If you have capacity for additional {{trade}} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
-
-Best regards,
-
-{{sender_name}}
-{{company_name}}`
-      },
-      {
-        id: 'tpl_standard_seo',
-        name: 'Standard SEO Introduction',
-        subject: 'Quick question regarding search visibility for {{domain}}',
-        body: `I was researching local {{trade}} providers in {{location}} and noticed {{domain}} ranking in Google search results.
-
-You have a strong foundation, but there are a few straightforward technical and local search adjustments that would significantly increase your direct customer enquiries.
-
-I've put together a brief checklist of the highest-impact opportunities for your site. Would it be alright if I sent that over?
-
-Best regards,
-
-{{sender_name}}
-{{company_name}}`
-      }
-    ];
-
-    const now = new Date().toISOString();
-    for (const tpl of defaults) {
-      if (!existingNames.has(tpl.name.toLowerCase())) {
-        await database.run(
-          `INSERT INTO email_templates (id, name, subject, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`,
-          [tpl.id, tpl.name, tpl.subject, tpl.body, now, now]
-        );
-      }
-    }
-  } catch (err) {
-    console.error('Error seeding default email templates:', err);
-  }
+  // Automatic template seeding has been disabled.
+  // Existing templates are preserved and no new templates are inserted on startup.
+  return;
 }
 
 // Migrate any existing templates and packs to replace hard-coded sender/company references with variables
@@ -388,6 +428,114 @@ export async function cleanNonDomainEmails(database) {
     }
   } catch (err) {
     console.error('Error cleaning non-domain emails:', err);
+  }
+}
+
+// Explicitly classify stored templates by templateType (master | organic | local) based on LOCAL - / ORGANIC - prefix
+export async function migrateTemplateClassifications(database) {
+  try {
+    const templates = await database.all('SELECT * FROM email_templates');
+    for (const tpl of templates) {
+      const name = (tpl.name || '').trim();
+      const lowerName = name.toLowerCase();
+      let targetType = tpl.templateType;
+
+      // 1. Prefix priority: LOCAL - or ORGANIC -
+      if (lowerName.startsWith('local -') || lowerName.startsWith('local-') || lowerName.startsWith('local:')) {
+        targetType = 'local';
+      } else if (lowerName.startsWith('organic -') || lowerName.startsWith('organic-') || lowerName.startsWith('organic:')) {
+        targetType = 'organic';
+      } else if (lowerName.startsWith('master -') || lowerName.startsWith('master-') || lowerName.startsWith('master:')) {
+        targetType = 'master';
+      } else if (tpl.id === 'tpl_local_partnership_long' || tpl.id === 'tpl_local_standard_short' || tpl.id === 'tpl_local_partnership_short') {
+        targetType = 'local';
+      } else if (tpl.id === 'tpl_warm_partnership' || tpl.id === 'tpl_standard_seo' || tpl.id === 'tpl_organic_partnership_short' || tpl.id === 'tpl_1789277829032' || tpl.id === 'tpl_1789395845089') {
+        targetType = 'organic';
+      } else if (!targetType || targetType === 'master') {
+        // Fallback for custom templates
+        if (tpl.id.startsWith('tpl_local') || lowerName.includes('(local)')) {
+          targetType = 'local';
+        } else if (tpl.id.startsWith('tpl_organic') || lowerName.includes('(organic)')) {
+          targetType = 'organic';
+        } else {
+          targetType = targetType || 'master';
+        }
+      }
+
+      if (targetType && targetType !== tpl.templateType) {
+        await database.run('UPDATE email_templates SET templateType = ? WHERE id = ?', [targetType, tpl.id]);
+      }
+    }
+  } catch (err) {
+    console.error('Error migrating template classifications:', err);
+  }
+}
+
+// Repair and migrate pack IDs ensuring ZERO TEMP_ values and exact GM/OR mapping
+export async function repairAndMigratePackIds(database) {
+  try {
+    const packs = await database.all('SELECT * FROM outreach_packs ORDER BY createdAt ASC');
+
+    // Specific mapping for known production packs
+    const fixedMap = {
+      'pack_1789396132168_zj63': { packId: 'GM0001', searchType: 'GMB' },
+      'pack_1789397185612_cvqp': { packId: 'GM0002', searchType: 'GMB' },
+      'pack_1789047202106_bvdw': { packId: 'OR0001', searchType: 'Organic' },
+      'pack_1789053668722_onyn': { packId: 'OR0002', searchType: 'Organic' },
+      'pack_1789397206700_a0y6': { packId: 'OR0003', searchType: 'Organic' }
+    };
+
+    // Update known packs directly
+    for (const p of packs) {
+      if (fixedMap[p.id]) {
+        const target = fixedMap[p.id];
+        if (p.packId !== target.packId || p.searchType !== target.searchType) {
+          // If conflict with existing packId, update directly
+          await database.run('UPDATE outreach_packs SET packId = ?, searchType = ? WHERE id = ?', [target.packId, target.searchType, p.id]);
+        }
+      }
+    }
+
+    // Clean up any remaining TEMP_ or OP packs for any other rows
+    const allPacks = await database.all('SELECT * FROM outreach_packs ORDER BY createdAt ASC');
+    let maxGm = 2;
+    let maxOr = 3;
+    for (const p of allPacks) {
+      if (!fixedMap[p.id]) {
+        if (!p.packId || p.packId.startsWith('TEMP_') || p.packId.startsWith('OP')) {
+          const isGmb = p.searchType === 'GMB' || p.searchType === 'local';
+          if (isGmb) {
+            maxGm++;
+            const newId = `GM${String(maxGm).padStart(4, '0')}`;
+            await database.run('UPDATE outreach_packs SET packId = ?, searchType = ? WHERE id = ?', [newId, 'GMB', p.id]);
+          } else {
+            maxOr++;
+            const newId = `OR${String(maxOr).padStart(4, '0')}`;
+            await database.run('UPDATE outreach_packs SET packId = ?, searchType = ? WHERE id = ?', [newId, 'Organic', p.id]);
+          }
+        }
+      }
+    }
+
+    // Clean outreach_contact_history
+    const history = await database.all('SELECT * FROM outreach_contact_history');
+    for (const h of history) {
+      if (h.id?.startsWith('hist_OP0001_')) {
+        await database.run('UPDATE outreach_contact_history SET packId = ? WHERE id = ?', ['OR0001', h.id]);
+      } else if (h.id?.startsWith('hist_OP0002_')) {
+        await database.run('UPDATE outreach_contact_history SET packId = ? WHERE id = ?', ['OR0002', h.id]);
+      } else if (h.id?.startsWith('hist_OP0003_')) {
+        await database.run('UPDATE outreach_contact_history SET packId = ? WHERE id = ?', ['GM0001', h.id]);
+      } else if (h.id?.startsWith('hist_GM0001_')) {
+        await database.run('UPDATE outreach_contact_history SET packId = ? WHERE id = ?', ['GM0002', h.id]);
+      } else if (h.id?.startsWith('hist_OR0001_')) {
+        await database.run('UPDATE outreach_contact_history SET packId = ? WHERE id = ?', ['OR0003', h.id]);
+      } else if (h.packId && (h.packId.startsWith('OP') || h.packId.startsWith('TEMP_'))) {
+        await database.run('DELETE FROM outreach_contact_history WHERE id = ?', [h.id]);
+      }
+    }
+  } catch (err) {
+    console.error('Error repairing and migrating pack IDs:', err);
   }
 }
 

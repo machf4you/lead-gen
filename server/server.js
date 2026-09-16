@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -14,6 +14,10 @@ import { getDb, getSenderSettings, updateSenderSettings } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, './.env') });
+dotenv.config({ path: '/var/www/www-root/data/www/lead-gen.thesearchequation.co.uk/persistent/.env' });
 
 // Helper to detect temporary/interstitial placeholder titles
 function isPlaceholderTitle(title) {
@@ -81,9 +85,61 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../client/dist')));
+
+// Workspace & User identification middleware
+app.use((req, res, next) => {
+  const headerUser = req.headers['x-auth-user'] || '';
+  const headerEmail = req.headers['x-auth-email'] || '';
+  const headerRole = req.headers['x-auth-role'] || '';
+
+  let cookieUser = '';
+  if (req.headers.cookie) {
+    const match = req.headers.cookie.match(/tse_auth_user=([^;]+)/);
+    if (match) cookieUser = decodeURIComponent(match[1]);
+  }
+
+  const rawUser = (headerUser || cookieUser || '').toLowerCase().trim();
+  const rawEmail = (headerEmail || '').toLowerCase().trim();
+
+  let workspace = 'tse';
+  let workspaceLabel = 'The Search Equation';
+  let username = rawUser || 'mac';
+  let email = rawEmail || 'mac@thesearchequation.co.uk';
+  let role = headerRole || 'admin';
+
+  if (rawUser === 'darren' || rawEmail.includes('smokingchilimedia') || rawEmail === 'darren@smokingchilimedia.com') {
+    workspace = 'smoking_chili';
+    workspaceLabel = 'Smoking Chili Media';
+    username = 'darren';
+    email = rawEmail || 'darren@smokingchilimedia.com';
+    role = 'user';
+  } else if (rawUser === 'deb' || rawEmail.includes('deb@')) {
+    workspace = 'tse';
+    workspaceLabel = 'The Search Equation';
+    username = 'deb';
+    email = rawEmail || 'deb@thesearchequation.co.uk';
+  }
+
+  req.workspace = workspace;
+  req.user = {
+    username,
+    email,
+    role,
+    workspace,
+    workspaceLabel
+  };
+
+  next();
+});
 
 // In-memory jobs store
 const jobs = [];
+
+// API user & workspace info endpoint
+app.get('/api/me', (req, res) => {
+  res.json(req.user);
+});
 
 // API health endpoint
 app.get('/api/health', (req, res) => {
@@ -165,7 +221,7 @@ app.post('/api/search', async (req, res) => {
       const seenUrls = new Set();
 
       const db = await getDb();
-      const excRows = await db.all('SELECT domain FROM excluded_domains');
+      const excRows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ?', [req.workspace]);
       const excludedList = excRows.map(r => r.domain);
 
       for (const item of pageOrganic) {
@@ -187,13 +243,9 @@ app.post('/api/search', async (req, res) => {
 
       return res.json(organicResults);
     } else {
-      const category = businessType.toLowerCase().trim().replace(/s$/, '').replace(/\s+/g, '_');
-      const normalizedLocation = location.trim()
-        .split(/\s+/)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
+      const searchPhrase = `${businessType} ${location}`.trim();
 
-      const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
+      const response = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${auth}`,
@@ -201,11 +253,10 @@ app.post('/api/search', async (req, res) => {
         },
         body: JSON.stringify([
           {
-            categories: [category],
-            filters: [
-              ["address_info.city", "=", normalizedLocation]
-            ],
-            limit: 50
+            keyword: searchPhrase,
+            language_name: "English",
+            location_name: "United Kingdom",
+            depth: 50
           }
         ])
       });
@@ -215,25 +266,35 @@ app.post('/api/search', async (req, res) => {
 
       if (task?.status_code !== 20000) {
         return res.status(500).json({
-          error: `DataForSEO API task failed: ${task?.status_message}`
+          error: `DataForSEO Google Maps API task failed: ${task?.status_message}`
         });
       }
 
       const db = await getDb();
-      const excRows = await db.all('SELECT domain FROM excluded_domains');
+      const excRows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ?', [req.workspace]);
       const excludedList = excRows.map(r => r.domain);
 
       const items = task?.result?.[0]?.items || [];
       const businesses = items
-        .filter(item => !isDomainExcluded(item.url || item.title, excludedList))
-        .map((item, index) => ({
-          name: item.title || "",
-          website: item.url || "",
-          phone: item.phone || "",
-          address: item.address || "",
-          rating: item.rating?.value || null,
-          rank: index + 1
-        }));
+        .filter(item => item.type === 'maps_search' && !isDomainExcluded(item.domain || item.url || item.title, excludedList))
+        .map((item, index) => {
+          const itemUrl = item.url || "";
+          const itemDomain = item.domain || (itemUrl ? getDomain(itemUrl) : "");
+          return {
+            name: item.title || "",
+            website: itemUrl,
+            url: itemUrl,
+            domain: itemDomain,
+            phone: item.phone || "",
+            address: item.address || item.snippet || "",
+            rating: item.rating?.value !== undefined ? item.rating.value : null,
+            reviewsCount: item.rating?.votes_count !== undefined ? item.rating.votes_count : 0,
+            category: item.category || "",
+            rank: item.rank_group || item.rank_absolute || (index + 1),
+            placeId: item.place_id || null,
+            cid: item.cid || null
+          };
+        });
 
       return res.json(businesses);
     }
@@ -971,6 +1032,19 @@ app.post('/api/analyse', async (req, res) => {
   const leadScore = getOpportunityScoreAndReasons(seoHealthData, gbp, rank);
   const leadPriority = getPriorityRating(seoHealthData, gbp, rank);
 
+  // Extract contact emails using full crawler (homepage + contact subpages)
+  let discoveredContactEmail = null;
+  let discoveredAllEmails = [];
+  let discoveredEmailStatus = 'No Email';
+  let discoveredEmailSource = targetUrl;
+  try {
+    const emailRes = await crawlProspectContactEmails(targetUrl);
+    discoveredContactEmail = emailRes.contactEmail || null;
+    discoveredAllEmails = emailRes.allFoundEmails || [];
+    discoveredEmailStatus = emailRes.status || (discoveredContactEmail ? 'Email Found' : 'No Email');
+    discoveredEmailSource = emailRes.emailSource || targetUrl;
+  } catch (err) {}
+
   return res.json({
     pageTitle: title || 'Not Found',
     metaDescription: description || 'Not Found',
@@ -984,8 +1058,68 @@ app.post('/api/analyse', async (req, res) => {
     leadOpportunity: leadOpportunity,
     gbp: gbp,
     leadOpportunityScore: leadScore,
-    leadPriority: leadPriority
+    leadPriority: leadPriority,
+    contactEmail: discoveredContactEmail,
+    allFoundEmails: discoveredAllEmails,
+    emailStatus: discoveredEmailStatus,
+    emailSource: discoveredEmailSource
   });
+});
+
+// POST endpoint for standalone email discovery on any prospect
+app.post('/api/prospects/find-email', async (req, res) => {
+  try {
+    const { url, domain } = req.body;
+    const target = url || (domain ? `https://${domain}` : '');
+    if (!target) return res.status(400).json({ error: 'URL or domain is required' });
+
+    const contactResult = await crawlProspectContactEmails(target);
+    res.json(contactResult);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST atomic item email update to a saved search
+app.post('/api/saved-searches/:searchId/item-email', async (req, res) => {
+  try {
+    const { searchId } = req.params;
+    const { url, website, name, rank, contactEmail, allFoundEmails, emailStatus, emailSource } = req.body;
+    const db = await getDb();
+    const row = await db.get('SELECT * FROM saved_searches WHERE (searchId = ? OR id = ?) AND workspace = ?', [searchId, searchId, req.workspace]);
+    if (!row) {
+      return res.status(404).json({ error: 'Search not found' });
+    }
+    const data = JSON.parse(row.data);
+    let updated = false;
+    for (let i = 0; i < data.length; i++) {
+      const item = data[i];
+      const isMatch = (url && item.url === url) ||
+                      (rank !== undefined && rank !== null && item.rank === rank) ||
+                      (website && item.website === website) ||
+                      (name && item.name === name);
+      if (isMatch) {
+        data[i].contactEmail = contactEmail || null;
+        data[i].allFoundEmails = allFoundEmails || (contactEmail ? [contactEmail] : []);
+        data[i].emailStatus = emailStatus || (contactEmail ? 'Email Found' : 'No Email');
+        data[i].emailSource = emailSource || null;
+        if (data[i].analysis) {
+          data[i].analysis.contactEmail = contactEmail || null;
+          data[i].analysis.allFoundEmails = allFoundEmails || (contactEmail ? [contactEmail] : []);
+          data[i].analysis.emailStatus = emailStatus || (contactEmail ? 'Email Found' : 'No Email');
+          data[i].analysis.emailSource = emailSource || null;
+        }
+        updated = true;
+        break;
+      }
+    }
+    if (updated) {
+      await db.run('UPDATE saved_searches SET data = ? WHERE id = ? AND workspace = ?', [JSON.stringify(data), row.id, req.workspace]);
+    }
+    res.json({ success: true, updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // POST URL endpoint
@@ -1049,8 +1183,8 @@ app.get('/api/jobs', (req, res) => {
 app.get('/api/saved-searches', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM saved_searches ORDER BY id DESC');
-    const excRows = await db.all('SELECT domain FROM excluded_domains');
+    const rows = await db.all('SELECT * FROM saved_searches WHERE workspace = ? ORDER BY id DESC', [req.workspace]);
+    const excRows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ?', [req.workspace]);
     const excludedList = excRows.map(r => r.domain);
 
     const searches = rows.map(row => {
@@ -1073,11 +1207,11 @@ app.get('/api/saved-searches/:searchId', async (req, res) => {
   try {
     const { searchId } = req.params;
     const db = await getDb();
-    const row = await db.get('SELECT * FROM saved_searches WHERE searchId = ? OR id = ?', [searchId, searchId]);
+    const row = await db.get('SELECT * FROM saved_searches WHERE (searchId = ? OR id = ?) AND workspace = ?', [searchId, searchId, req.workspace]);
     if (!row) {
       return res.status(404).json({ error: 'Search not found' });
     }
-    const excRows = await db.all('SELECT domain FROM excluded_domains');
+    const excRows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ?', [req.workspace]);
     const excludedList = excRows.map(r => r.domain);
     const parsedData = JSON.parse(row.data);
     const filteredData = parsedData.filter(item => !isDomainExcluded(item.domain || item.url || item.website, excludedList));
@@ -1101,7 +1235,7 @@ app.post('/api/saved-searches/:searchId/item-analysis', async (req, res) => {
       return res.status(400).json({ error: 'Analysis data is required' });
     }
     const db = await getDb();
-    const row = await db.get('SELECT * FROM saved_searches WHERE searchId = ? OR id = ?', [searchId, searchId]);
+    const row = await db.get('SELECT * FROM saved_searches WHERE (searchId = ? OR id = ?) AND workspace = ?', [searchId, searchId, req.workspace]);
     if (!row) {
       return res.status(404).json({ error: 'Search not found' });
     }
@@ -1120,7 +1254,7 @@ app.post('/api/saved-searches/:searchId/item-analysis', async (req, res) => {
       }
     }
     if (updated) {
-      await db.run('UPDATE saved_searches SET data = ? WHERE id = ?', [JSON.stringify(data), row.id]);
+      await db.run('UPDATE saved_searches SET data = ? WHERE id = ? AND workspace = ?', [JSON.stringify(data), row.id, req.workspace]);
     }
     res.json({ success: true, updated });
   } catch (error) {
@@ -1136,19 +1270,19 @@ app.post('/api/saved-searches', async (req, res) => {
       return res.status(400).json({ error: 'Missing required search fields' });
     }
     const db = await getDb();
-    const existing = await db.get("SELECT id FROM saved_searches WHERE searchId = ?", [searchId]);
+    const existing = await db.get("SELECT id FROM saved_searches WHERE searchId = ? AND workspace = ?", [searchId, req.workspace]);
     if (existing) {
       await db.run(
         `UPDATE saved_searches 
          SET searchType = ?, businessType = ?, location = ?, searchMode = ?, dateTime = ?, count = ?, data = ?
-         WHERE searchId = ?`,
-        [searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data), searchId]
+         WHERE searchId = ? AND workspace = ?`,
+        [searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data), searchId, req.workspace]
       );
     } else {
       await db.run(
-        `INSERT INTO saved_searches (id, searchId, searchType, businessType, location, searchMode, dateTime, count, data)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, searchId, searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data)]
+        `INSERT INTO saved_searches (id, searchId, searchType, businessType, location, searchMode, dateTime, count, data, workspace)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, searchId, searchType, businessType, location, searchMode, dateTime, count, typeof data === 'string' ? data : JSON.stringify(data), req.workspace]
       );
     }
     res.json({ success: true });
@@ -1162,7 +1296,7 @@ app.delete('/api/saved-searches/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const db = await getDb();
-    await db.run('DELETE FROM saved_searches WHERE id = ?', [id]);
+    await db.run('DELETE FROM saved_searches WHERE id = ? AND workspace = ?', [id, req.workspace]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1173,7 +1307,7 @@ app.delete('/api/saved-searches/:id', async (req, res) => {
 app.get('/api/exclusions', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    const rows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ? ORDER BY createdAt DESC', [req.workspace]);
     res.json(rows.map(r => r.domain));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1195,13 +1329,13 @@ app.post('/api/exclusions', async (req, res) => {
       const dom = normalizeDomain(raw);
       if (dom) {
         await db.run(
-          `INSERT OR IGNORE INTO excluded_domains (domain, createdAt) VALUES (?, ?)`,
-          [dom, createdAt]
+          `INSERT OR IGNORE INTO excluded_domains (domain, createdAt, workspace) VALUES (?, ?, ?)`,
+          [dom, createdAt, req.workspace]
         );
       }
     }
 
-    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    const rows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ? ORDER BY createdAt DESC', [req.workspace]);
     res.json(rows.map(r => r.domain));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1215,9 +1349,9 @@ app.delete('/api/exclusions/:domain', async (req, res) => {
     const dom = normalizeDomain(decodeURIComponent(domain));
     const db = await getDb();
     if (dom) {
-      await db.run('DELETE FROM excluded_domains WHERE domain = ?', [dom]);
+      await db.run('DELETE FROM excluded_domains WHERE domain = ? AND workspace = ?', [dom, req.workspace]);
     }
-    const rows = await db.all('SELECT domain FROM excluded_domains ORDER BY createdAt DESC');
+    const rows = await db.all('SELECT domain FROM excluded_domains WHERE workspace = ? ORDER BY createdAt DESC', [req.workspace]);
     res.json(rows.map(r => r.domain));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1228,16 +1362,25 @@ app.delete('/api/exclusions/:domain', async (req, res) => {
 app.get('/api/outreach', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM outreach_shortlist ORDER BY shortlistedAt DESC');
+    const rows = await db.all('SELECT * FROM outreach_shortlist WHERE workspace = ? ORDER BY shortlistedAt DESC', [req.workspace]);
     const items = rows.map(r => {
       let parsedAnalysis = null;
+      let parsedEmails = [];
       if (r.analysisData) {
         try {
           parsedAnalysis = JSON.parse(r.analysisData);
         } catch (e) {}
       }
+      if (r.allFoundEmails) {
+        try {
+          parsedEmails = JSON.parse(r.allFoundEmails);
+        } catch (e) {
+          parsedEmails = r.contactEmail ? [r.contactEmail] : [];
+        }
+      }
       return {
         ...r,
+        allFoundEmails: parsedEmails,
         analysisData: parsedAnalysis
       };
     });
@@ -1260,6 +1403,13 @@ app.post('/api/outreach', async (req, res) => {
       location,
       searchType,
       rank,
+      phone,
+      address,
+      rating,
+      reviewsCount,
+      contactEmail,
+      allFoundEmails,
+      emailStatus,
       opportunityScore,
       opportunityBand,
       commercialStrengthStars,
@@ -1277,7 +1427,7 @@ app.post('/api/outreach', async (req, res) => {
     const db = await getDb();
 
     // Check if duplicate already exists
-    const existing = await db.get('SELECT * FROM outreach_shortlist WHERE domain = ?', [domain]);
+    const existing = await db.get('SELECT * FROM outreach_shortlist WHERE domain = ? AND workspace = ?', [domain, req.workspace]);
     if (existing) {
       let parsedAnalysis = null;
       if (existing.analysisData) {
@@ -1285,11 +1435,16 @@ app.post('/api/outreach', async (req, res) => {
           parsedAnalysis = JSON.parse(existing.analysisData);
         } catch (e) {}
       }
+      let parsedEmails = [];
+      if (existing.allFoundEmails) {
+        try { parsedEmails = JSON.parse(existing.allFoundEmails); } catch (e) {}
+      }
       return res.json({
         success: true,
         alreadyShortlisted: true,
         item: {
           ...existing,
+          allFoundEmails: parsedEmails,
           analysisData: parsedAnalysis
         }
       });
@@ -1300,13 +1455,15 @@ app.post('/api/outreach', async (req, res) => {
     const serializedAnalysis = typeof analysisData === 'object' && analysisData !== null
       ? JSON.stringify(analysisData)
       : (typeof analysisData === 'string' ? analysisData : null);
+    const serializedEmails = Array.isArray(allFoundEmails) ? JSON.stringify(allFoundEmails) : null;
 
     await db.run(
       `INSERT INTO outreach_shortlist (
         id, domain, url, businessName, searchId, searchPhrase, location, searchType,
-        rank, opportunityScore, opportunityBand, commercialStrengthStars, commercialStrengthLabel,
-        commercialStrengthPoints, gbpStatus, analysisData, shortlistedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        rank, phone, address, rating, reviewsCount, contactEmail, allFoundEmails, emailStatus,
+        opportunityScore, opportunityBand, commercialStrengthStars, commercialStrengthLabel,
+        commercialStrengthPoints, gbpStatus, analysisData, shortlistedAt, workspace
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         itemId,
         domain,
@@ -1317,6 +1474,13 @@ app.post('/api/outreach', async (req, res) => {
         location || '',
         searchType || 'Organic',
         rank !== undefined && rank !== null ? parseInt(rank, 10) : null,
+        phone || null,
+        address || null,
+        rating !== undefined && rating !== null ? parseFloat(rating) : null,
+        reviewsCount !== undefined && reviewsCount !== null ? parseInt(reviewsCount, 10) : null,
+        contactEmail || null,
+        serializedEmails,
+        emailStatus || (contactEmail ? 'Email Found' : 'No Email'),
         opportunityScore !== undefined && opportunityScore !== null ? parseInt(opportunityScore, 10) : null,
         opportunityBand || '',
         commercialStrengthStars || '',
@@ -1324,16 +1488,21 @@ app.post('/api/outreach', async (req, res) => {
         commercialStrengthPoints !== undefined && commercialStrengthPoints !== null ? parseInt(commercialStrengthPoints, 10) : null,
         gbpStatus || 'No Profile Matched',
         serializedAnalysis,
-        shortlistedAt
+        shortlistedAt,
+        req.workspace
       ]
     );
 
-    const inserted = await db.get('SELECT * FROM outreach_shortlist WHERE id = ?', [itemId]);
+    const inserted = await db.get('SELECT * FROM outreach_shortlist WHERE id = ? AND workspace = ?', [itemId, req.workspace]);
     let parsedInsertedAnalysis = null;
     if (inserted && inserted.analysisData) {
       try {
         parsedInsertedAnalysis = JSON.parse(inserted.analysisData);
       } catch (e) {}
+    }
+    let parsedInsertedEmails = [];
+    if (inserted && inserted.allFoundEmails) {
+      try { parsedInsertedEmails = JSON.parse(inserted.allFoundEmails); } catch (e) {}
     }
 
     res.json({
@@ -1341,6 +1510,7 @@ app.post('/api/outreach', async (req, res) => {
       alreadyShortlisted: false,
       item: {
         ...inserted,
+        allFoundEmails: parsedInsertedEmails,
         analysisData: parsedInsertedAnalysis
       }
     });
@@ -1805,12 +1975,12 @@ function renderFullEmailBody(templateBody, prospect, recipientEmail = null, send
 
 // Helper to check outbound email provider configuration
 function getOutboundEmailConfig() {
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-  const user = process.env.SMTP_USER;
+  const host = process.env.SMTP_HOST || 'mail.thesearchequation.co.uk';
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465;
+  const user = process.env.SMTP_USER || 'mac@thesearchequation.co.uk';
   const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || process.env.OUTBOUND_EMAIL_FROM;
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const from = process.env.SMTP_FROM || process.env.OUTBOUND_EMAIL_FROM || 'mac@thesearchequation.co.uk';
+  const secure = process.env.SMTP_SECURE === 'false' ? false : (port === 465 || process.env.SMTP_SECURE === 'true');
 
   const isConfigured = Boolean(host && user && pass && from);
 
@@ -1824,7 +1994,7 @@ function getOutboundEmailConfig() {
   };
 }
 
-// Helper to generate a partnership outreach email template for a pack
+// Organic Templates
 function generatePartnershipTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
   const loc = deriveLocation({ location });
   const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
@@ -1842,6 +2012,104 @@ We came across {{domain}} while researching established providers in ${loc}, and
 If you have capacity for additional ${trade} projects and are open to exploring a collaborative partnership, I’d be glad to share a quick overview of how we work.
 
 Would you be open to a brief 5-minute conversation next week?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+}
+
+function generateOrganicStandardShortTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+  const subject = `Quick question regarding search visibility for {{domain}}`;
+  const body = `I was researching local ${trade} providers in ${loc} and noticed {{domain}} ranking in Google search results.
+
+You have a strong foundation, but there are a few straightforward technical and local search adjustments that would significantly increase your direct customer enquiries.
+
+I've put together a brief checklist of the highest-impact opportunities for your site. Would it be alright if I sent that over?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+  return { subject, body };
+}
+
+function generateOrganicPartnershipShortTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+  const subject = `Partnership enquiry for {{domain}} — {{company_name}}`;
+  const body = `I'm reaching out because we are looking to partner with an established ${trade} company in ${loc} to deliver exclusive customer enquiries.
+
+At {{company_name}}, we invest our own resources into driving qualified client enquiries for one trusted partner per area.
+
+We noticed {{domain}} and thought there could be strong synergy. If you have capacity for more ${trade} work, would you be open to a quick 5-minute chat next week?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+  return { subject, body };
+}
+
+// Local Business Listings Templates
+function generateLocalPartnershipTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Partnership enquiry: ${trade} in ${loc} — {{company_name}}`;
+  const body = `I hope you're having a productive week.
+
+I'm reaching out directly because we are currently looking to partner with an established ${trade} specialist in ${loc} to generate and deliver additional direct customer enquiries.
+
+At {{company_name}}, we work with high-performing local service businesses to maximise their Google Business Profile and local search visibility. Rather than offering standard marketing retainers or agency contracts, our model is to invest our own expertise directly into driving exclusive customer enquiries for a single trusted partner in each local area.
+
+We noticed {{businessName}} while reviewing local providers in ${loc}, and your strong local presence and customer reputation stood out.
+
+If you have capacity for additional ${trade} work in ${loc} and are open to exploring a commercial partnership, I’d be glad to share a quick overview of how we operate.
+
+Would you be open to a brief 5-minute conversation next week?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+}
+
+function generateLocalStandardShortTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Quick question regarding local visibility for {{businessName}} in ${loc}`;
+  const body = `I came across {{businessName}} while reviewing local ${trade} businesses in ${loc}.
+
+You have a solid local presence, but there are a few straightforward optimizations to your Google Business Profile and local visibility that could significantly increase your incoming customer enquiries from Google Maps.
+
+I’ve put together a brief checklist of the highest-impact opportunities for {{businessName}} in ${loc}. Would it be alright if I sent that over for you to take a look?
+
+Best regards,
+
+{{sender_name}}
+{{company_name}}`;
+
+  return { subject, body };
+}
+
+function generateLocalPartnershipShortTemplate({ searchKeyword, location, trade: explicitTrade } = {}) {
+  const loc = deriveLocation({ location });
+  const trade = deriveTrade({ trade: explicitTrade, searchKeyword, location });
+
+  const subject = `Exclusive ${trade} partner in ${loc} — {{businessName}}`;
+  const body = `I'm reaching out because we are currently looking for a single trusted ${trade} company in ${loc} to partner with.
+
+At {{company_name}}, we invest our own resources into driving exclusive local customer enquiries for one partner per trade and region.
+
+We came across {{businessName}} and thought you would be an ideal fit. If you currently have capacity for more enquiries in ${loc}, would you be open to a brief 5-minute chat next week to see if there's synergy?
 
 Best regards,
 
@@ -1885,12 +2153,24 @@ app.post('/api/email-templates', async (req, res) => {
     if (!name || !subject || !body) {
       return res.status(400).json({ error: 'Name, subject, and body are required' });
     }
+    const trimmedName = name.trim();
+    const lowerName = trimmedName.toLowerCase();
+    let templateType = (req.body.templateType || req.body.template_type || 'master').toLowerCase().trim();
+    
+    if (lowerName.startsWith('local -') || lowerName.startsWith('local-') || lowerName.startsWith('local:')) {
+      templateType = 'local';
+    } else if (lowerName.startsWith('organic -') || lowerName.startsWith('organic-') || lowerName.startsWith('organic:')) {
+      templateType = 'organic';
+    } else if (lowerName.startsWith('master -') || lowerName.startsWith('master-') || lowerName.startsWith('master:')) {
+      templateType = 'master';
+    }
+
     const db = await getDb();
     const id = `tpl_${Date.now()}`;
     const now = new Date().toISOString();
     await db.run(
-      'INSERT INTO email_templates (id, name, subject, body, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, name.trim(), subject.trim(), body.trim(), now, now]
+      'INSERT INTO email_templates (id, name, subject, body, templateType, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, trimmedName, subject.trim(), body.trim(), templateType, now, now]
     );
     const created = await db.get('SELECT * FROM email_templates WHERE id = ?', [id]);
     res.status(201).json(created);
@@ -1912,10 +2192,23 @@ app.put('/api/email-templates/:id', async (req, res) => {
     if (!existing) {
       return res.status(404).json({ error: 'Template not found' });
     }
+
+    const trimmedName = name.trim();
+    const lowerName = trimmedName.toLowerCase();
+    let templateType = (req.body.templateType || req.body.template_type || existing.templateType || 'master').toLowerCase().trim();
+
+    if (lowerName.startsWith('local -') || lowerName.startsWith('local-') || lowerName.startsWith('local:')) {
+      templateType = 'local';
+    } else if (lowerName.startsWith('organic -') || lowerName.startsWith('organic-') || lowerName.startsWith('organic:')) {
+      templateType = 'organic';
+    } else if (lowerName.startsWith('master -') || lowerName.startsWith('master-') || lowerName.startsWith('master:')) {
+      templateType = 'master';
+    }
+
     const now = new Date().toISOString();
     await db.run(
-      'UPDATE email_templates SET name = ?, subject = ?, body = ?, updatedAt = ? WHERE id = ?',
-      [name.trim(), subject.trim(), body.trim(), now, id]
+      'UPDATE email_templates SET name = ?, subject = ?, body = ?, templateType = ?, updatedAt = ? WHERE id = ?',
+      [trimmedName, subject.trim(), body.trim(), templateType, now, id]
     );
     const updated = await db.get('SELECT * FROM email_templates WHERE id = ?', [id]);
     res.json(updated);
@@ -1939,19 +2232,36 @@ app.delete('/api/email-templates/:id', async (req, res) => {
 // POST endpoint to generate partnership outreach email template
 app.post('/api/outreach-packs/generate-template', (req, res) => {
   try {
-    const { searchKeyword, location } = req.body;
-    const template = generatePartnershipTemplate({ searchKeyword, location });
+    const { searchKeyword, location, searchType, variant } = req.body;
+    const isLocal = searchType === 'GMB' || searchType === 'local';
+    let template;
+    if (isLocal) {
+      if (variant === 'standard_short') {
+        template = generateLocalStandardShortTemplate({ searchKeyword, location });
+      } else if (variant === 'partnership_short') {
+        template = generateLocalPartnershipShortTemplate({ searchKeyword, location });
+      } else {
+        template = generateLocalPartnershipTemplate({ searchKeyword, location });
+      }
+    } else {
+      if (variant === 'standard_short') {
+        template = generateOrganicStandardShortTemplate({ searchKeyword, location });
+      } else if (variant === 'partnership_short') {
+        template = generateOrganicPartnershipShortTemplate({ searchKeyword, location });
+      } else {
+        template = generatePartnershipTemplate({ searchKeyword, location });
+      }
+    }
     res.json(template);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-
 // GET all outreach packs
 app.get('/api/outreach-packs', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM outreach_packs ORDER BY packId DESC');
+    const rows = await db.all('SELECT * FROM outreach_packs WHERE workspace = ? ORDER BY packId DESC', [req.workspace]);
     const packs = rows.map(r => {
       let parsedProspects = [];
       try {
@@ -1973,7 +2283,7 @@ app.get('/api/outreach-packs/:packId', async (req, res) => {
   try {
     const { packId } = req.params;
     const db = await getDb();
-    const row = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    const row = await db.get('SELECT * FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
     if (!row) return res.status(404).json({ error: 'Outreach pack not found' });
     let parsedProspects = [];
     try {
@@ -1994,21 +2304,7 @@ app.post('/api/outreach-packs', async (req, res) => {
     const db = await getDb();
     const { name, templateSubject, templateBody, prospects = [] } = req.body;
 
-    // 1. Generate sequential packId: OP0001, OP0002...
-    const rows = await db.all("SELECT packId FROM outreach_packs WHERE packId LIKE 'OP%'");
-    let maxNum = 0;
-    for (const r of rows) {
-      const match = r.packId?.match(/OP(\d+)/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    }
-    const nextPackId = `OP${String(maxNum + 1).padStart(4, '0')}`;
-    const id = `pack_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const createdAt = new Date().toISOString();
-
-    // 2. Process prospects: populate initial operational statuses
+    // 1. Process prospects: populate initial operational statuses
     const processedProspects = [];
     for (const p of prospects) {
       const pDomain = normalizeDomain(p.domain || p.url || '');
@@ -2035,6 +2331,10 @@ app.post('/api/outreach-packs', async (req, res) => {
         location: pLocation,
         searchType: p.searchType || 'Organic',
         rank: p.rank || 0,
+        phone: p.phone || null,
+        address: p.address || null,
+        rating: p.rating ?? null,
+        reviewsCount: p.reviewsCount ?? null,
         opportunityScore: p.opportunityScore ?? null,
         opportunityBand: p.opportunityBand || '',
         commercialStrengthStars: p.commercialStrengthStars || '★★★☆☆',
@@ -2049,6 +2349,24 @@ app.post('/api/outreach-packs', async (req, res) => {
         analysisData: p.analysisData || null
       });
     }
+
+    // Determine prefix based on source: GM for Local/GMB, OR for Organic
+    const isLocalPack = processedProspects.some(p => p.searchType === 'GMB' || p.searchType === 'local');
+    const packPrefix = isLocalPack ? 'GM' : 'OR';
+
+    // Query existing packs with this prefix to get sequential number in this workspace
+    const rows = await db.all(`SELECT packId FROM outreach_packs WHERE packId LIKE '${packPrefix}%' AND workspace = ?`, [req.workspace]);
+    let maxNum = 0;
+    for (const r of rows) {
+      const match = r.packId?.match(new RegExp(`^${packPrefix}(\\d+)`, 'i'));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    const nextPackId = `${packPrefix}${String(maxNum + 1).padStart(4, '0')}`;
+    const id = `pack_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const createdAt = new Date().toISOString();
 
     let defaultName = name;
     if (!defaultName) {
@@ -2069,17 +2387,21 @@ app.post('/api/outreach-packs', async (req, res) => {
       }
     }
 
-    // Default template for pack
-    const firstPhrase = processedProspects[0]?.searchPhrase || processedProspects[0]?.searchKeyword || '';
-    const firstLoc = processedProspects[0]?.location || '';
-    const defaultTemplate = generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
+    // Default template for pack: inspect searchType of prospects
+    const firstProspect = processedProspects[0];
+    const firstPhrase = firstProspect?.searchPhrase || firstProspect?.searchKeyword || '';
+    const firstLoc = firstProspect?.location || '';
+
+    const defaultTemplate = isLocalPack
+      ? generateLocalPartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc })
+      : generatePartnershipTemplate({ searchKeyword: firstPhrase, location: firstLoc });
 
     const finalTemplateSubject = templateSubject || defaultTemplate.subject;
     const finalTemplateBody = stripLeadingGreeting(templateBody || defaultTemplate.body);
 
     await db.run(
-      `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects, searchType, workspace)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         nextPackId,
@@ -2090,15 +2412,17 @@ app.post('/api/outreach-packs', async (req, res) => {
         null,
         'Draft',
         processedProspects.length,
-        JSON.stringify(processedProspects)
+        JSON.stringify(processedProspects),
+        isLocalPack ? 'local' : 'organic',
+        req.workspace
       ]
     );
 
     // Record in contact history
     for (const p of processedProspects) {
       await db.run(
-        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt, workspace)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           `hist_${nextPackId}_${p.domain}`,
           p.domain,
@@ -2106,7 +2430,8 @@ app.post('/api/outreach-packs', async (req, res) => {
           nextPackId,
           p.sendStatus || 'No Email',
           null,
-          createdAt
+          createdAt,
+          req.workspace
         ]
       );
     }
@@ -2138,7 +2463,7 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
     const { name, templateSubject, templateBody, status, sentAt, prospects } = req.body;
     const db = await getDb();
 
-    const existing = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    const existing = await db.get('SELECT * FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
     if (!existing) return res.status(404).json({ error: 'Outreach pack not found' });
 
     const updatedName = name !== undefined ? name : existing.name;
@@ -2152,7 +2477,7 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
     await db.run(
       `UPDATE outreach_packs 
        SET name = ?, templateSubject = ?, templateBody = ?, status = ?, sentAt = ?, prospectsCount = ?, prospects = ?
-       WHERE packId = ? OR id = ?`,
+       WHERE (packId = ? OR id = ?) AND workspace = ?`,
       [
         updatedName,
         updatedTemplateSubject,
@@ -2162,15 +2487,16 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
         parsedProspects.length,
         typeof updatedProspects === 'string' ? updatedProspects : JSON.stringify(updatedProspects),
         packId,
-        packId
+        packId,
+        req.workspace
       ]
     );
 
     // Update contact history
     for (const p of parsedProspects) {
       await db.run(
-        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt, workspace)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           `hist_${existing.packId}_${p.domain}`,
           p.domain,
@@ -2178,7 +2504,8 @@ app.put('/api/outreach-packs/:packId', async (req, res) => {
           existing.packId,
           p.sendStatus || 'No Email',
           p.sentAt || null,
-          existing.createdAt
+          existing.createdAt,
+          req.workspace
         ]
       );
     }
@@ -2212,6 +2539,63 @@ app.get('/api/outreach/sender-status', (req, res) => {
   });
 });
 
+// POST test SMTP connection & controlled test send
+app.post('/api/outreach/test-smtp', async (req, res) => {
+  try {
+    const { testEmail } = req.body || {};
+    const config = getOutboundEmailConfig();
+
+    if (!config.isConfigured) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMTP is not fully configured. Ensure SMTP_PASS is configured in the server environment.'
+      });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: {
+        user: config.user,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    // Verify SMTP connection and auth
+    await transporter.verify();
+
+    let sendResult = null;
+    if (testEmail) {
+      const info = await transporter.sendMail({
+        from: config.senderMailbox,
+        to: testEmail,
+        subject: `TSE Lead Generator SMTP Verification Test — ${new Date().toISOString()}`,
+        text: `This is a controlled verification test email from TSE Lead Generator.\n\nConfiguration:\nHost: ${config.host}\nPort: ${config.port}\nSender: ${config.senderMailbox}\nTimestamp: ${new Date().toISOString()}`
+      });
+      sendResult = { messageId: info.messageId, to: testEmail };
+    }
+
+    res.json({
+      success: true,
+      verified: true,
+      config: {
+        host: config.host,
+        port: config.port,
+        senderMailbox: config.senderMailbox,
+        secure: config.secure
+      },
+      sendResult
+    });
+  } catch (err) {
+    console.error('[SMTP Verification Error]:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST send selected prospects in outreach pack
 app.post('/api/outreach-packs/:packId/send', async (req, res) => {
   try {
@@ -2228,7 +2612,7 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
     }
 
     const db = await getDb();
-    const packRow = await db.get('SELECT * FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
+    const packRow = await db.get('SELECT * FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
     if (!packRow) return res.status(404).json({ error: 'Outreach pack not found' });
 
     let prospects = [];
@@ -2249,10 +2633,13 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       auth: {
         user: config.user,
         pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
       }
     });
 
-    const senderSettings = await getSenderSettings(db);
+    const senderSettings = await getSenderSettings(db, req.workspace);
     const nowIso = new Date().toISOString();
     const sendResults = [];
 
@@ -2313,8 +2700,8 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
 
       // Update contact history in SQLite
       await db.run(
-        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO outreach_contact_history (id, domain, email, packId, status, sentAt, createdAt, workspace)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           `hist_${packRow.packId}_${p.domain}`,
           p.domain,
@@ -2322,7 +2709,8 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
           packRow.packId,
           p.sendStatus,
           p.sentAt || null,
-          nowIso
+          nowIso,
+          req.workspace
         ]
       );
 
@@ -2337,13 +2725,14 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
     await db.run(
       `UPDATE outreach_packs
        SET status = ?, sentAt = ?, prospects = ?
-       WHERE packId = ? OR id = ?`,
+       WHERE (packId = ? OR id = ?) AND workspace = ?`,
       [
         newPackStatus,
         packSentAt,
         JSON.stringify(prospects),
         packRow.packId,
-        packRow.packId
+        packRow.packId,
+        req.workspace
       ]
     );
 
@@ -2363,14 +2752,56 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
   }
 });
 
-// DELETE outreach pack
+// DELETE outreach pack and all its assigned shortlist prospects
 app.delete('/api/outreach-packs/:packId', async (req, res) => {
   try {
     const { packId } = req.params;
     const db = await getDb();
-    await db.run('DELETE FROM outreach_packs WHERE packId = ? OR id = ?', [packId, packId]);
-    res.json({ success: true });
+
+    // 1. Fetch the pack to retrieve its assigned prospects
+    const pack = await db.get('SELECT * FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
+    if (pack) {
+      let prospects = [];
+      try {
+        prospects = JSON.parse(pack.prospects || '[]');
+      } catch (e) {
+        prospects = [];
+      }
+
+      // 2. Permanently delete all shortlist records belonging to this pack
+      for (const p of prospects) {
+        const cleanDom = normalizeDomain(p.domain || p.url || '');
+        const rawDom = p.domain || '';
+        const pId = p.id || '';
+
+        if (pId) {
+          await db.run('DELETE FROM outreach_shortlist WHERE id = ? AND workspace = ?', [pId, req.workspace]);
+        }
+        if (rawDom) {
+          await db.run('DELETE FROM outreach_shortlist WHERE domain = ? AND workspace = ?', [rawDom, req.workspace]);
+        }
+        if (cleanDom) {
+          await db.run('DELETE FROM outreach_shortlist WHERE (domain = ? OR domain = ? OR domain = ?) AND workspace = ?', [
+            cleanDom,
+            `www.${cleanDom}`,
+            cleanDom.replace(/^www\./, ''),
+            req.workspace
+          ]);
+        }
+      }
+
+      // 3. Delete outreach contact history associated with this pack
+      await db.run('DELETE FROM outreach_contact_history WHERE (packId = ? OR packId = ?) AND workspace = ?', [pack.packId, pack.id, req.workspace]);
+
+      // 4. Delete the pack record itself
+      await db.run('DELETE FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [pack.packId, pack.id, req.workspace]);
+    } else {
+      await db.run('DELETE FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
+    }
+
+    res.json({ success: true, deletedPackId: packId });
   } catch (error) {
+    console.error('Error deleting outreach pack and assigned shortlist prospects:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2379,7 +2810,7 @@ app.delete('/api/outreach-packs/:packId', async (req, res) => {
 app.get('/api/outreach/history', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM outreach_contact_history ORDER BY createdAt DESC');
+    const rows = await db.all('SELECT * FROM outreach_contact_history WHERE workspace = ? ORDER BY createdAt DESC', [req.workspace]);
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2392,7 +2823,7 @@ app.get('/api/outreach/history', async (req, res) => {
 app.get('/api/settings/sender', async (req, res) => {
   try {
     const db = await getDb();
-    const settings = await getSenderSettings(db);
+    const settings = await getSenderSettings(db, req.workspace);
     res.json(settings);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2408,7 +2839,7 @@ app.put('/api/settings/sender', async (req, res) => {
       sender_first_name,
       sender_name,
       company_name
-    });
+    }, req.workspace);
     res.json({ success: true, settings: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2424,7 +2855,7 @@ app.post('/api/settings/sender', async (req, res) => {
       sender_first_name,
       sender_name,
       company_name
-    });
+    }, req.workspace);
     res.json({ success: true, settings: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2901,3 +3332,6 @@ function generateLeadDashboard(health, searchType, rank, targetUrl) {
     suggestedEmailAngle: emailAngle
   };
 }
+
+export { crawlProspectContactEmails, extractEmailsFromHtml, isValidEmail, isDomainMatch, normalizeDomain };
+

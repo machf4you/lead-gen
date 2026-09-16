@@ -587,6 +587,34 @@ function App() {
   const [templateBodyInput, setTemplateBodyInput] = useState('');
   const [selectedMasterTemplateIdForPack, setSelectedMasterTemplateIdForPack] = useState('');
 
+  // Current authenticated user & workspace (persists instantly across page/view navigation)
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tse_leadgen_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      workspace: 'tse',
+      workspaceLabel: 'The Search Equation',
+      username: 'mac'
+    };
+  });
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/me`);
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data);
+        try {
+          localStorage.setItem('tse_leadgen_user', JSON.stringify(data));
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.error('Error fetching current user:', err);
+    }
+  };
+
   // Outreach Sender Details state
   const [senderSettings, setSenderSettings] = useState({
     sender_first_name: 'Mac',
@@ -953,41 +981,6 @@ function App() {
   const [isCreatingMilestone, setIsCreatingMilestone] = useState(false)
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
-  const [updateAvailable, setUpdateAvailable] = useState(false)
-  const [deployedCommit, setDeployedCommit] = useState(null)
-
-  useEffect(() => {
-    let initialHash = null;
-
-    const checkVersion = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/version?t=${Date.now()}`);
-        if (res.ok) {
-          const data = await res.json();
-          const currentHash = data.commit_hash || data.build_time;
-          if (currentHash && currentHash !== 'unknown' && currentHash !== 'dev') {
-            if (!initialHash) {
-              initialHash = currentHash;
-            } else if (currentHash !== initialHash) {
-              setDeployedCommit(data.commit_hash ? data.commit_hash.slice(0, 7) : null);
-              setUpdateAvailable(true);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Version check error:', err);
-      }
-    };
-
-    checkVersion();
-    const interval = setInterval(checkVersion, 20000); // Check every 20s
-    window.addEventListener('focus', checkVersion);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', checkVersion);
-    };
-  }, []);
 
   useEffect(() => {
     if (activeAnalysisItem) {
@@ -1517,6 +1510,7 @@ function App() {
   };
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchMilestones();
     fetchSavedSearches();
     fetchOutreachList();
@@ -1913,8 +1907,9 @@ function App() {
           window.history.replaceState(null, '', u.toString());
         } catch (e) {}
 
-        // Automatically start bulk scoring of discovered prospects
+        // Automatically start bulk scoring and background email discovery of discovered prospects
         runBulkAnalysis(enrichedData, targetSearchId, location.trim() || 'Anywhere');
+        runBulkEmailDiscovery(enrichedData, targetSearchId);
       } else {
         setSearchError(data.error || 'Search failed');
       }
@@ -2022,6 +2017,12 @@ function App() {
     const unscored = enriched.filter(i => !i.analysis || i.analysis.leadOpportunityScore === undefined);
     if (unscored.length > 0) {
       runBulkAnalysis(unscored, saved.searchId, saved.location || 'Anywhere');
+    }
+
+    // Automatically check emails for any unscanned items
+    const unCheckedEmails = enriched.filter(i => !i.contactEmail && (!i.emailStatus || i.emailStatus === 'checking'));
+    if (unCheckedEmails.length > 0) {
+      runBulkEmailDiscovery(unCheckedEmails, saved.searchId);
     }
 
     try {
@@ -2312,6 +2313,159 @@ function App() {
     }
 
     setIsBulkAnalysing(false);
+  };
+
+  const updateItemEmail = (urlOrName, contactInfo, targetSearchId, rank) => {
+    const currentSearchId = targetSearchId || activeSearchId;
+    const status = contactInfo?.status === 'Email Found' || contactInfo?.contactEmail ? 'Email Found' : 'No Email';
+    const contactEmail = contactInfo?.contactEmail || null;
+    const allFoundEmails = contactInfo?.allFoundEmails || (contactEmail ? [contactEmail] : []);
+    const emailSource = contactInfo?.emailSource || null;
+
+    // 1. Update searchResults state
+    setSearchResults(prev => prev.map(item => {
+      const isOrganic = !item.name;
+      const key = isOrganic ? item.url : (item.website || item.name);
+      const isRankMatch = rank !== undefined && rank !== null && item.rank === rank;
+      if (key === urlOrName || isRankMatch) {
+        const updated = {
+          ...item,
+          contactEmail,
+          allFoundEmails,
+          emailStatus: status,
+          emailSource
+        };
+        if (updated.analysis) {
+          updated.analysis = {
+            ...updated.analysis,
+            contactEmail,
+            allFoundEmails,
+            emailStatus: status,
+            emailSource
+          };
+        }
+        return updated;
+      }
+      return item;
+    }));
+
+    // 2. Update savedSearches state in memory
+    setSavedSearches(prev => prev.map(saved => {
+      if (saved.searchId === currentSearchId) {
+        const updatedData = (saved.data || []).map(item => {
+          const isOrganic = !item.name;
+          const key = isOrganic ? item.url : (item.website || item.name);
+          const isRankMatch = rank !== undefined && rank !== null && item.rank === rank;
+          if (key === urlOrName || isRankMatch) {
+            const updated = {
+              ...item,
+              contactEmail,
+              allFoundEmails,
+              emailStatus: status,
+              emailSource
+            };
+            if (updated.analysis) {
+              updated.analysis = {
+                ...updated.analysis,
+                contactEmail,
+                allFoundEmails,
+                emailStatus: status,
+                emailSource
+              };
+            }
+            return updated;
+          }
+          return item;
+        });
+        return { ...saved, data: updatedData };
+      }
+      return saved;
+    }));
+
+    // 3. Atomically update backend database for this item's email
+    if (currentSearchId) {
+      fetch(`${API_BASE}/api/saved-searches/${encodeURIComponent(currentSearchId)}/item-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: urlOrName && urlOrName.startsWith('http') ? urlOrName : undefined,
+          website: urlOrName,
+          name: urlOrName,
+          rank: rank,
+          contactEmail,
+          allFoundEmails,
+          emailStatus: status,
+          emailSource
+        })
+      }).catch(err => console.error("Error updating item email in database:", err));
+    }
+  };
+
+  const runBulkEmailDiscovery = async (itemsToCheck, targetSearchId) => {
+    if (!itemsToCheck || itemsToCheck.length === 0) return;
+    const currentSearchId = targetSearchId || activeSearchId;
+
+    const pendingItems = itemsToCheck.filter(i => {
+      const hasEmail = Boolean(i.contactEmail || (i.analysis && i.analysis.contactEmail));
+      const isCompleted = i.emailStatus === 'Email Found' || i.emailStatus === 'No Email' || i.emailStatus === 'No Email Found' ||
+                          (i.analysis && (i.analysis.emailStatus === 'Email Found' || i.analysis.emailStatus === 'No Email' || i.analysis.emailStatus === 'No Email Found'));
+      return !hasEmail && !isCompleted;
+    });
+
+    if (pendingItems.length === 0) return;
+
+    const CONCURRENCY = 5;
+    let nextIdx = 0;
+
+    const worker = async () => {
+      while (nextIdx < pendingItems.length) {
+        const idx = nextIdx++;
+        const item = pendingItems[idx];
+        const isOrganic = !item.name;
+        const target = isOrganic ? item.url : (item.website || '');
+        const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
+        const itemKey = isOrganic ? item.url : (item.website || item.name);
+
+        if (!target && !domain) {
+          updateItemEmail(itemKey, { status: 'No Email', contactEmail: null, allFoundEmails: [] }, currentSearchId, item.rank);
+          continue;
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/outreach-packs/find-contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: target, domain: domain })
+          });
+          if (res.ok) {
+            const contactInfo = await res.json();
+            updateItemEmail(itemKey, contactInfo, currentSearchId, item.rank);
+          } else {
+            updateItemEmail(itemKey, { status: 'No Email', contactEmail: null, allFoundEmails: [] }, currentSearchId, item.rank);
+          }
+        } catch (err) {
+          updateItemEmail(itemKey, { status: 'No Email', contactEmail: null, allFoundEmails: [] }, currentSearchId, item.rank);
+        }
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(CONCURRENCY, pendingItems.length) }, () => worker());
+    await Promise.all(workers);
+
+    // Final sync to backend saved_searches if search is active
+    if (currentSearchId) {
+      setSavedSearches(prev => {
+        const currentSaved = prev.find(s => s.searchId === currentSearchId);
+        if (currentSaved) {
+          fetch(`${API_BASE}/api/saved-searches`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentSaved)
+          }).catch(err => console.error("Error in final email sync:", err));
+        }
+        return prev;
+      });
+    }
   };
 
   const handleAnalyseAll = () => {
@@ -2727,56 +2881,29 @@ function App() {
 
   return (
     <>
-      {updateAvailable && (
-        <div style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 99999,
-          background: 'linear-gradient(90deg, #9a3412 0%, #ea580c 50%, #c2410c 100%)',
-          color: '#ffffff',
-          padding: '0.85rem 1.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-          borderBottom: '2px solid #f97316'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', fontSize: '0.95rem', fontWeight: '600' }}>
-            <span style={{ fontSize: '1.35rem' }}>⚡</span>
-            <span>
-              <strong>NEW UPDATE DEPLOYED:</strong> A new version {deployedCommit ? `(${deployedCommit})` : ''} is live. Please refresh your browser to load the latest Lead Generator features.
-            </span>
-          </div>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              backgroundColor: '#ffffff',
-              color: '#9a3412',
-              border: 'none',
-              padding: '0.55rem 1.4rem',
-              borderRadius: '6px',
-              fontWeight: '800',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            <span>REFRESH NOW</span>
-            <span style={{ opacity: 0.7, fontSize: '0.8rem', fontWeight: 'normal' }}>(Ctrl+F5)</span>
-          </button>
-        </div>
-      )}
-
       <div className="app-container">
       
       {/* Sidebar Navigation */}
       <div className="sidebar">
         <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-          <h2 className="sidebar-title">Lead Gen</h2>
+          <h2 className="sidebar-title" style={{ marginBottom: '0.35rem' }}>Lead Gen</h2>
+          <div style={{
+            fontSize: '0.75rem',
+            color: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.12)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '4px',
+            padding: '0.2rem 0.5rem',
+            marginBottom: '1rem',
+            fontWeight: '600',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            width: 'fit-content'
+          }}>
+            <span style={{ fontSize: '0.65rem' }}>🏢</span>
+            <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
+          </div>
           <div className="sidebar-menu">
             <button 
               onClick={handleNewSearchNav} 
@@ -3028,6 +3155,9 @@ function App() {
                     placeholder="e.g. Dentists, Plumbers"
                     className="search-input"
                     disabled={isSearching}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                   />
                 </div>
 
@@ -3040,6 +3170,9 @@ function App() {
                     placeholder="e.g. Bristol, London"
                     className="search-input"
                     disabled={isSearching}
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                   />
                 </div>
 
@@ -3130,6 +3263,7 @@ function App() {
                           <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                             Position {renderSortIndicator('position')}
                           </th>
+                          <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
                           <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                             Score {renderSortIndicator('score')}
                           </th>
@@ -3141,6 +3275,10 @@ function App() {
                         </tr>
                       ) : (
                         <tr>
+                          <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                            Position {renderSortIndicator('position')}
+                          </th>
+                          <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
                           <th onClick={() => handleSort('rating')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                             Rating {renderSortIndicator('rating')}
                           </th>
@@ -3164,6 +3302,15 @@ function App() {
                           return (
                             <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
                               <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
+                              <td style={{ textAlign: 'center', width: '60px' }}>
+                                {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
+                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
+                                ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
+                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
+                                )}
+                              </td>
                               <td>
                                 {item.analysis ? (
                                   item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
@@ -3279,6 +3426,16 @@ function App() {
                           const isItemShortlisted = isShortlisted(domain || item.website || item.name);
                           return (
                             <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
+                              <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
+                              <td style={{ textAlign: 'center', width: '60px' }}>
+                                {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
+                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
+                                ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
+                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
+                                )}
+                              </td>
                               <td>
                                 {item.rating !== null && item.rating !== undefined ? `⭐ ${item.rating}` : "Not available"}
                               </td>
@@ -3341,11 +3498,6 @@ function App() {
                                 {item.website ? (
                                   <div>
                                     <a href={item.website} target="_blank" rel="noopener noreferrer" className="table-link">{domain || item.website}</a>
-                                    {(item.analysis?.contactEmail || item.contactEmail) && (
-                                      <div style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '2px', fontWeight: '600' }}>
-                                        ✉ {item.analysis?.contactEmail || item.contactEmail}
-                                      </div>
-                                    )}
                                   </div>
                                 ) : "Not available"}
                               </td>
@@ -3382,7 +3534,7 @@ function App() {
                                   </button>
                                 )}
                                 <button 
-                                  onClick={() => handleExcludeDomain(domain || item.website)}
+                                  onClick={() => handleExcludeDomain(item.domain || item.website || item.name)}
                                   className="table-btn"
                                   style={{ backgroundColor: '#ef4444' }}
                                 >
@@ -4725,6 +4877,9 @@ function App() {
                                     value={editingEmailValue}
                                     onChange={(e) => setEditingEmailValue(e.target.value)}
                                     placeholder="e.g. hello@domain.co.uk"
+                                    autoComplete="off"
+                                    data-lpignore="true"
+                                    data-1p-ignore="true"
                                     style={{
                                       backgroundColor: '#0f172a',
                                       color: '#ffffff',
@@ -5628,7 +5783,7 @@ function App() {
                     alignItems: 'start'
                   }}>
                     {/* LEFT: Existing Template Form */}
-                    <form onSubmit={handleSaveTemplateSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+                    <form onSubmit={handleSaveTemplateSubmit} data-lpignore="true" data-form-type="other" autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                         <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Template Name</label>
                         <input
@@ -5638,6 +5793,9 @@ function App() {
                           placeholder="e.g. Warm Partnership / Investment Approach"
                           className="search-input"
                           style={{ width: '100%', boxSizing: 'border-box' }}
+                          autoComplete="off"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
                           required
                         />
                       </div>
@@ -5665,6 +5823,9 @@ function App() {
                           placeholder="Partnership enquiry: {{trade}} in {{location}} — {{company_name}}"
                           className="search-input"
                           style={{ width: '100%', boxSizing: 'border-box' }}
+                          autoComplete="off"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
                           required
                         />
                       </div>
@@ -5833,6 +5994,13 @@ function App() {
                   <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
                     Configure sender identity and company values resolved in master outreach templates (<code style={{ color: '#38bdf8' }}>{"{{sender_first_name}}"}</code>, <code style={{ color: '#38bdf8' }}>{"{{sender_name}}"}</code>, and <code style={{ color: '#38bdf8' }}>{"{{company_name}}"}</code>).
                   </p>
+                  {currentUser && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.85rem' }}>
+                      <span style={{ color: '#94a3b8' }}>Active Workspace:</span>
+                      <strong style={{ color: '#38bdf8' }}>{currentUser.workspaceLabel || (currentUser.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</strong>
+                      <span style={{ color: '#64748b' }}>({currentUser.email || currentUser.username})</span>
+                    </div>
+                  )}
                 </div>
                 {senderSettingsSavedMsg && (
                   <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #10b981' }}>
@@ -5841,7 +6009,7 @@ function App() {
                 )}
               </div>
 
-              <form onSubmit={handleSaveSenderSettings} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
+              <form onSubmit={handleSaveSenderSettings} data-lpignore="true" data-form-type="other" autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
@@ -5854,6 +6022,9 @@ function App() {
                       placeholder="e.g. Mac"
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                     />
                   </div>
@@ -5869,6 +6040,9 @@ function App() {
                       placeholder="e.g. Mac McCarthy"
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                     />
                   </div>
@@ -5884,6 +6058,9 @@ function App() {
                       placeholder="e.g. The Search Equation"
                       className="search-input"
                       style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
                       required
                     />
                   </div>
