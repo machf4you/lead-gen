@@ -329,6 +329,45 @@ const renderFullEmailBody = (templateBody, prospect, recipientEmail = null, send
   return `${greeting}\n\n${renderedBody}`.trim();
 };
 
+// Helper for demonstration preview in Email Templates view
+const renderTemplateDemoPreview = (text, workspace = 'tse') => {
+  if (!text) return '';
+  const isChili = workspace === 'smoking_chili';
+  const senderName = isChili ? 'Darren' : 'Mac McCarthy';
+  const senderFirstName = isChili ? 'Darren' : 'Mac';
+  const companyName = isChili ? 'Smoking Chili Media' : 'The Search Equation';
+  const trade = 'Window Shutters';
+  const location = 'London';
+  const domain = 'londonshutters.co.uk';
+  const businessName = 'London Shutters Ltd';
+  const firstName = 'John';
+  const phone = '020 7946 0123';
+  const rating = '4.9';
+
+  return text
+    .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
+    .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
+    .replace(/\{\{\s*(?:company_name|companyName|company)\s*\}\}/gi, companyName)
+    .replace(/\{\{\s*(?:trade|businessType|searchPhrase|searchKeyword)\s*\}\}/gi, trade)
+    .replace(/\{\{\s*location\s*\}\}/gi, location)
+    .replace(/\{\{\s*domain\s*\}\}/gi, domain)
+    .replace(/\{\{\s*(?:businessName|business_name)\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*(?:firstName|first_name)\s*\}\}/gi, firstName)
+    .replace(/\{\{\s*greeting\s*\}\}/gi, `Hi ${firstName}`)
+    .replace(/\{\{\s*phone\s*\}\}/gi, phone)
+    .replace(/\{\{\s*rating\s*\}\}/gi, rating);
+};
+
+// Helper to sort templates by their numbered prefix
+const sortTemplatesNumbered = (templates) => {
+  return [...(templates || [])].sort((a, b) => {
+    const numA = parseInt((a.name || '').match(/\(?(\d+)\)?/)?.[1] || '999', 10);
+    const numB = parseInt((b.name || '').match(/\(?(\d+)\)?/)?.[1] || '999', 10);
+    if (numA !== numB) return numA - numB;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+};
+
 // Organic Templates
 const generatePartnershipTemplate = ({ searchKeyword, location, trade: explicitTrade } = {}) => {
   const loc = deriveLocation({ location });
@@ -4250,9 +4289,9 @@ function App() {
 
             {/* Sub-view 3: Master Email Templates Management */}
             {outreachSubView === 'templates' && (() => {
-              const organicTemplates = masterTemplates.filter(t => getTemplateClassification(t) === 'organic');
-              const localTemplates = masterTemplates.filter(t => getTemplateClassification(t) === 'local');
-              const masterTemplatesList = masterTemplates.filter(t => getTemplateClassification(t) === 'master');
+              const organicTemplates = sortTemplatesNumbered(masterTemplates.filter(t => getTemplateClassification(t) === 'organic'));
+              const localTemplates = sortTemplatesNumbered(masterTemplates.filter(t => getTemplateClassification(t) === 'local'));
+              const masterTemplatesList = sortTemplatesNumbered(masterTemplates.filter(t => getTemplateClassification(t) === 'master'));
               
               let displayedTemplates = [];
               if (templateTab === 'organic') {
@@ -4398,13 +4437,15 @@ function App() {
                             ? 'No general / master templates currently stored. Create one or select Organic / Local tab.' 
                             : `No ${templateTab} templates currently stored.`}
                         </p>
-
                       </div>
                     ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: '1.25rem' }}>
-                        {displayedTemplates.map((tpl) => {
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+                        {displayedTemplates.map((tpl, idx) => {
                           const isTplLocal = tpl.templateType === 'local';
                           const isTplOrganic = tpl.templateType === 'organic';
+                          const cleanName = (tpl.name || '').replace(/^\(?\d+\)?[-.\s]*/, '');
+                          const displayTitle = `${idx + 1}. ${cleanName || tpl.name}`;
+
                           return (
                             <div
                               key={tpl.id}
@@ -4419,11 +4460,12 @@ function App() {
                                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.2)'
                               }}
                             >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                              {/* Header: Title + Category + Meta + Action Buttons */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', borderBottom: '1px solid #1e293b', paddingBottom: '0.75rem' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                                     <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '1.15rem', fontWeight: '700' }}>
-                                      {tpl.name}
+                                      {displayTitle}
                                     </h3>
                                     <span style={{
                                       backgroundColor: isTplLocal ? 'rgba(16, 185, 129, 0.15)' : isTplOrganic ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.15)',
@@ -4472,22 +4514,55 @@ function App() {
                                 </div>
                               </div>
 
-                              <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', borderRadius: '6px', border: '1px solid #334155', fontSize: '0.875rem' }}>
-                                <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject: </span>
-                                <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{tpl.subject}</span>
-                              </div>
+                              {/* Two Columns: MASTER TEMPLATE (Left) | PERSONALISED EXAMPLE (Right) */}
+                              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '1.25rem' }}>
+                                {/* Left Column: Master Template */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>MASTER TEMPLATE</span>
+                                  </div>
+                                  <div style={{ backgroundColor: '#1e293b', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid #334155', fontSize: '0.85rem' }}>
+                                    <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Subject: </span>
+                                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{tpl.subject}</span>
+                                  </div>
+                                  <div style={{
+                                    backgroundColor: '#1e293b',
+                                    padding: '0.85rem 1rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid #334155',
+                                    fontSize: '0.85rem',
+                                    color: '#cbd5e1',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5',
+                                    flexGrow: 1
+                                  }}>
+                                    {tpl.body}
+                                  </div>
+                                </div>
 
-                              <div style={{
-                                backgroundColor: '#1e293b',
-                                padding: '0.85rem 1rem',
-                                borderRadius: '6px',
-                                border: '1px solid #334155',
-                                fontSize: '0.875rem',
-                                color: '#cbd5e1',
-                                whiteSpace: 'pre-wrap',
-                                lineHeight: '1.5'
-                              }}>
-                                {tpl.body}
+                                {/* Right Column: Personalised Example Preview */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#10b981', letterSpacing: '0.05em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>PERSONALISED EXAMPLE</span>
+                                  </div>
+                                  <div style={{ backgroundColor: '#1e293b', padding: '0.65rem 0.85rem', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.35)', fontSize: '0.85rem' }}>
+                                    <span style={{ color: '#34d399', fontWeight: 'bold' }}>Subject: </span>
+                                    <span style={{ color: '#f1f5f9' }}>{renderTemplateDemoPreview(tpl.subject, currentUser?.workspace)}</span>
+                                  </div>
+                                  <div style={{
+                                    backgroundColor: '#1e293b',
+                                    padding: '0.85rem 1rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                                    fontSize: '0.85rem',
+                                    color: '#f1f5f9',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: '1.5',
+                                    flexGrow: 1
+                                  }}>
+                                    {renderTemplateDemoPreview(tpl.body, currentUser?.workspace)}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           );
