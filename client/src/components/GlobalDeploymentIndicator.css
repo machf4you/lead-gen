@@ -1,0 +1,230 @@
+/* Global Deployment & Version Indicator */
+.global-deploy-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  user-select: none;
+}
+
+/* 1. NORMAL State (Idle / Up-to-Date Live Badge) */
+.global-deploy-normal .global-deploy-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #34d399;
+  background-color: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.deploy-live-dot {
+  color: #34d399;
+  font-size: 0.7rem;
+}
+
+/* Quick Refresh Header Button - Normal State */
+.global-deploy-refresh-normal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #34d399 !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  white-space: nowrap;
+}
+
+.global-deploy-refresh-normal:hover {
+  background: rgba(16, 185, 129, 0.25) !important;
+  border-color: #34d399 !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+.global-deploy-refresh-normal .refresh-icon {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #34d399 !important;
+}
+
+.global-deploy-refresh-normal:hover .refresh-icon {
+  color: #ffffff !important;
+}
+
+/* 2. UPDATING State */
+.global-deploy-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  color: #fef08a;
+  padding: 4px 12px;
+  border-radius: 6px;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+  animation: deployWarnGlow 2s infinite ease-in-out;
+}
+
+.deploy-spin-icon {
+  font-size: 0.85rem;
+  animation: deploySpin 1.2s linear infinite;
+}
+
+.deploy-text-updating {
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fef08a;
+  white-space: nowrap;
+}
+
+@keyframes deployWarnGlow {
+  0% { border-color: rgba(245, 158, 11, 0.5); box-shadow: 0 0 8px rgba(245, 158, 11, 0.2); }
+  50% { border-color: rgba(245, 158, 11, 0.9); box-shadow: 0 0 16px rgba(245, 158, 11, 0.5); }
+  100% { border-color: rgba(245, 158, 11, 0.5); box-shadow: 0 0 8px rgba(245, 158, 11, 0.2); }
+}
+
+@keyframes deploySpin {
+  to { transform: rotate(360deg); }
+}
+
+/* 3. UPDATE READY State (Solid RED button with pure WHITE text: CLICK TO REFRESH) */
+.global-deploy-update-ready-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  padding: 6px 16px !important;
+  border-radius: 6px !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  font-size: 0.85rem !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  box-shadow: 0 0 16px rgba(220, 38, 38, 0.9), 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  animation: deployReadyPulse 1.2s infinite ease-in-out !important;
+  transition: all 0.15s ease-in-out !important;
+  white-space: nowrap !important;
+}
+
+.global-deploy-update-ready-btn:hover {
+  background-color: #b91c1c !important;
+  transform: scale(1.05) !important;
+  box-shadow: 0 0 22px rgba(220, 38, 38, 1) !important;
+}
+
+.global-deploy-update-ready-btn .deploy-ready-icon {
+  font-size: 1.05rem !important;
+  font-weight: 900 !important;
+  color: #ffffff !important;
+}
+
+.global-deploy-update-ready-btn .deploy-ready-text {
+  font-size: 0.85rem !important;
+  font-weight: 900 !important;
+  color: #ffffff !important;
+  letter-spacing: 0.06em !important;
+}
+
+@keyframes deployReadyPulse {
+  0% { transform: scale(1); box-shadow: 0 0 12px rgba(220, 38, 38, 0.7); }
+  50% { transform: scale(1.03); box-shadow: 0 0 24px rgba(239, 68, 68, 1); }
+  100% { transform: scale(1); box-shadow: 0 0 12px rgba(220, 38, 38, 0.7); }
+}
+
+/* Top Announcement Full-Width Banners */
+.global-update-banner,
+.global-update-ready-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 999999;
+  background: linear-gradient(90deg, #c2410c 0%, #b45309 50%, #047857 100%);
+  border-bottom: 2px solid #fbbf24;
+  color: #ffffff;
+  padding: 10px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(245, 158, 11, 0.4);
+  cursor: pointer;
+  animation: bannerSlideDown 0.3s ease-out;
+}
+
+.global-updating-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 999999;
+  background: linear-gradient(90deg, #78350f 0%, #92400e 50%, #78350f 100%);
+  border-bottom: 2px solid #f59e0b;
+  color: #fef08a;
+  padding: 10px 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  animation: bannerSlideDown 0.3s ease-out;
+}
+
+.global-update-banner-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.92rem;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.banner-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.02em;
+}
+
+.banner-message strong {
+  font-weight: 800;
+}
+
+.banner-action-button {
+  background: #ffffff;
+  color: #9a3412;
+  font-weight: 800;
+  font-size: 0.82rem;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.banner-action-button:hover {
+  background: #fef3c7;
+  transform: translateY(-1px);
+}
+
+@keyframes bannerSlideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}

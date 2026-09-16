@@ -3195,7 +3195,7 @@ function App() {
                     borderRadius: '50%',
                     animation: 'spin 0.8s linear infinite'
                   }}></div>
-                  <span>Fetching live business listings from DataForSEO...</span>
+                  <span>Fetching live search results...</span>
                 </div>
               )}
 

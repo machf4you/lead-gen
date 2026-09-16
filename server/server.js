@@ -173,7 +173,7 @@ app.post('/api/search', async (req, res) => {
 
   if (!login || !password) {
     return res.status(400).json({
-      error: "DataForSEO API credentials are not configured. Please set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in your environment."
+      error: "Search service credentials are not configured. Please check your server environment settings."
     });
   }
 
@@ -211,7 +211,7 @@ app.post('/api/search', async (req, res) => {
 
       if (task?.status_code !== 20000) {
         return res.status(500).json({
-          error: `DataForSEO API task failed: ${task?.status_message}`
+          error: `Live search query failed: ${task?.status_message || 'Search service error'}`
         });
       }
 
@@ -266,7 +266,7 @@ app.post('/api/search', async (req, res) => {
 
       if (task?.status_code !== 20000) {
         return res.status(500).json({
-          error: `DataForSEO Google Maps API task failed: ${task?.status_message}`
+          error: `Local search query failed: ${task?.status_message || 'Search service error'}`
         });
       }
 

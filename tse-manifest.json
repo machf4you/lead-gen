@@ -1,9 +1,17 @@
 {
   "app": "lead-generator",
-  "task": "Implement Production Baseline Lock for Lead Generator V1.42",
+  "task": "Fix Lead Generator search, scoring, provider wording, and highlight refresh update notification",
   "baselineTag": "lg-v1.42-full-disaster-recovery",
   "candidateCommit": "HEAD",
   "allowedFiles": [
+    "client/src/components/GlobalDeploymentIndicator.jsx",
+    "client/src/components/GlobalDeploymentIndicator.css",
+    "client/src/App.jsx",
+    "client/src/config/version.js",
+    "client/public/version.json",
+    "version.json",
+    "server/version.json",
+    "server/server.js",
     "scripts/lg_production_baseline.json",
     "scripts/tse_baseline_lock.py",
     "scripts/advance_production_baseline.py",
