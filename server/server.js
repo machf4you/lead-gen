@@ -19,10 +19,16 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, './.env') });
 dotenv.config({ path: '/var/www/www-root/data/www/lead-gen.thesearchequation.co.uk/persistent/.env' });
 
-// Helper to detect temporary/interstitial placeholder titles and error pages
-function isPlaceholderTitle(title) {
-  if (!title) return true;
-  const t = title.toLowerCase().trim();
+// Helper to detect temporary/interstitial placeholder titles, bot challenges, and error pages
+function isPlaceholderTitle(title, testUrl = '') {
+  if (!title && !testUrl) return true;
+  const t = (title || '').toLowerCase().trim();
+  const u = (testUrl || '').toLowerCase();
+
+  if (u.includes('sgcaptcha') || u.includes('/challenge') || u.includes('captcha') || u.includes('cf-browser-verification')) {
+    return true;
+  }
+
   const placeholders = [
     'just a moment',
     'loading',
@@ -34,6 +40,13 @@ function isPlaceholderTitle(title) {
     'security check',
     'ddos guard',
     'cloudflare',
+    'robot challenge screen',
+    'challenge screen',
+    'bot challenge',
+    'security challenge',
+    'verify you are human',
+    'human verification',
+    'captcha',
     '403 - forbidden',
     '403 forbidden',
     '403 error',
@@ -981,12 +994,14 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
     }
   }
 
+  const rankingOriginalUrl = targetUrl;
+
   let $ = html ? cheerio.load(html) : null;
   let title = $ ? $('title').first().text().trim() : '';
   let h1TextCandidate = $ ? $('h1').first().text().trim() : '';
 
-  // Step 2: Fallback to Puppeteer if fetch failed (>=400 / error / empty) or returned an interstitial/placeholder/error title
-  const needsPuppeteer = !html || statusCode >= 400 || isPlaceholderTitle(title) || isPlaceholderTitle(h1TextCandidate);
+  // Step 2: Fallback to Puppeteer if fetch failed (>=400 / error / empty) or returned an interstitial/placeholder/error/challenge title
+  const needsPuppeteer = !html || statusCode >= 400 || isPlaceholderTitle(title, targetUrl) || isPlaceholderTitle(h1TextCandidate, targetUrl);
   if (needsPuppeteer) {
     console.log(`[Analysis Fallback] Fetch got status ${statusCode} (title: "${title || 'none'}", h1: "${h1TextCandidate || 'none'}"). Attempting Puppeteer browser fallback for: ${targetUrl}`);
     const puppeteerResult = await fetchPageWithPuppeteer(targetUrl);
@@ -994,36 +1009,39 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
       const $puppeteer = cheerio.load(puppeteerResult.html);
       const newTitle = $puppeteer('title').first().text().trim();
       const newH1 = $puppeteer('h1').first().text().trim();
+      const finalPuppeteerUrl = puppeteerResult.finalUrl || targetUrl;
       
-      if (!isPlaceholderTitle(newTitle) && !isPlaceholderTitle(newH1) && puppeteerResult.status < 400) {
+      const isStillPlaceholder = isPlaceholderTitle(newTitle, finalPuppeteerUrl) || isPlaceholderTitle(newH1, finalPuppeteerUrl);
+
+      if (!isStillPlaceholder && puppeteerResult.status < 400) {
         console.log(`[Analysis Fallback Resolved] Puppeteer retrieved page with status ${puppeteerResult.status} (Title: "${newTitle}")`);
         html = puppeteerResult.html;
-        targetUrl = puppeteerResult.finalUrl || targetUrl;
+        targetUrl = finalPuppeteerUrl;
         statusCode = puppeteerResult.status;
         httpStatus = `${puppeteerResult.status} OK`;
         $ = $puppeteer;
         title = newTitle;
         fetchError = null;
       } else {
-        console.warn(`[Analysis Fallback] Puppeteer page still returned placeholder/error: "${newTitle}"`);
+        console.warn(`[Analysis Fallback] Puppeteer page still returned placeholder/challenge/error: "${newTitle}" (URL: ${finalPuppeteerUrl})`);
       }
     }
   }
 
   const prevRetryCount = previousAnalysis?.retryCount || 0;
   const currentH1 = $ ? $('h1').first().text().trim() : '';
-  const isCrawlFailure = !html || statusCode >= 400 || !$ || isPlaceholderTitle(title) || isPlaceholderTitle(currentH1);
+  const isCrawlFailure = !html || statusCode >= 400 || !$ || isPlaceholderTitle(title, targetUrl) || isPlaceholderTitle(currentH1, targetUrl);
 
   // Step 3: If still no usable HTML or hard HTTP error after all fallbacks
   if (isCrawlFailure) {
     let statusText = httpStatus || 'Connection Error';
     if (fetchError?.message?.startsWith('HTTP ')) {
       statusText = fetchError.message.replace(/^HTTP\s+/, '');
-    } else if (isPlaceholderTitle(title) || isPlaceholderTitle(currentH1)) {
+    } else if (isPlaceholderTitle(title, targetUrl) || isPlaceholderTitle(currentH1, targetUrl)) {
       statusText = '403 Forbidden';
       statusCode = 403;
     }
-    const isHttps = targetUrl.startsWith('https://');
+    const isHttps = rankingOriginalUrl.startsWith('https://');
     const fallbackHealth = {
       isHttps,
       statusCode: statusCode >= 400 ? statusCode : (statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 403 : 403),
@@ -1044,8 +1062,8 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
       crawlBlocked: true,
       crawlStatus: statusText
     };
-    const gbp = await performGbpMatching(targetUrl, '', '', '', location);
-    const leadOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, targetUrl);
+    const gbp = await performGbpMatching(rankingOriginalUrl, '', '', '', location);
+    const leadOpportunity = generateLeadDashboard(fallbackHealth, searchType || 'Organic', rank || 0, rankingOriginalUrl);
     const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank, true, statusText);
     const leadPriority = getPriorityRating(fallbackHealth, gbp, rank, true);
 
@@ -1055,9 +1073,9 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
 
     return {
       rank: rank || 0,
-      url: targetUrl,
-      cleanDomain: getDomain(targetUrl),
-      domain: getDomain(targetUrl),
+      url: rankingOriginalUrl,
+      cleanDomain: getDomain(rankingOriginalUrl),
+      domain: getDomain(rankingOriginalUrl),
       pageTitle: 'Unable to verify (Protected / Restricted)',
       metaDescription: 'Unable to verify (Protected / Restricted)',
       h1: 'Unable to verify (Protected / Restricted)',
@@ -1084,7 +1102,7 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
       contactEmail: null,
       allFoundEmails: [],
       emailStatus: 'No Email',
-      emailSource: targetUrl
+      emailSource: rankingOriginalUrl
     };
   }
 
@@ -1389,6 +1407,8 @@ async function reanalyseStaleSavedSearchesAndShortlist() {
           analysis.gbp === undefined ||
           analysis.httpStatus === 'Not Found' ||
           analysis.pageTitle === 'Not Found' ||
+          analysis.pageTitle === 'Robot Challenge Screen' ||
+          (analysis.url && analysis.url.includes('sgcaptcha')) ||
           analysis.analysisProblem === undefined;
 
         if (isStale) {
@@ -1428,6 +1448,8 @@ async function reanalyseStaleSavedSearchesAndShortlist() {
         analysis.gbp === undefined ||
         analysis.httpStatus === 'Not Found' ||
         analysis.pageTitle === 'Not Found' ||
+        analysis.pageTitle === 'Robot Challenge Screen' ||
+        (analysis.url && analysis.url.includes('sgcaptcha')) ||
         analysis.analysisProblem === undefined;
 
       if (isStale) {
