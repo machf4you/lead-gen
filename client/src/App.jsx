@@ -2915,17 +2915,7 @@ function App() {
     const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
     const itemKey = isOrganic ? item.url : (item.website || item.name);
 
-    const isModernAnalysis = item.analysis && 
-      item.analysis.leadOpportunityScore !== null && 
-      item.analysis.leadOpportunityScore !== undefined && 
-      item.analysis.leadOpportunityScore.score !== null &&
-      item.analysis.leadOpportunityScore.score !== undefined &&
-      item.analysis.gbp !== null && 
-      item.analysis.gbp !== undefined &&
-      item.analysis.analysisProblem !== undefined &&
-      item.analysis.httpStatus !== 'Not Found';
-
-    if (isModernAnalysis) {
+    if (item.analysis) {
       const analysisObj = {
         ...item.analysis,
         domain,

@@ -599,6 +599,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
 
   let candidates = [];
   let methodUsed = '';
+  let apiLimitExceeded = false;
 
   // Step 1: Search domain variants (clean domain, www, exact host)
   for (const dom of domainVariants) {
@@ -612,6 +613,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
         const resData = await response.json();
         if (resData?.status_code === 40203 || resData?.tasks?.[0]?.status_code === 40203) {
           console.warn('[GBP Match] DataForSEO daily limit reached (40203). Gracefully skipping live lookup.');
+          apiLimitExceeded = true;
           break;
         }
         const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
@@ -627,6 +629,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
         const errText = await response.text().catch(() => '');
         if (response.status === 402 || errText.includes('40203') || errText.includes('Limit')) {
           console.warn('[GBP Match] DataForSEO daily limit or payment error. Gracefully skipping lookup.');
+          apiLimitExceeded = true;
           break;
         }
       }
@@ -636,7 +639,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
   }
 
   // Step 2: Search using business name if no match is found
-  if (candidates.length === 0 && businessName) {
+  if (candidates.length === 0 && businessName && !apiLimitExceeded) {
     try {
       const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
         method: 'POST',
@@ -647,6 +650,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
         const resData = await response.json();
         if (resData?.status_code === 40203 || resData?.tasks?.[0]?.status_code === 40203) {
           console.warn('[GBP Match] DataForSEO daily limit reached (40203). Gracefully skipping live lookup.');
+          apiLimitExceeded = true;
         } else {
           const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
           if (items.length > 0) {
@@ -658,6 +662,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
         const errText = await response.text().catch(() => '');
         if (response.status === 402 || errText.includes('40203') || errText.includes('Limit')) {
           console.warn('[GBP Match] DataForSEO daily limit or payment error. Gracefully skipping lookup.');
+          apiLimitExceeded = true;
         }
       }
     } catch (e) {
@@ -682,16 +687,17 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
   }
 
   let gbp = {
-    status: 'Not Found',
-    businessName: 'Not Found',
-    primaryCategory: 'Not Found',
+    status: apiLimitExceeded ? 'Unable to Verify' : 'Not Found',
+    businessName: apiLimitExceeded ? 'Unable to Verify (API Limit)' : 'Not Found',
+    primaryCategory: apiLimitExceeded ? 'Unable to Verify' : 'Not Found',
     rating: null,
-    ratingLabel: 'Not Found',
+    ratingLabel: apiLimitExceeded ? 'Unable to verify' : 'Not Found',
     reviewCount: 0,
-    websiteUrl: 'Not Found',
-    phoneNumber: 'Not Found',
-    address: 'Not Found',
-    otherLocationsCount: candidates.length > 1 ? candidates.length : 0
+    websiteUrl: apiLimitExceeded ? 'Unable to verify' : 'Not Found',
+    phoneNumber: apiLimitExceeded ? 'Unable to verify' : 'Not Found',
+    address: apiLimitExceeded ? 'Unable to verify' : 'Not Found',
+    otherLocationsCount: candidates.length > 1 ? candidates.length : 0,
+    apiLimitExceeded: apiLimitExceeded
   };
 
   if (bestScore >= 50 && bestCandidates.length === 1) {
@@ -1399,128 +1405,8 @@ async function runOvernightAnalysisRetryQueue() {
   }
 }
 
-// Global Re-analysis and Invalidation for Stale/Pre-v1.54 Records
-async function reanalyseStaleSavedSearchesAndShortlist() {
-  console.log('[Stale Invalidation] Checking for stale/defective analysis records across saved searches and shortlist...');
-  try {
-    const db = await getDb();
-    let updatedSearchesCount = 0;
-    let updatedProspectsCount = 0;
-
-    // 1. Process saved_searches across all workspaces
-    const savedSearches = await db.all('SELECT * FROM saved_searches');
-    for (const row of savedSearches) {
-      if (!row.data) continue;
-      let data = [];
-      try { data = JSON.parse(row.data); } catch (e) { continue; }
-      let rowUpdated = false;
-
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        const analysis = item.analysis;
-        const isStale = !analysis || 
-          analysis.leadOpportunityScore === null || 
-          analysis.leadOpportunityScore === undefined || 
-          analysis.leadOpportunityScore.score === null ||
-          analysis.gbp === null || 
-          analysis.gbp === undefined ||
-          analysis.httpStatus === 'Not Found' ||
-          analysis.pageTitle === 'Not Found' ||
-          analysis.pageTitle === 'Robot Challenge Screen' ||
-          (analysis.url && analysis.url.includes('sgcaptcha')) ||
-          analysis.analysisProblem === undefined;
-
-        if (isStale) {
-          const targetUrl = item.url || item.website || (item.domain ? `https://${item.domain}` : '');
-          if (!targetUrl) continue;
-
-          console.log(`[Stale Invalidation] Re-analysing stale prospect: ${targetUrl} (Search: ${row.searchId || row.id}, Rank: #${item.rank})`);
-          try {
-            const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', item.rank || 0, row.location || 'Anywhere');
-            data[i].analysis = newAnalysis;
-            rowUpdated = true;
-            updatedProspectsCount++;
-          } catch (err) {
-            console.error(`[Stale Invalidation Error] Failed to reanalyse ${targetUrl}:`, err.message);
-          }
-        }
-      }
-
-      if (rowUpdated) {
-        await db.run('UPDATE saved_searches SET data = ? WHERE id = ?', [JSON.stringify(data), row.id]);
-        updatedSearchesCount++;
-      }
-    }
-
-    // 2. Process outreach_shortlist across all workspaces
-    const shortlistRows = await db.all('SELECT * FROM outreach_shortlist');
-    for (const row of shortlistRows) {
-      let analysis = null;
-      if (row.analysisData) {
-        try { analysis = JSON.parse(row.analysisData); } catch (e) {}
-      }
-      const isStale = !analysis ||
-        analysis.leadOpportunityScore === null ||
-        analysis.leadOpportunityScore === undefined ||
-        analysis.leadOpportunityScore.score === null ||
-        analysis.gbp === null ||
-        analysis.gbp === undefined ||
-        analysis.httpStatus === 'Not Found' ||
-        analysis.pageTitle === 'Not Found' ||
-        analysis.pageTitle === 'Robot Challenge Screen' ||
-        (analysis.url && analysis.url.includes('sgcaptcha')) ||
-        analysis.analysisProblem === undefined;
-
-      if (isStale) {
-        const targetUrl = row.url || (row.domain ? `https://${row.domain}` : '');
-        if (!targetUrl) continue;
-        console.log(`[Stale Invalidation] Re-analysing stale shortlist prospect: ${targetUrl} (Domain: ${row.domain})`);
-        try {
-          const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', row.rank || 0, row.location || 'Anywhere');
-          await db.run(
-            `UPDATE outreach_shortlist SET 
-              analysisData = ?, 
-              opportunityScore = ?, 
-              opportunityBand = ?, 
-              commercialStrengthStars = ?, 
-              commercialStrengthLabel = ?, 
-              commercialStrengthPoints = ?, 
-              gbpStatus = ? 
-            WHERE id = ?`,
-            [
-              JSON.stringify(newAnalysis),
-              newAnalysis.leadOpportunityScore?.score ?? row.opportunityScore,
-              newAnalysis.leadOpportunityScore?.band || row.opportunityBand,
-              newAnalysis.leadPriority?.stars || row.commercialStrengthStars,
-              newAnalysis.leadPriority?.label || row.commercialStrengthLabel,
-              newAnalysis.leadPriority?.points ?? row.commercialStrengthPoints,
-              newAnalysis.gbp?.status === 'Found' ? 'Found' : (newAnalysis.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched'),
-              row.id
-            ]
-          );
-          updatedProspectsCount++;
-        } catch (err) {
-          console.error(`[Stale Invalidation Error] Failed to reanalyse shortlist ${targetUrl}:`, err.message);
-        }
-      }
-    }
-
-    console.log(`[Stale Invalidation Complete] Upgraded ${updatedProspectsCount} prospects across ${updatedSearchesCount} searches.`);
-    return { success: true, updatedSearchesCount, updatedProspectsCount };
-  } catch (err) {
-    console.error('[Stale Invalidation Fatal Error]:', err);
-    return { success: false, error: err.message };
-  }
-}
-
-// POST endpoint to trigger global stale analysis reanalysis manually
-app.post('/api/analyse/reanalyse-stale', async (req, res) => {
-  const result = await reanalyseStaleSavedSearchesAndShortlist();
-  res.json(result);
-});
-
-// Automatic startup re-analysis disabled per user directive to prevent unprompted API spending.
-// Re-analysis occurs on-demand when the user views or refreshes an individual prospect.
+// Historical Bulk Re-analysis DISABLED: All existing saved searches are left untouched.
+// Corrected V1.54 analysis logic is used for new searches and user-initiated refreshes only.
 
 // POST endpoint to trigger overnight retry queue manually
 app.post('/api/analyse/retry-queue/run', async (req, res) => {
