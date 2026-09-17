@@ -19,7 +19,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, './.env') });
 dotenv.config({ path: '/var/www/www-root/data/www/lead-gen.thesearchequation.co.uk/persistent/.env' });
 
-// Helper to detect temporary/interstitial placeholder titles
+// Helper to detect temporary/interstitial placeholder titles and error pages
 function isPlaceholderTitle(title) {
   if (!title) return true;
   const t = title.toLowerCase().trim();
@@ -33,7 +33,21 @@ function isPlaceholderTitle(title) {
     'one more step',
     'security check',
     'ddos guard',
-    'cloudflare'
+    'cloudflare',
+    '403 - forbidden',
+    '403 forbidden',
+    '403 error',
+    'forbidden',
+    'access denied',
+    'access forbidden',
+    'bot detection',
+    'blocked',
+    'rate limited',
+    'too many requests',
+    'site under maintenance',
+    'error 403',
+    'error 429',
+    'error 503'
   ];
   return placeholders.some(p => t.includes(p));
 }
@@ -969,17 +983,19 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
 
   let $ = html ? cheerio.load(html) : null;
   let title = $ ? $('title').first().text().trim() : '';
+  let h1TextCandidate = $ ? $('h1').first().text().trim() : '';
 
-  // Step 2: Fallback to Puppeteer if fetch failed (>=400 / error / empty) or returned an interstitial/placeholder
-  const needsPuppeteer = !html || statusCode >= 400 || isPlaceholderTitle(title);
+  // Step 2: Fallback to Puppeteer if fetch failed (>=400 / error / empty) or returned an interstitial/placeholder/error title
+  const needsPuppeteer = !html || statusCode >= 400 || isPlaceholderTitle(title) || isPlaceholderTitle(h1TextCandidate);
   if (needsPuppeteer) {
-    console.log(`[Analysis Fallback] Fetch got status ${statusCode} (title: "${title || 'none'}"). Attempting Puppeteer browser fallback for: ${targetUrl}`);
+    console.log(`[Analysis Fallback] Fetch got status ${statusCode} (title: "${title || 'none'}", h1: "${h1TextCandidate || 'none'}"). Attempting Puppeteer browser fallback for: ${targetUrl}`);
     const puppeteerResult = await fetchPageWithPuppeteer(targetUrl);
     if (puppeteerResult.success && puppeteerResult.html) {
       const $puppeteer = cheerio.load(puppeteerResult.html);
       const newTitle = $puppeteer('title').first().text().trim();
+      const newH1 = $puppeteer('h1').first().text().trim();
       
-      if (!isPlaceholderTitle(newTitle) || puppeteerResult.status < 400) {
+      if (!isPlaceholderTitle(newTitle) && !isPlaceholderTitle(newH1) && puppeteerResult.status < 400) {
         console.log(`[Analysis Fallback Resolved] Puppeteer retrieved page with status ${puppeteerResult.status} (Title: "${newTitle}")`);
         html = puppeteerResult.html;
         targetUrl = puppeteerResult.finalUrl || targetUrl;
@@ -995,17 +1011,22 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
   }
 
   const prevRetryCount = previousAnalysis?.retryCount || 0;
+  const currentH1 = $ ? $('h1').first().text().trim() : '';
+  const isCrawlFailure = !html || statusCode >= 400 || !$ || isPlaceholderTitle(title) || isPlaceholderTitle(currentH1);
 
   // Step 3: If still no usable HTML or hard HTTP error after all fallbacks
-  if (!html || statusCode >= 400 || !$ || isPlaceholderTitle(title)) {
+  if (isCrawlFailure) {
     let statusText = httpStatus || 'Connection Error';
     if (fetchError?.message?.startsWith('HTTP ')) {
       statusText = fetchError.message.replace(/^HTTP\s+/, '');
+    } else if (isPlaceholderTitle(title) || isPlaceholderTitle(currentH1)) {
+      statusText = '403 Forbidden';
+      statusCode = 403;
     }
     const isHttps = targetUrl.startsWith('https://');
     const fallbackHealth = {
       isHttps,
-      statusCode: statusCode >= 400 ? statusCode : (statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 0 : 0),
+      statusCode: statusCode >= 400 ? statusCode : (statusText.startsWith('4') || statusText.startsWith('5') ? parseInt(statusText.split(' ')[0], 10) || 403 : 403),
       indexable: null,
       hasCanonical: null,
       titlePresent: null,
@@ -1034,6 +1055,9 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
 
     return {
       rank: rank || 0,
+      url: targetUrl,
+      cleanDomain: getDomain(targetUrl),
+      domain: getDomain(targetUrl),
       pageTitle: 'Unable to verify (Protected / Restricted)',
       metaDescription: 'Unable to verify (Protected / Restricted)',
       h1: 'Unable to verify (Protected / Restricted)',
@@ -1185,6 +1209,9 @@ async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, locatio
 
   return {
     rank: rank || 0,
+    url: targetUrl,
+    cleanDomain: getDomain(targetUrl),
+    domain: getDomain(targetUrl),
     pageTitle: title || 'Not Found',
     metaDescription: description || 'Not Found',
     h1: h1Text || 'Not Found',

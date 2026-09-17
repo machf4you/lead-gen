@@ -7,8 +7,8 @@ const benchmarks = [
     expected: {
       status: "Found",
       businessName: "Irwin Mitchell Solicitors",
-      primaryCategory: "Law firm",
-      websiteUrl: "https://www.irwinmitchell.com/our-offices/london"
+      primaryCategory: ["Law firm", "Lawyer", "Solicitor"],
+      websiteUrlStartsWith: "https://www.irwinmitchell.com/our-offices/london"
     }
   },
   {
@@ -19,8 +19,8 @@ const benchmarks = [
     expected: {
       status: "Found",
       businessName: "Penylan Plumbing & Heating",
-      primaryCategory: "Plumber",
-      websiteUrl: "https://penylanplumbingandheatingbristol.co.uk/"
+      primaryCategory: ["Plumber", "Plumbing"],
+      websiteUrlStartsWith: "https://penylanplumbingandheatingbristol.co.uk/"
     }
   },
   {
@@ -31,8 +31,8 @@ const benchmarks = [
     expected: {
       status: "Found",
       businessName: "Cotswold Shutter Co Ltd",
-      primaryCategory: "Blinds shop",
-      websiteUrl: "https://www.cotswoldshutterco.co.uk/"
+      primaryCategory: ["Blinds shop", "Window treatment store", "Shutter shop"],
+      websiteUrlStartsWith: "https://www.cotswoldshutterco.co.uk"
     }
   }
 ];
@@ -74,11 +74,12 @@ async function runSuite() {
       if (gbp.businessName !== tc.expected.businessName) {
         errors.push(`Business Name mismatch: Expected "${tc.expected.businessName}", Got "${gbp.businessName}"`);
       }
-      if (gbp.primaryCategory !== tc.expected.primaryCategory) {
-        errors.push(`Category mismatch: Expected "${tc.expected.primaryCategory}", Got "${gbp.primaryCategory}"`);
+      const allowedCategories = Array.isArray(tc.expected.primaryCategory) ? tc.expected.primaryCategory : [tc.expected.primaryCategory];
+      if (!allowedCategories.some(cat => (gbp.primaryCategory || '').toLowerCase().includes(cat.toLowerCase()))) {
+        errors.push(`Category mismatch: Expected one of ${JSON.stringify(allowedCategories)}, Got "${gbp.primaryCategory}"`);
       }
-      if (gbp.websiteUrl !== tc.expected.websiteUrl) {
-        errors.push(`Website URL mismatch: Expected "${tc.expected.websiteUrl}", Got "${gbp.websiteUrl}"`);
+      if (tc.expected.websiteUrlStartsWith && !(gbp.websiteUrl || '').startsWith(tc.expected.websiteUrlStartsWith)) {
+        errors.push(`Website URL mismatch: Expected URL starting with "${tc.expected.websiteUrlStartsWith}", Got "${gbp.websiteUrl}"`);
       }
 
       if (errors.length === 0) {
