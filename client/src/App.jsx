@@ -2587,7 +2587,7 @@ function App() {
       const data = await response.json();
       
       const completedAnalysis = {
-        rank: item.rank || data.leadOpportunity?.rank || 0,
+        rank: item.rank || data.rank || data.leadOpportunity?.rank || 0,
         pageTitle: data.pageTitle || 'Not Found',
         metaDescription: data.metaDescription || 'Not Found',
         h1: data.h1 || 'Not Found',
@@ -2595,6 +2595,11 @@ function App() {
         canonicalUrl: data.canonicalUrl || 'Not Found',
         indexable: data.indexable || 'No',
         lastAnalysed: data.lastAnalysed || new Date().toISOString(),
+        analysisProblem: !!data.analysisProblem,
+        analysisProblemReason: data.analysisProblemReason || null,
+        retryStatus: data.retryStatus || null,
+        retryCount: data.retryCount || 0,
+        lastAttemptTimestamp: data.lastAttemptTimestamp || new Date().toISOString(),
         seoHealth: data.seoHealth || null,
         aiReport: data.aiReport || null,
         gbp: data.gbp || null,
@@ -2612,50 +2617,58 @@ function App() {
       console.error(e);
       const failedAnalysis = {
         rank: item.rank || 0,
-        pageTitle: 'Not Found',
-        metaDescription: 'Not Found',
-        h1: 'Not Found',
+        pageTitle: 'Unable to verify (Connection Error)',
+        metaDescription: 'Unable to verify (Connection Error)',
+        h1: 'Unable to verify (Connection Error)',
         httpStatus: 'Connection Error',
-        canonicalUrl: 'Not Found',
-        indexable: 'No',
+        canonicalUrl: 'Unable to verify (Connection Error)',
+        indexable: 'Unknown',
         lastAnalysed: new Date().toISOString(),
+        analysisProblem: true,
+        analysisProblemReason: 'Connection Error',
+        retryStatus: 'queued',
+        retryCount: 0,
+        lastAttemptTimestamp: new Date().toISOString(),
         seoHealth: {
           isHttps: url.startsWith('https://'),
           statusCode: 0,
-          indexable: false,
-          hasCanonical: false,
-          titlePresent: false,
+          indexable: null,
+          hasCanonical: null,
+          titlePresent: null,
           titleLength: 0,
-          descriptionPresent: false,
+          descriptionPresent: null,
           descriptionLength: 0,
-          h1Present: false,
+          h1Present: null,
           h1Count: 0,
           h2Count: 0,
           wordCount: 0,
           imageCount: 0,
           missingAltCount: 0,
           internalLinksCount: 0,
-          externalLinksCount: 0
+          externalLinksCount: 0,
+          crawlBlocked: true,
+          crawlStatus: 'Connection Error'
         },
         aiReport: null,
         leadOpportunity: {
           rank: isOrganic ? (item.rank || 'Not available') : 'Not available',
           gbpDetected: isOrganic ? 'Unknown' : 'Yes',
-          titlePresent: 'N/A',
-          descriptionPresent: 'N/A',
-          h1Present: 'N/A',
-          pageType: 'Homepage',
-          overallOpportunity: 'N/A',
+          titlePresent: 'Unable to verify',
+          descriptionPresent: 'Unable to verify',
+          h1Present: 'Unable to verify',
+          pageType: 'Internal/Page',
+          overallOpportunity: 'Unable to verify',
           reasonToContact: 'Connection error while attempting to analyze site.',
           suggestedEmailAngle: 'Reach out to check if their website server is experiencing downtime.'
         },
         gbp: null,
         diagnosticFailureReason: e?.message || 'Connection error while communicating with analysis server',
         leadOpportunityScore: {
-          score: 55,
+          score: 50,
           band: 'Moderate',
+          isIncomplete: true,
           reasons: [
-            "Website connection timed out or blocked by server",
+            "⚠ Website connection timed out or restricted by server",
             "Technical signals estimated from search ranking position",
             "Direct technical review recommended"
           ]
@@ -2663,7 +2676,7 @@ function App() {
         leadPriority: {
           stars: '★★★☆☆',
           label: 'Moderate Opportunity',
-          explanation: "Website connection timed out or was inaccessible. High opportunity for technical hosting or server optimization.",
+          explanation: "Website connection timed out or was inaccessible. Direct technical review recommended.",
           points: 50
         }
       };
@@ -3738,54 +3751,90 @@ function App() {
                               </td>
                               <td>
                                 {item.analysis ? (
-                                  item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                    (() => {
-                                      const s = item.analysis.leadOpportunityScore.score;
-                                      const isHot = s >= 70;
-                                      return (
-                                        <span style={{ 
-                                          display: 'inline-flex', 
-                                          alignItems: 'center',
-                                          padding: isHot ? '2px 8px' : '0',
-                                          borderRadius: isHot ? '6px' : '0',
-                                          backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                                          border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
-                                          boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
-                                        }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                    {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
+                                      (() => {
+                                        const s = item.analysis.leadOpportunityScore.score;
+                                        const isHot = s >= 70;
+                                        return (
                                           <span style={{ 
-                                            color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
-                                            marginRight: '6px',
-                                            fontSize: '1.1rem',
-                                            lineHeight: '1'
-                                          }}>●</span>
-                                          {s >= 60 && (
-                                            <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                          )}
-                                          <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
-                                            {s}
-                                          </span>
-                                          {isHot && (
+                                            display: 'inline-flex', 
+                                            alignItems: 'center',
+                                            padding: isHot ? '2px 8px' : '0',
+                                            borderRadius: isHot ? '6px' : '0',
+                                            backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                                            border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
+                                            boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
+                                          }}>
                                             <span style={{ 
-                                              marginLeft: '6px', 
-                                              fontSize: '0.68rem', 
-                                              fontWeight: '800', 
-                                              letterSpacing: '0.04em',
-                                              color: '#ffffff',
-                                              backgroundColor: '#dc2626',
-                                              padding: '1px 5px',
-                                              borderRadius: '3px'
-                                            }}>
-                                              HOT
+                                              color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                              marginRight: '6px',
+                                              fontSize: '1.1rem',
+                                              lineHeight: '1'
+                                            }}>●</span>
+                                            {s >= 60 && (
+                                              <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                            )}
+                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                              {s}
                                             </span>
-                                          )}
-                                        </span>
-                                      );
-                                    })()
-                                  ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                      N/A
-                                    </span>
-                                  )
+                                            {isHot && (
+                                              <span style={{ 
+                                                marginLeft: '6px', 
+                                                fontSize: '0.68rem', 
+                                                fontWeight: '800', 
+                                                letterSpacing: '0.04em',
+                                                color: '#ffffff',
+                                                backgroundColor: '#dc2626',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px'
+                                              }}>
+                                                HOT
+                                              </span>
+                                            )}
+                                          </span>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                        -
+                                      </span>
+                                    )}
+
+                                    {item.analysis.retryStatus === 'manual_check' ? (
+                                      <span style={{ 
+                                        fontSize: '0.72rem', 
+                                        fontWeight: '700', 
+                                        color: '#f87171', 
+                                        backgroundColor: 'rgba(239, 68, 68, 0.15)', 
+                                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        whiteSpace: 'nowrap'
+                                      }} title="Overnight retry failed. Direct manual review required.">
+                                        🔴 Manual Check Required
+                                      </span>
+                                    ) : (item.analysis.analysisProblem ? (
+                                      <span style={{ 
+                                        fontSize: '0.72rem', 
+                                        fontWeight: '700', 
+                                        color: '#f59e0b', 
+                                        backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+                                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        whiteSpace: 'nowrap'
+                                      }} title={`Server access restricted (${item.analysis.analysisProblemReason || 'Protected'}). Queued for overnight retry.`}>
+                                        ⚠ Analysis Problem
+                                      </span>
+                                    ) : null)}
+                                  </div>
                                 ) : (
                                   <span style={{ color: '#64748b' }}>-</span>
                                 )}
@@ -3866,54 +3915,90 @@ function App() {
                               </td>
                               <td>
                                 {item.analysis ? (
-                                  item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                    (() => {
-                                      const s = item.analysis.leadOpportunityScore.score;
-                                      const isHot = s >= 70;
-                                      return (
-                                        <span style={{ 
-                                          display: 'inline-flex', 
-                                          alignItems: 'center',
-                                          padding: isHot ? '2px 8px' : '0',
-                                          borderRadius: isHot ? '6px' : '0',
-                                          backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                                          border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
-                                          boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
-                                        }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                    {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
+                                      (() => {
+                                        const s = item.analysis.leadOpportunityScore.score;
+                                        const isHot = s >= 70;
+                                        return (
                                           <span style={{ 
-                                            color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
-                                            marginRight: '6px',
-                                            fontSize: '1.1rem',
-                                            lineHeight: '1'
-                                          }}>●</span>
-                                          {s >= 60 && (
-                                            <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                          )}
-                                          <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
-                                            {s}
-                                          </span>
-                                          {isHot && (
+                                            display: 'inline-flex', 
+                                            alignItems: 'center',
+                                            padding: isHot ? '2px 8px' : '0',
+                                            borderRadius: isHot ? '6px' : '0',
+                                            backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
+                                            border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
+                                            boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
+                                          }}>
                                             <span style={{ 
-                                              marginLeft: '6px', 
-                                              fontSize: '0.68rem', 
-                                              fontWeight: '800', 
-                                              letterSpacing: '0.04em',
-                                              color: '#ffffff',
-                                              backgroundColor: '#dc2626',
-                                              padding: '1px 5px',
-                                              borderRadius: '3px'
-                                            }}>
-                                              HOT
+                                              color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                              marginRight: '6px',
+                                              fontSize: '1.1rem',
+                                              lineHeight: '1'
+                                            }}>●</span>
+                                            {s >= 60 && (
+                                              <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                            )}
+                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                              {s}
                                             </span>
-                                          )}
-                                        </span>
-                                      );
-                                    })()
-                                  ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                      N/A
-                                    </span>
-                                  )
+                                            {isHot && (
+                                              <span style={{ 
+                                                marginLeft: '6px', 
+                                                fontSize: '0.68rem', 
+                                                fontWeight: '800', 
+                                                letterSpacing: '0.04em',
+                                                color: '#ffffff',
+                                                backgroundColor: '#dc2626',
+                                                padding: '1px 5px',
+                                                borderRadius: '3px'
+                                              }}>
+                                                HOT
+                                              </span>
+                                            )}
+                                          </span>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                        -
+                                      </span>
+                                    )}
+
+                                    {item.analysis.retryStatus === 'manual_check' ? (
+                                      <span style={{ 
+                                        fontSize: '0.72rem', 
+                                        fontWeight: '700', 
+                                        color: '#f87171', 
+                                        backgroundColor: 'rgba(239, 68, 68, 0.15)', 
+                                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        whiteSpace: 'nowrap'
+                                      }} title="Overnight retry failed. Direct manual review required.">
+                                        🔴 Manual Check Required
+                                      </span>
+                                    ) : (item.analysis.analysisProblem ? (
+                                      <span style={{ 
+                                        fontSize: '0.72rem', 
+                                        fontWeight: '700', 
+                                        color: '#f59e0b', 
+                                        backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+                                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        whiteSpace: 'nowrap'
+                                      }} title={`Server access restricted (${item.analysis.analysisProblemReason || 'Protected'}). Queued for overnight retry.`}>
+                                        ⚠ Analysis Problem
+                                      </span>
+                                    ) : null)}
+                                  </div>
                                 ) : (
                                   <span style={{ color: '#64748b' }}>-</span>
                                 )}
@@ -4528,24 +4613,54 @@ function App() {
                               )}
                             </td>
                             <td>
-                              {score !== null && score !== undefined ? (
-                                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                  <span style={{ 
-                                    color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
-                                    marginRight: '6px',
-                                    fontSize: '1.1rem',
-                                    lineHeight: '1'
-                                  }}>●</span>
-                                  {score >= 60 && (
-                                    <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                  )}
-                                  <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                    {score}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                                {score !== null && score !== undefined ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                    <span style={{ 
+                                      color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
+                                      marginRight: '6px',
+                                      fontSize: '1.1rem',
+                                      lineHeight: '1'
+                                    }}>●</span>
+                                    {score >= 60 && (
+                                      <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
+                                    )}
+                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
+                                      {score}
+                                    </span>
                                   </span>
-                                </span>
-                              ) : (
-                                <span style={{ color: '#64748b' }}>-</span>
-                              )}
+                                ) : (
+                                  <span style={{ color: '#64748b' }}>-</span>
+                                )}
+
+                                {item.analysisData?.retryStatus === 'manual_check' ? (
+                                  <span style={{ 
+                                    fontSize: '0.72rem', 
+                                    fontWeight: '700', 
+                                    color: '#f87171', 
+                                    backgroundColor: 'rgba(239, 68, 68, 0.15)', 
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    padding: '1px 6px', 
+                                    borderRadius: '4px',
+                                    whiteSpace: 'nowrap'
+                                  }} title="Overnight retry failed. Direct manual review required.">
+                                    🔴 Manual Check Required
+                                  </span>
+                                ) : (item.analysisData?.analysisProblem ? (
+                                  <span style={{ 
+                                    fontSize: '0.72rem', 
+                                    fontWeight: '700', 
+                                    color: '#f59e0b', 
+                                    backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+                                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                                    padding: '1px 6px', 
+                                    borderRadius: '4px',
+                                    whiteSpace: 'nowrap'
+                                  }} title="Server access restricted. Queued for overnight retry.">
+                                    ⚠ Analysis Problem
+                                  </span>
+                                ) : null)}
+                              </div>
                             </td>
                             <td>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -7013,22 +7128,27 @@ function App() {
                       }}>
                         {activeAnalysisItem.leadOpportunityScore?.band || 'Low'} Opportunity
                       </span>
+                      {(activeAnalysisItem.analysisProblem || activeAnalysisItem.leadOpportunityScore?.isIncomplete) && (
+                        <span style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
+                          ⚠ Analysis Incomplete
+                        </span>
+                      )}
                     </>
                   ) : (
                     <>
-                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: '#94a3b8', lineHeight: '1' }}>
-                        N/A
+                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: activeAnalysisItem.retryStatus === 'manual_check' ? '#ef4444' : (activeAnalysisItem.analysisProblem ? '#f59e0b' : '#94a3b8'), lineHeight: '1' }}>
+                        {activeAnalysisItem.retryStatus === 'manual_check' ? '🔴' : (activeAnalysisItem.analysisProblem ? '⚠' : 'N/A')}
                       </span>
                       <span style={{ 
                         marginTop: '0.75rem',
                         fontWeight: 'bold', 
-                        fontSize: '1.05rem',
+                        fontSize: '0.95rem',
                         padding: '0.25rem 0.75rem', 
                         borderRadius: '20px', 
-                        backgroundColor: 'rgba(148, 163, 184, 0.2)',
-                        color: '#94a3b8'
+                        backgroundColor: activeAnalysisItem.retryStatus === 'manual_check' ? 'rgba(239, 68, 68, 0.2)' : (activeAnalysisItem.analysisProblem ? 'rgba(245, 158, 11, 0.2)' : 'rgba(148, 163, 184, 0.2)'),
+                        color: activeAnalysisItem.retryStatus === 'manual_check' ? '#ef4444' : (activeAnalysisItem.analysisProblem ? '#f59e0b' : '#94a3b8')
                       }}>
-                        N/A
+                        {activeAnalysisItem.retryStatus === 'manual_check' ? 'Manual Check Required' : (activeAnalysisItem.analysisProblem ? 'Analysis Problem' : 'N/A')}
                       </span>
                     </>
                   )}
@@ -7044,7 +7164,7 @@ function App() {
                     fontWeight: 'bold', 
                     color: activeAnalysisItem.gbp?.status === 'Found' ? '#10b981' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? '#f59e0b' : '#ef4444')
                   }}>
-                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Found' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
+                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Profile Matched' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
                   </span>
                 </div>
                 <div className="analysis-row">
@@ -7057,13 +7177,22 @@ function App() {
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Rating</span>
-                  <span className="analysis-value" style={{ fontWeight: 'bold', color: activeAnalysisItem.gbp?.rating && activeAnalysisItem.gbp?.rating !== 'Not Found' ? '#f59e0b' : 'inherit' }}>
-                    {activeAnalysisItem.gbp?.rating !== 'Not Found' && activeAnalysisItem.gbp?.rating !== undefined ? `★ ${activeAnalysisItem.gbp.rating}` : 'No Profile Matched'}
+                  <span className="analysis-value" style={{ 
+                    fontWeight: 'bold', 
+                    color: (activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) ? '#f59e0b' : (activeAnalysisItem.gbp?.status === 'Found' ? '#94a3b8' : 'inherit') 
+                  }}>
+                    {(activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) 
+                      ? `★ ${activeAnalysisItem.gbp.rating}` 
+                      : (activeAnalysisItem.gbp?.status === 'Found' ? 'Unrated (No reviews yet)' : 'No Profile Matched')}
                   </span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Review Count</span>
-                  <span className="analysis-value">{!activeAnalysisItem.gbp?.reviewCount || activeAnalysisItem.gbp?.reviewCount === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.reviewCount}</span>
+                  <span className="analysis-value">
+                    {(activeAnalysisItem.gbp?.reviewCount !== null && activeAnalysisItem.gbp?.reviewCount !== undefined && activeAnalysisItem.gbp?.reviewCount !== 'Not Found') 
+                      ? `${activeAnalysisItem.gbp.reviewCount} reviews` 
+                      : (activeAnalysisItem.gbp?.status === 'Found' ? '0 reviews' : 'No Profile Matched')}
+                  </span>
                 </div>
                 <div className="analysis-row">
                   <span className="analysis-label">Website URL</span>
@@ -7095,7 +7224,7 @@ function App() {
                   <p style={{ margin: 0, fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.5', fontWeight: '500' }}>
                     {activeAnalysisItem.aiReport?.execSummary ? (
                       activeAnalysisItem.aiReport.execSummary.split(/[.!?]/)[0] + '.'
-                    ) : 'Website analysis and opportunity assessment complete.'}
+                    ) : (activeAnalysisItem.analysisProblem ? 'Analysis partial or crawl restricted by target host.' : 'Website analysis and opportunity assessment complete.')}
                   </p>
                 </div>
 
@@ -7111,93 +7240,115 @@ function App() {
 
                 {/* Technical Indicators Grid */}
                 <h4 style={{ margin: '1.5rem 0 0.75rem 0', color: '#cbd5e1', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Technical Indicators</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
-                  <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTPS Secure</span>
-                    <span style={{ 
-                      fontWeight: 'bold', 
-                      fontSize: '0.85rem',
-                      padding: '0.2rem 0.5rem', 
-                      borderRadius: '4px',
-                      color: activeAnalysisItem.seoHealth?.isHttps ? '#10b981' : '#ef4444',
-                      backgroundColor: activeAnalysisItem.seoHealth?.isHttps ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                    }}>
-                      {activeAnalysisItem.seoHealth?.isHttps ? 'Pass' : 'Fail (HTTP)'}
-                    </span>
-                  </div>
+                {(() => {
+                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTPS Secure</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.isHttps ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.isHttps ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.isHttps ? 'Pass' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Fail (HTTP)')}
+                        </span>
+                      </div>
 
-                  <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTP Response Status</span>
-                    <span style={{ 
-                      fontWeight: 'bold', 
-                      fontSize: '0.85rem',
-                      padding: '0.2rem 0.5rem', 
-                      borderRadius: '4px',
-                      color: activeAnalysisItem.seoHealth?.statusCode === 200 ? '#10b981' : '#ef4444',
-                      backgroundColor: activeAnalysisItem.seoHealth?.statusCode === 200 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                    }}>
-                      {activeAnalysisItem.seoHealth?.statusCode === 200 ? 'Pass (200 OK)' : `Fail (${activeAnalysisItem.seoHealth?.statusCode || 'Error'})`}
-                    </span>
-                  </div>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTP Response Status</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.statusCode === 200 ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.statusCode === 200 ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.statusCode === 200 ? 'Pass (200 OK)' : (isCrawlBlocked ? `⚠ Blocked (${activeAnalysisItem.seoHealth?.statusCode || 403})` : `Fail (${activeAnalysisItem.seoHealth?.statusCode || 'Error'})`)}
+                        </span>
+                      </div>
 
-                  <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Search Indexability</span>
-                    <span style={{ 
-                      fontWeight: 'bold', 
-                      fontSize: '0.85rem',
-                      padding: '0.2rem 0.5rem', 
-                      borderRadius: '4px',
-                      color: activeAnalysisItem.seoHealth?.indexable ? '#10b981' : '#ef4444',
-                      backgroundColor: activeAnalysisItem.seoHealth?.indexable ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                    }}>
-                      {activeAnalysisItem.seoHealth?.indexable ? 'Indexable' : 'Noindex'}
-                    </span>
-                  </div>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Search Indexability</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.indexable ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.indexable ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.indexable ? 'Indexable' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Noindex')}
+                        </span>
+                      </div>
 
-                  <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Canonical Tag</span>
-                    <span style={{ 
-                      fontWeight: 'bold', 
-                      fontSize: '0.85rem',
-                      padding: '0.2rem 0.5rem', 
-                      borderRadius: '4px',
-                      color: activeAnalysisItem.seoHealth?.hasCanonical ? '#10b981' : '#ef4444',
-                      backgroundColor: activeAnalysisItem.seoHealth?.hasCanonical ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                    }}>
-                      {activeAnalysisItem.seoHealth?.hasCanonical ? 'Present' : 'Missing'}
-                    </span>
-                  </div>
-                </div>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Canonical Tag</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.hasCanonical ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.hasCanonical ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.hasCanonical ? 'Present' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Missing')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Metadata Details */}
-                <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
-                  <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                    <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Title</h4>
-                    <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                      {(!activeAnalysisItem.pageTitle || activeAnalysisItem.pageTitle === 'Not Found' || activeAnalysisItem.pageTitle === 'Loading...') ? (
-                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                      ) : activeAnalysisItem.pageTitle}
-                    </div>
-                  </div>
+                {(() => {
+                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
+                  return (
+                    <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Title</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.pageTitle || activeAnalysisItem.pageTitle === 'Not Found' || activeAnalysisItem.pageTitle === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.pageTitle}
+                        </div>
+                      </div>
 
-                  <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                    <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Description</h4>
-                    <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                      {(!activeAnalysisItem.metaDescription || activeAnalysisItem.metaDescription === 'Not Found' || activeAnalysisItem.metaDescription === 'Loading...') ? (
-                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                      ) : activeAnalysisItem.metaDescription}
-                    </div>
-                  </div>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Description</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.metaDescription || activeAnalysisItem.metaDescription === 'Not Found' || activeAnalysisItem.metaDescription === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.metaDescription}
+                        </div>
+                      </div>
 
-                  <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                    <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>H1 Heading</h4>
-                    <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                      {(!activeAnalysisItem.h1 || activeAnalysisItem.h1 === 'Not Found' || activeAnalysisItem.h1 === 'Loading...') ? (
-                        <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                      ) : activeAnalysisItem.h1}
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>H1 Heading</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.h1 || activeAnalysisItem.h1 === 'Not Found' || activeAnalysisItem.h1 === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.h1}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
 
               {/* Website Desktop Preview Card */}
@@ -7294,9 +7445,11 @@ function App() {
                       gap: '0.5rem',
                       width: '100%'
                     }}>
-                      <span style={{ fontSize: '2.5rem' }}>🌐</span>
-                      <span style={{ fontWeight: 'bold', color: '#cbd5e1' }}>Desktop Preview Unavailable</span>
-                      <span style={{ fontSize: '0.85rem' }}>Direct connection or security restrictions prevented live screenshot capture.</span>
+                      <span style={{ fontSize: '2.5rem' }}>⚠</span>
+                      <span style={{ fontWeight: 'bold', color: '#cbd5e1', fontSize: '1.05rem' }}>Preview Unavailable (Automated access restricted)</span>
+                      <span style={{ fontSize: '0.85rem', maxWidth: '420px', lineHeight: '1.4' }}>
+                        Target server returned HTTP 403 or anti-bot protection. Live page inspection can be performed directly in your browser.
+                      </span>
                       {activeAnalysisItem.url && (
                         <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-btn" style={{ marginTop: '0.75rem', backgroundColor: '#2563eb', color: '#ffffff' }}>
                           Visit {activeAnalysisItem.domain} ↗

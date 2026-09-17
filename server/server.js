@@ -438,9 +438,9 @@ function getExactHost(urlStr) {
   }
 }
 
-function extractBusinessName(title, h1) {
+function extractBusinessName(title, h1, cleanDomain = '') {
   let candidate = '';
-  if (title && title !== 'Not Found' && title !== 'Loading...') {
+  if (title && !isPlaceholderTitle(title) && title !== 'Not Found' && title !== 'Loading...') {
     const parts = title.split(/[|:-]/);
     const cleanedParts = parts.map(p => p.trim()).filter(Boolean);
     if (cleanedParts.length > 0) {
@@ -454,10 +454,26 @@ function extractBusinessName(title, h1) {
     // Strip common legal suffixes
     candidate = candidate.replace(/\b(Ltd|Limited|LLP|Inc|Co|Plc|Group|Services|Solicitors|Lawyers)\b/gi, '').trim();
   }
+  if (!candidate && cleanDomain) {
+    // Split domain stem into readable words (e.g. cotswoldshutterco -> Cotswold Shutter Co)
+    const stem = cleanDomain.split('.')[0];
+    const tokens = stem
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/[-_]+/g, ' ')
+      .replace(/(shutter|shutters|solicitor|solicitors|plumbing|heating|media|electric|roofing|dental|clinic|law|company|co|group)/gi, ' $1 ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (tokens.length > 0) {
+      candidate = tokens.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join(' ');
+    } else {
+      candidate = stem;
+    }
+  }
   return candidate || '';
 }
 
-function calculateMatchScore(candidate, targetDomain, html, extractedBusinessName, searchLocation) {
+function calculateMatchScore(candidate, targetDomain, targetUrl, html, extractedBusinessName, searchLocation) {
   let score = 0;
   let reasons = [];
 
@@ -470,6 +486,16 @@ function calculateMatchScore(candidate, targetDomain, html, extractedBusinessNam
     } else if (candidate.url.toLowerCase().includes(targetDomain.toLowerCase())) {
       score += 100;
       reasons.push(`Partial domain match in URL`);
+    }
+
+    // Exact target ranking URL match bonus (when profile points directly to the ranking subpage)
+    if (targetUrl) {
+      const candCleanUrl = candidate.url.replace(/\/$/, '').toLowerCase();
+      const targetCleanUrl = targetUrl.replace(/\/$/, '').toLowerCase();
+      if (candCleanUrl === targetCleanUrl) {
+        score += 100;
+        reasons.push(`Exact URL match to ranking page (${candidate.url})`);
+      }
     }
   }
 
@@ -532,45 +558,43 @@ function calculateMatchScore(candidate, targetDomain, html, extractedBusinessNam
 const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation) => {
   const cleanDomain = getDomain(targetUrl);
   const exactHost = getExactHost(targetUrl);
-  const businessName = extractBusinessName(title, h1Text) || cleanDomain.split('.')[0];
+  const businessName = extractBusinessName(title, h1Text, cleanDomain);
 
   const login = process.env.DATAFORSEO_LOGIN;
   const password = process.env.DATAFORSEO_PASSWORD;
   const auth = Buffer.from(`${login}:${password}`).toString('base64');
 
+  const domainVariants = Array.from(new Set([
+    cleanDomain,
+    `www.${cleanDomain}`,
+    exactHost
+  ].filter(Boolean)));
+
   let candidates = [];
   let methodUsed = '';
 
-  // Step 1: Try exact domain matches (exactHost, then cleanDomain)
-  try {
-    const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
-      method: 'POST',
-      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify([{ filters: [["domain", "=", exactHost]], limit: 10 }])
-    });
-    if (response.ok) {
-      const resData = await response.json();
-      candidates = resData?.tasks?.[0]?.result?.[0]?.items || [];
-      if (candidates.length > 0) methodUsed = 'Exact Host domain match';
-    }
-  } catch (e) {
-    console.error('Exact host lookup failed:', e);
-  }
-
-  if (candidates.length === 0 && cleanDomain !== exactHost) {
+  // Step 1: Search domain variants (clean domain, www, exact host)
+  for (const dom of domainVariants) {
     try {
       const response = await fetch('https://api.dataforseo.com/v3/business_data/business_listings/search/live', {
         method: 'POST',
         headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify([{ filters: [["domain", "=", cleanDomain]], limit: 10 }])
+        body: JSON.stringify([{ filters: [["domain", "=", dom]], limit: 10 }])
       });
       if (response.ok) {
         const resData = await response.json();
-        candidates = resData?.tasks?.[0]?.result?.[0]?.items || [];
-        if (candidates.length > 0) methodUsed = 'Clean domain match';
+        const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
+        if (items.length > 0) {
+          methodUsed = `Domain match (${dom})`;
+          for (const it of items) {
+            if (!candidates.some(c => (c.place_id && c.place_id === it.place_id) || (c.title === it.title && c.address === it.address))) {
+              candidates.push(it);
+            }
+          }
+        }
       }
     } catch (e) {
-      console.error('Clean domain lookup failed:', e);
+      console.error(`Domain lookup failed for ${dom}:`, e);
     }
   }
 
@@ -584,8 +608,11 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
       });
       if (response.ok) {
         const resData = await response.json();
-        candidates = resData?.tasks?.[0]?.result?.[0]?.items || [];
-        if (candidates.length > 0) methodUsed = 'Business name search';
+        const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
+        if (items.length > 0) {
+          methodUsed = `Business name search (${businessName})`;
+          candidates = items;
+        }
       }
     } catch (e) {
       console.error('Business name lookup failed:', e);
@@ -598,7 +625,7 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
   let bestReasons = [];
 
   for (const candidate of candidates) {
-    const { score, reasons } = calculateMatchScore(candidate, cleanDomain, html, businessName, searchLocation);
+    const { score, reasons } = calculateMatchScore(candidate, cleanDomain, targetUrl, html, businessName, searchLocation);
     if (score > bestScore) {
       bestScore = score;
       bestCandidates = [candidate];
@@ -612,35 +639,45 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
     status: 'Not Found',
     businessName: 'Not Found',
     primaryCategory: 'Not Found',
-    rating: 'Not Found',
-    reviewCount: 'Not Found',
+    rating: null,
+    ratingLabel: 'Not Found',
+    reviewCount: 0,
     websiteUrl: 'Not Found',
     phoneNumber: 'Not Found',
-    address: 'Not Found'
+    address: 'Not Found',
+    otherLocationsCount: candidates.length > 1 ? candidates.length : 0
   };
 
   if (bestScore >= 50 && bestCandidates.length === 1) {
     const bestCandidate = bestCandidates[0];
+    const hasRating = bestCandidate.rating?.value !== undefined && bestCandidate.rating?.value !== null;
+    const ratingVal = hasRating ? parseFloat(bestCandidate.rating.value) : null;
+    const votesCount = bestCandidate.rating?.votes_count !== undefined && bestCandidate.rating?.votes_count !== null ? parseInt(bestCandidate.rating.votes_count, 10) : 0;
+
     gbp = {
       status: 'Found',
       businessName: bestCandidate.title || 'Not Found',
       primaryCategory: bestCandidate.category || 'Not Found',
-      rating: bestCandidate.rating?.value !== undefined && bestCandidate.rating?.value !== null ? bestCandidate.rating.value : 'Not Found',
-      reviewCount: bestCandidate.rating?.votes_count !== undefined && bestCandidate.rating?.votes_count !== null ? bestCandidate.rating.votes_count : 'Not Found',
+      rating: ratingVal,
+      ratingLabel: hasRating ? `${ratingVal}` : 'Unrated / No reviews yet',
+      reviewCount: isNaN(votesCount) ? 0 : votesCount,
       websiteUrl: bestCandidate.url || 'Not Found',
       phoneNumber: bestCandidate.phone || 'Not Found',
-      address: bestCandidate.address || 'Not Found'
+      address: bestCandidate.address || 'Not Found',
+      otherLocationsCount: candidates.length > 1 ? candidates.length : 0
     };
   } else if (bestScore >= 50 && bestCandidates.length > 1) {
     gbp = {
       status: 'Multiple Matches',
       businessName: 'Multiple Matches',
       primaryCategory: 'Multiple Matches',
-      rating: 'Multiple Matches',
-      reviewCount: 'Multiple Matches',
+      rating: null,
+      ratingLabel: 'Multiple Matches',
+      reviewCount: 0,
       websiteUrl: 'Multiple Matches',
       phoneNumber: 'Multiple Matches',
-      address: 'Multiple Matches'
+      address: 'Multiple Matches',
+      otherLocationsCount: candidates.length
     };
   }
 
@@ -697,15 +734,15 @@ function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, c
       score += 10;
       reasonsList.push({ points: 10, text: "Multiple matching business profiles found, causing listing confusion" });
     } else if (gbp.status === 'Found') {
-      const ratingVal = parseFloat(gbp.rating);
-      const votesCount = parseInt(gbp.reviewCount, 10);
+      const ratingVal = typeof gbp.rating === 'number' ? gbp.rating : parseFloat(gbp.rating);
+      const votesCount = typeof gbp.reviewCount === 'number' ? gbp.reviewCount : parseInt(gbp.reviewCount, 10);
       
-      if (!isNaN(ratingVal) && ratingVal < 4.0) {
+      if (!isNaN(ratingVal) && ratingVal < 4.0 && ratingVal > 0) {
         score += 10;
         reasonsList.push({ points: 10, text: `Google Business Profile rating is low (${ratingVal} stars)` });
       } else if (!isNaN(votesCount) && votesCount < 30) {
         score += 10;
-        reasonsList.push({ points: 10, text: `Google Business Profile has a low review count (${votesCount} reviews)` });
+        reasonsList.push({ points: 10, text: `Google Business Profile has low review volume (${votesCount} reviews)` });
       }
     }
   }
@@ -714,7 +751,7 @@ function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, c
   // RULE: If crawl was blocked/failed, do NOT penalize or award points for uninspected elements!
   if (crawlFailed) {
     if (crawlStatusText) {
-      reasonsList.push({ points: 0, text: `On-page content inspection restricted by server (${crawlStatusText})` });
+      reasonsList.push({ points: 0, text: `⚠ On-page technical inspection restricted by server (${crawlStatusText})` });
     }
   } else if (health) {
     if (health.statusCode !== 200 && health.statusCode !== 0) {
@@ -731,24 +768,24 @@ function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, c
     }
 
     // Metadata (Max 20 points)
-    if (!health.titlePresent || health.titleLength === 0) {
+    if (health.titlePresent === false || health.titleLength === 0) {
       score += 10;
       reasonsList.push({ points: 10, text: "HTML meta title tag is missing" });
-    } else if (health.titleLength < 50 || health.titleLength > 60) {
+    } else if (health.titleLength > 0 && (health.titleLength < 50 || health.titleLength > 60)) {
       score += 4;
       reasonsList.push({ points: 4, text: `HTML meta title length (${health.titleLength} chars) is outside optimal 50-60 range` });
     }
 
-    if (!health.descriptionPresent || health.descriptionLength === 0) {
+    if (health.descriptionPresent === false || health.descriptionLength === 0) {
       score += 10;
       reasonsList.push({ points: 10, text: "HTML meta description tag is missing" });
-    } else if (health.descriptionLength < 120 || health.descriptionLength > 160) {
+    } else if (health.descriptionLength > 0 && (health.descriptionLength < 120 || health.descriptionLength > 160)) {
       score += 4;
       reasonsList.push({ points: 4, text: `HTML meta description length (${health.descriptionLength} chars) is outside optimal 120-160 range` });
     }
 
     // Heading Structure (Max 10 points)
-    if (!health.h1Present || health.h1Count === 0) {
+    if (health.h1Present === false || health.h1Count === 0) {
       score += 10;
       reasonsList.push({ points: 10, text: "First H1 heading tag is missing" });
     } else if (health.h1Count > 1) {
@@ -757,20 +794,22 @@ function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, c
     }
 
     // Content Depth (Max 10 points)
-    if (health.wordCount < 300) {
-      score += 10;
-      reasonsList.push({ points: 10, text: `Page content is thin (${health.wordCount} words, recommend 600+)` });
-    } else if (health.wordCount < 600) {
-      score += 5;
-      reasonsList.push({ points: 5, text: `Page content is moderate (${health.wordCount} words, recommend 600+)` });
+    if (typeof health.wordCount === 'number') {
+      if (health.wordCount < 300) {
+        score += 10;
+        reasonsList.push({ points: 10, text: `Page content is thin (${health.wordCount} words, recommend 600+)` });
+      } else if (health.wordCount < 600) {
+        score += 5;
+        reasonsList.push({ points: 5, text: `Page content is moderate (${health.wordCount} words, recommend 600+)` });
+      }
     }
 
     // Internal & External Linking (Max 10 points)
-    if (health.internalLinksCount < 5) {
+    if (typeof health.internalLinksCount === 'number' && health.internalLinksCount < 5) {
       score += 5;
       reasonsList.push({ points: 5, text: `Low internal linking count (${health.internalLinksCount} links)` });
     }
-    if (health.externalLinksCount < 1) {
+    if (typeof health.externalLinksCount === 'number' && health.externalLinksCount < 1) {
       score += 5;
       reasonsList.push({ points: 5, text: "Low external linking count (0 links)" });
     }
@@ -801,7 +840,8 @@ function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, c
   return {
     score,
     band,
-    reasons: topReasons
+    reasons: topReasons,
+    isIncomplete: !!crawlFailed
   };
 }
 
@@ -879,13 +919,7 @@ function getPriorityRating(health, gbp, rank, crawlFailed = false) {
   };
 }
 
-// POST Analyse endpoint
-app.post('/api/analyse', async (req, res) => {
-  const { url, searchType, rank, location } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'URL is required' });
-  }
-
+async function analyseProspectUrl(url, searchType = 'Organic', rank = 0, location = 'Anywhere', previousAnalysis = null) {
   let targetUrl = url;
   if (!/^https?:\/\//i.test(targetUrl)) {
     targetUrl = targetUrl.replace(/^\/\//, '');
@@ -960,6 +994,8 @@ app.post('/api/analyse', async (req, res) => {
     }
   }
 
+  const prevRetryCount = previousAnalysis?.retryCount || 0;
+
   // Step 3: If still no usable HTML or hard HTTP error after all fallbacks
   if (!html || statusCode >= 400 || !$ || isPlaceholderTitle(title)) {
     let statusText = httpStatus || 'Connection Error';
@@ -992,15 +1028,25 @@ app.post('/api/analyse', async (req, res) => {
     const leadScore = getOpportunityScoreAndReasons(fallbackHealth, gbp, rank, true, statusText);
     const leadPriority = getPriorityRating(fallbackHealth, gbp, rank, true);
 
-    return res.json({
-      pageTitle: 'Unknown (Crawl Blocked)',
-      metaDescription: 'Unknown (Crawl Blocked)',
-      h1: 'Unknown (Crawl Blocked)',
+    const isRetry = !!previousAnalysis;
+    const nextRetryCount = isRetry ? (prevRetryCount + 1) : 0;
+    const nextRetryStatus = isRetry ? 'manual_check' : 'queued';
+
+    return {
+      rank: rank || 0,
+      pageTitle: 'Unable to verify (Protected / Restricted)',
+      metaDescription: 'Unable to verify (Protected / Restricted)',
+      h1: 'Unable to verify (Protected / Restricted)',
       httpStatus: statusText,
-      canonicalUrl: 'Unknown (Crawl Blocked)',
+      canonicalUrl: 'Unable to verify (Protected / Restricted)',
       indexable: 'Unknown',
       lastAnalysed: new Date().toISOString(),
       error: null,
+      analysisProblem: true,
+      analysisProblemReason: `Protected / Restricted (${statusText})`,
+      retryStatus: nextRetryStatus,
+      retryCount: nextRetryCount,
+      lastAttemptTimestamp: new Date().toISOString(),
       diagnosticFailureReason: `Server restricted crawling (${statusText}). Score calculated from known factual signals (SERP rank #${rank}, GBP, HTTPS).`,
       seoHealth: fallbackHealth,
       aiReport: {
@@ -1010,8 +1056,12 @@ app.post('/api/analyse', async (req, res) => {
       leadOpportunity: leadOpportunity,
       gbp: gbp,
       leadOpportunityScore: leadScore,
-      leadPriority: leadPriority
-    });
+      leadPriority: leadPriority,
+      contactEmail: null,
+      allFoundEmails: [],
+      emailStatus: 'No Email',
+      emailSource: targetUrl
+    };
   }
 
   // Step 4: Normal extraction when HTML was successfully obtained
@@ -1129,7 +1179,12 @@ app.post('/api/analyse', async (req, res) => {
     discoveredEmailSource = emailRes.emailSource || targetUrl;
   } catch (err) {}
 
-  return res.json({
+  const isRetry = !!previousAnalysis;
+  const nextRetryCount = isRetry ? (prevRetryCount + 1) : 0;
+  const nextRetryStatus = isRetry ? 'resolved' : null;
+
+  return {
+    rank: rank || 0,
     pageTitle: title || 'Not Found',
     metaDescription: description || 'Not Found',
     h1: h1Text || 'Not Found',
@@ -1137,6 +1192,11 @@ app.post('/api/analyse', async (req, res) => {
     canonicalUrl: canonical || 'Not Found',
     indexable: indexableBool ? 'Yes' : 'No',
     lastAnalysed: new Date().toISOString(),
+    analysisProblem: false,
+    analysisProblemReason: null,
+    retryStatus: nextRetryStatus,
+    retryCount: nextRetryCount,
+    lastAttemptTimestamp: new Date().toISOString(),
     seoHealth: seoHealthData,
     aiReport: aiReport,
     leadOpportunity: leadOpportunity,
@@ -1147,8 +1207,172 @@ app.post('/api/analyse', async (req, res) => {
     allFoundEmails: discoveredAllEmails,
     emailStatus: discoveredEmailStatus,
     emailSource: discoveredEmailSource
-  });
+  };
+}
+
+// POST Analyse endpoint
+app.post('/api/analyse', async (req, res) => {
+  const { url, searchType, rank, location } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+
+  try {
+    const analysis = await analyseProspectUrl(url, searchType || 'Organic', rank || 0, location || 'Anywhere');
+    res.json(analysis);
+  } catch (error) {
+    console.error('Analysis execution error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
+
+// POST single prospect retry endpoint
+app.post('/api/analyse/retry', async (req, res) => {
+  const { url, searchType, rank, location, previousAnalysis } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  try {
+    const result = await analyseProspectUrl(url, searchType || 'Organic', rank || 0, location || 'Anywhere', previousAnalysis || null);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Helper for Overnight Retry Queue execution
+async function runOvernightAnalysisRetryQueue() {
+  console.log('[Overnight Retry Queue] Starting overnight retry run at UK 02:00...');
+  try {
+    const db = await getDb();
+    let retriedCount = 0;
+    let resolvedCount = 0;
+    let manualCheckCount = 0;
+
+    // 1. Process saved_searches across all workspaces
+    const savedSearches = await db.all('SELECT * FROM saved_searches');
+    for (const row of savedSearches) {
+      if (!row.data) continue;
+      let data = [];
+      try { data = JSON.parse(row.data); } catch (e) { continue; }
+      let rowUpdated = false;
+
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        if (item.analysis && item.analysis.analysisProblem === true && (!item.analysis.retryCount || item.analysis.retryCount < 1) && item.analysis.retryStatus !== 'manual_check') {
+          retriedCount++;
+          const targetUrl = item.url || item.website || (item.domain ? `https://${item.domain}` : '');
+          if (!targetUrl) continue;
+
+          console.log(`[Overnight Retry] Retrying saved search prospect: ${targetUrl} (Workspace: ${row.workspace})`);
+          const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', item.rank || 0, row.location || 'Anywhere', item.analysis);
+
+          data[i].analysis = newAnalysis;
+          if (newAnalysis.analysisProblem === false) {
+            resolvedCount++;
+          } else {
+            manualCheckCount++;
+          }
+          rowUpdated = true;
+        }
+      }
+
+      if (rowUpdated) {
+        await db.run('UPDATE saved_searches SET data = ? WHERE id = ?', [JSON.stringify(data), row.id]);
+      }
+    }
+
+    // 2. Process outreach_shortlist across all workspaces
+    const shortlistRows = await db.all('SELECT * FROM outreach_shortlist');
+    for (const row of shortlistRows) {
+      if (!row.analysisData) continue;
+      let analysis = null;
+      try { analysis = JSON.parse(row.analysisData); } catch (e) { continue; }
+
+      if (analysis && analysis.analysisProblem === true && (!analysis.retryCount || analysis.retryCount < 1) && analysis.retryStatus !== 'manual_check') {
+        retriedCount++;
+        const targetUrl = row.url || (row.domain ? `https://${row.domain}` : '');
+        if (!targetUrl) continue;
+
+        console.log(`[Overnight Retry] Retrying shortlist prospect: ${targetUrl} (Workspace: ${row.workspace})`);
+        const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', row.rank || 0, row.location || 'Anywhere', analysis);
+
+        if (newAnalysis.analysisProblem === false) {
+          resolvedCount++;
+        } else {
+          manualCheckCount++;
+        }
+
+        await db.run(
+          `UPDATE outreach_shortlist SET 
+            analysisData = ?, 
+            opportunityScore = ?, 
+            opportunityBand = ?, 
+            commercialStrengthStars = ?, 
+            commercialStrengthLabel = ?, 
+            commercialStrengthPoints = ?, 
+            gbpStatus = ? 
+          WHERE id = ?`,
+          [
+            JSON.stringify(newAnalysis),
+            newAnalysis.leadOpportunityScore?.score ?? row.opportunityScore,
+            newAnalysis.leadOpportunityScore?.band || row.opportunityBand,
+            newAnalysis.leadPriority?.stars || row.commercialStrengthStars,
+            newAnalysis.leadPriority?.label || row.commercialStrengthLabel,
+            newAnalysis.leadPriority?.points ?? row.commercialStrengthPoints,
+            newAnalysis.gbp?.status === 'Found' ? 'Found' : (newAnalysis.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched'),
+            row.id
+          ]
+        );
+      }
+    }
+
+    console.log(`[Overnight Retry Queue] Completed run. Retried: ${retriedCount}, Resolved: ${resolvedCount}, Manual Check Required: ${manualCheckCount}`);
+    return { success: true, retriedCount, resolvedCount, manualCheckCount };
+  } catch (err) {
+    console.error('[Overnight Retry Queue Error]:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// POST endpoint to trigger overnight retry queue manually
+app.post('/api/analyse/retry-queue/run', async (req, res) => {
+  const result = await runOvernightAnalysisRetryQueue();
+  res.json(result);
+});
+
+// Overnight Retry Scheduler (02:00 UK Time)
+let lastOvernightRunDate = '';
+function setupOvernightRetryScheduler() {
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const ukTime = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(now);
+
+      const todayDateStr = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/London',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(now);
+
+      if (ukTime === '02:00' && lastOvernightRunDate !== todayDateStr) {
+        lastOvernightRunDate = todayDateStr;
+        console.log(`[Scheduler] 02:00 UK Time reached on ${todayDateStr}. Triggering overnight retry queue...`);
+        await runOvernightAnalysisRetryQueue();
+      }
+    } catch (e) {
+      console.error('[Scheduler Error]:', e);
+    }
+  }, 60000);
+}
+
+setupOvernightRetryScheduler();
 
 // POST endpoint for standalone email discovery on any prospect
 app.post('/api/prospects/find-email', async (req, res) => {

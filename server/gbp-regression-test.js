@@ -22,6 +22,18 @@ const benchmarks = [
       primaryCategory: "Plumber",
       websiteUrl: "https://penylanplumbingandheatingbristol.co.uk/"
     }
+  },
+  {
+    name: "Cotswold Shutter Co Ltd (Cheltenham)",
+    url: "https://www.cotswoldshutterco.co.uk/window-shutters/cheltenham-shutter-questions/",
+    searchPhrase: "window shutters Cheltenham",
+    location: "Cheltenham",
+    expected: {
+      status: "Found",
+      businessName: "Cotswold Shutter Co Ltd",
+      primaryCategory: "Blinds shop",
+      websiteUrl: "https://www.cotswoldshutterco.co.uk/"
+    }
   }
 ];
 
