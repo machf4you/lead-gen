@@ -610,6 +610,10 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
       });
       if (response.ok) {
         const resData = await response.json();
+        if (resData?.status_code === 40203 || resData?.tasks?.[0]?.status_code === 40203) {
+          console.warn('[GBP Match] DataForSEO daily limit reached (40203). Gracefully skipping live lookup.');
+          break;
+        }
         const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
         if (items.length > 0) {
           methodUsed = `Domain match (${dom})`;
@@ -618,6 +622,12 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
               candidates.push(it);
             }
           }
+        }
+      } else {
+        const errText = await response.text().catch(() => '');
+        if (response.status === 402 || errText.includes('40203') || errText.includes('Limit')) {
+          console.warn('[GBP Match] DataForSEO daily limit or payment error. Gracefully skipping lookup.');
+          break;
         }
       }
     } catch (e) {
@@ -635,10 +645,19 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
       });
       if (response.ok) {
         const resData = await response.json();
-        const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
-        if (items.length > 0) {
-          methodUsed = `Business name search (${businessName})`;
-          candidates = items;
+        if (resData?.status_code === 40203 || resData?.tasks?.[0]?.status_code === 40203) {
+          console.warn('[GBP Match] DataForSEO daily limit reached (40203). Gracefully skipping live lookup.');
+        } else {
+          const items = resData?.tasks?.[0]?.result?.[0]?.items || [];
+          if (items.length > 0) {
+            methodUsed = `Business name search (${businessName})`;
+            candidates = items;
+          }
+        }
+      } else {
+        const errText = await response.text().catch(() => '');
+        if (response.status === 402 || errText.includes('40203') || errText.includes('Limit')) {
+          console.warn('[GBP Match] DataForSEO daily limit or payment error. Gracefully skipping lookup.');
         }
       }
     } catch (e) {
@@ -1500,10 +1519,8 @@ app.post('/api/analyse/reanalyse-stale', async (req, res) => {
   res.json(result);
 });
 
-// Run stale analysis migration in background on server startup
-setTimeout(() => {
-  reanalyseStaleSavedSearchesAndShortlist().catch(err => console.error('[Startup Migration Error]:', err));
-}, 2000);
+// Automatic startup re-analysis disabled per user directive to prevent unprompted API spending.
+// Re-analysis occurs on-demand when the user views or refreshes an individual prospect.
 
 // POST endpoint to trigger overnight retry queue manually
 app.post('/api/analyse/retry-queue/run', async (req, res) => {
