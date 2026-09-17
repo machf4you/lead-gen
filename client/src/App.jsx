@@ -665,6 +665,7 @@ function App() {
   const [testEmailStatusMsg, setTestEmailStatusMsg] = useState(null);
 
   // Current authenticated user & workspace (persists instantly across page/view navigation)
+  // Current authenticated user & workspace (persists instantly across page/view navigation)
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem('tse_leadgen_user');
@@ -673,13 +674,26 @@ function App() {
     return {
       workspace: 'tse',
       workspaceLabel: 'The Search Equation',
-      username: 'mac'
+      username: 'mac',
+      email: 'mac@thesearchequation.co.uk',
+      role: 'admin',
+      allowedWorkspaces: ['tse', 'smoking_chili']
     };
+  });
+
+  const getAuthHeaders = (overrideWs = null, extraHeaders = {}) => ({
+    'x-auth-user': currentUser?.username || 'mac',
+    'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
+    'x-auth-role': currentUser?.role || 'admin',
+    'x-workspace': overrideWs || currentUser?.workspace || 'tse',
+    ...extraHeaders
   });
 
   const fetchCurrentUser = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/me`);
+      const res = await fetch(`${API_BASE}/api/me`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setCurrentUser(data);
@@ -689,6 +703,64 @@ function App() {
       }
     } catch (err) {
       console.error('Error fetching current user:', err);
+    }
+  };
+
+  const handleSwitchWorkspace = async (targetWs) => {
+    if (!targetWs || targetWs === currentUser?.workspace) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/workspace/switch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-user': currentUser?.username || 'mac',
+          'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
+          'x-auth-role': currentUser?.role || 'admin',
+          'x-workspace': targetWs
+        },
+        body: JSON.stringify({ workspace: targetWs })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updatedUser = data.user || {
+          ...currentUser,
+          workspace: targetWs,
+          workspaceLabel: targetWs === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation'
+        };
+        setCurrentUser(updatedUser);
+        try {
+          localStorage.setItem('tse_leadgen_user', JSON.stringify(updatedUser));
+          document.cookie = `tse_leadgen_workspace=${targetWs}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch (e) {}
+
+        // Reset workspace-specific active views/data
+        setSearchResults([]);
+        setBusinessType('');
+        setLocation('');
+        setActiveSearchId(null);
+        setActiveAnalysisItem(null);
+        setActivePack(null);
+        setSelectedShortlistIds(new Set());
+        setSelectedProspectIdsInPack(new Set());
+
+        // Refresh all workspace datasets
+        await Promise.all([
+          fetchSavedSearches(targetWs),
+          fetchOutreachList(targetWs),
+          fetchOutreachPacks(targetWs),
+          fetchContactHistory(targetWs),
+          fetchExclusions(targetWs),
+          fetchSenderSettings(targetWs),
+          fetchEmailTemplates(targetWs),
+          fetchSenderStatus(targetWs)
+        ]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to switch workspace');
+      }
+    } catch (err) {
+      console.error('Error switching workspace:', err);
+      alert('Error switching workspace: ' + err.message);
     }
   };
 
@@ -786,9 +858,12 @@ function App() {
   const [isSavingSenderSettings, setIsSavingSenderSettings] = useState(false);
   const [senderSettingsSavedMsg, setSenderSettingsSavedMsg] = useState(false);
 
-  const fetchSenderSettings = async () => {
+  const fetchSenderSettings = async (overrideWs = null) => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings/sender`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/settings/sender?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const data = await res.json();
         setSenderSettings(data);
@@ -805,7 +880,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/settings/sender`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(null, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(senderSettings)
       });
       if (res.ok) {
@@ -826,10 +901,13 @@ function App() {
     }
   };
 
-  const fetchEmailTemplates = async () => {
+  const fetchEmailTemplates = async (overrideWs = null) => {
     setIsTemplatesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/email-templates`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/email-templates?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const list = await res.json();
         setMasterTemplates(list);
@@ -1083,15 +1161,11 @@ function App() {
     }
   }, [isSendConfirmModalOpen]);
 
-  const fetchSenderStatus = async () => {
+  const fetchSenderStatus = async (overrideWs = null) => {
     try {
-      const res = await fetch(`${API_BASE}/api/outreach/sender-status`, {
-        headers: {
-          'x-auth-user': currentUser?.username || 'mac',
-          'x-auth-email': currentUser?.email || 'mac@thesearchequation.co.uk',
-          'x-auth-role': currentUser?.role || 'admin',
-          'x-workspace': currentUser?.workspace || 'tse'
-        }
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/outreach/sender-status?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
       });
       if (res.ok) {
         const data = await res.json();
@@ -1155,9 +1229,12 @@ function App() {
     setIsCreatingPackModalOpen(true);
   };
 
-  const fetchExclusions = async () => {
+  const fetchExclusions = async (overrideWs = null) => {
     try {
-      const res = await fetch(`${API_BASE}/api/exclusions`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/exclusions?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const data = await res.json();
         setExcludedDomains(data);
@@ -1224,10 +1301,13 @@ function App() {
     }
   };
 
-  const fetchSavedSearches = async () => {
+  const fetchSavedSearches = async (overrideWs = null) => {
     try {
+      const ws = overrideWs || currentUser?.workspace || 'tse';
       // 1. Fetch current list from the backend database
-      const response = await fetch(`${API_BASE}/api/saved-searches`);
+      const response = await fetch(`${API_BASE}/api/saved-searches?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (!response.ok) throw new Error('Failed to load saved searches');
       let dbSearches = await response.json();
 
@@ -1250,15 +1330,17 @@ function App() {
                   if (!search.searchType) {
                     search.searchType = search.searchMode === 'organic' ? 'Organic' : 'GMB';
                   }
-                  await fetch(`${API_BASE}/api/saved-searches`, {
+                  await fetch(`${API_BASE}/api/saved-searches?workspace=${ws}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders(overrideWs, { 'Content-Type': 'application/json' }),
                     body: JSON.stringify(search)
                   });
                 }
                 
                 // Refresh list from the database after successful migration
-                const refreshedResponse = await fetch(`${API_BASE}/api/saved-searches`);
+                const refreshedResponse = await fetch(`${API_BASE}/api/saved-searches?workspace=${ws}`, {
+                  headers: getAuthHeaders(overrideWs)
+                });
                 if (refreshedResponse.ok) {
                   dbSearches = await refreshedResponse.json();
                 }
@@ -1278,10 +1360,13 @@ function App() {
     }
   };
 
-  const fetchOutreachList = async () => {
+  const fetchOutreachList = async (overrideWs = null) => {
     setIsOutreachLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/outreach`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/outreach?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const data = await res.json();
         setOutreachList(data);
@@ -1331,7 +1416,7 @@ function App() {
     try {
       const res = await fetch(`${API_BASE}/api/outreach`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(null, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           domain,
           url,
@@ -1373,7 +1458,8 @@ function App() {
     if (!idOrDomain) return;
     try {
       const res = await fetch(`${API_BASE}/api/outreach/${encodeURIComponent(idOrDomain)}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       if (res.ok) {
         await fetchOutreachList();
@@ -1384,10 +1470,13 @@ function App() {
     }
   };
 
-  const fetchOutreachPacks = async () => {
+  const fetchOutreachPacks = async (overrideWs = null) => {
     setIsPacksLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/outreach-packs`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/outreach-packs?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const data = await res.json();
         setOutreachPacks(data);
@@ -1399,9 +1488,12 @@ function App() {
     }
   };
 
-  const fetchContactHistory = async () => {
+  const fetchContactHistory = async (overrideWs = null) => {
     try {
-      const res = await fetch(`${API_BASE}/api/outreach/history`);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/outreach/history?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
       if (res.ok) {
         const data = await res.json();
         setContactHistory(data);
@@ -3149,23 +3241,104 @@ function App() {
       <div className="sidebar">
         <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
           <h2 className="sidebar-title" style={{ marginBottom: '0.35rem' }}>Lead Gen</h2>
-          <div style={{
-            fontSize: '0.75rem',
-            color: '#38bdf8',
-            backgroundColor: 'rgba(56, 189, 248, 0.12)',
-            border: '1px solid rgba(56, 189, 248, 0.3)',
-            borderRadius: '4px',
-            padding: '0.2rem 0.5rem',
-            marginBottom: '1rem',
-            fontWeight: '600',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            width: 'fit-content'
-          }}>
-            <span style={{ fontSize: '0.65rem' }}>🏢</span>
-            <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
-          </div>
+          {/* Workspace Switcher Area */}
+          {(currentUser?.allowedWorkspaces?.length > 1 || currentUser?.username === 'mac') ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.4rem',
+              marginBottom: '1.25rem',
+              background: 'rgba(15, 23, 42, 0.65)',
+              padding: '0.5rem',
+              borderRadius: '6px',
+              border: '1px solid rgba(51, 65, 85, 0.8)'
+            }}>
+              <div style={{
+                fontSize: '0.65rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: '#94a3b8',
+                fontWeight: '700',
+                paddingLeft: '0.2rem'
+              }}>
+                Active Workspace
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSwitchWorkspace('tse')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.45rem 0.6rem',
+                  fontSize: '0.78rem',
+                  fontWeight: currentUser?.workspace === 'tse' ? '700' : '500',
+                  borderRadius: '4px',
+                  border: currentUser?.workspace === 'tse' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.08)',
+                  background: currentUser?.workspace === 'tse' ? 'rgba(56, 189, 248, 0.18)' : 'rgba(255,255,255,0.03)',
+                  color: currentUser?.workspace === 'tse' ? '#38bdf8' : '#94a3b8',
+                  cursor: currentUser?.workspace === 'tse' ? 'default' : 'pointer',
+                  transition: 'all 0.15s ease',
+                  textAlign: 'left',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+                title="Switch to The Search Equation workspace"
+              >
+                <span style={{ fontSize: '0.85rem' }}>🏢</span>
+                <span style={{ flex: 1 }}>The Search Equation</span>
+                {currentUser?.workspace === 'tse' && (
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 6px #38bdf8' }} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchWorkspace('smoking_chili')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.45rem 0.6rem',
+                  fontSize: '0.78rem',
+                  fontWeight: currentUser?.workspace === 'smoking_chili' ? '700' : '500',
+                  borderRadius: '4px',
+                  border: currentUser?.workspace === 'smoking_chili' ? '1px solid #f97316' : '1px solid rgba(255,255,255,0.08)',
+                  background: currentUser?.workspace === 'smoking_chili' ? 'rgba(249, 115, 22, 0.18)' : 'rgba(255,255,255,0.03)',
+                  color: currentUser?.workspace === 'smoking_chili' ? '#fb923c' : '#94a3b8',
+                  cursor: currentUser?.workspace === 'smoking_chili' ? 'default' : 'pointer',
+                  transition: 'all 0.15s ease',
+                  textAlign: 'left',
+                  width: '100%',
+                  boxSizing: 'border-box'
+                }}
+                title="Switch to Smoking Chili Media workspace"
+              >
+                <span style={{ fontSize: '0.85rem' }}>🌶️</span>
+                <span style={{ flex: 1 }}>Smoking Chili Media</span>
+                {currentUser?.workspace === 'smoking_chili' && (
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f97316', boxShadow: '0 0 6px #f97316' }} />
+                )}
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              fontSize: '0.75rem',
+              color: currentUser?.workspace === 'smoking_chili' ? '#fb923c' : '#38bdf8',
+              backgroundColor: currentUser?.workspace === 'smoking_chili' ? 'rgba(249, 115, 22, 0.12)' : 'rgba(56, 189, 248, 0.12)',
+              border: currentUser?.workspace === 'smoking_chili' ? '1px solid rgba(249, 115, 22, 0.3)' : '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '4px',
+              padding: '0.2rem 0.5rem',
+              marginBottom: '1rem',
+              fontWeight: '600',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              width: 'fit-content'
+            }}>
+              <span style={{ fontSize: '0.65rem' }}>{currentUser?.workspace === 'smoking_chili' ? '🌶️' : '🏢'}</span>
+              <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
+            </div>
+          )}
           <div className="sidebar-menu">
             <button 
               onClick={() => {

@@ -98,33 +98,58 @@ app.use((req, res, next) => {
   const bodyWorkspace = req.body && typeof req.body === 'object' ? req.body.workspace : '';
 
   let cookieUser = '';
+  let cookieWorkspace = '';
   if (req.headers.cookie) {
-    const match = req.headers.cookie.match(/tse_auth_user=([^;]+)/);
-    if (match) cookieUser = decodeURIComponent(match[1]);
+    const matchUser = req.headers.cookie.match(/tse_auth_user=([^;]+)/);
+    if (matchUser) cookieUser = decodeURIComponent(matchUser[1]);
+    const matchWs = req.headers.cookie.match(/tse_leadgen_workspace=([^;]+)/) || req.headers.cookie.match(/tse_workspace=([^;]+)/);
+    if (matchWs) cookieWorkspace = decodeURIComponent(matchWs[1]);
   }
 
   const rawUser = (headerUser || cookieUser || '').toLowerCase().trim();
   const rawEmail = (headerEmail || '').toLowerCase().trim();
-  const explicitWs = (headerWorkspace || queryWorkspace || bodyWorkspace || '').toLowerCase().trim();
+  const explicitWs = (headerWorkspace || cookieWorkspace || queryWorkspace || bodyWorkspace || '').toLowerCase().trim();
 
-  let workspace = 'tse';
-  let workspaceLabel = 'The Search Equation';
-  let username = rawUser || 'mac';
-  let email = rawEmail || 'mac@thesearchequation.co.uk';
-  let role = headerRole || 'admin';
+  // 1. Identify authenticated user and their authorized workspaces
+  let username = 'mac';
+  let email = 'mac@thesearchequation.co.uk';
+  let role = 'admin';
+  let allowedWorkspaces = ['tse', 'smoking_chili'];
 
-  if (explicitWs === 'smoking_chili' || rawUser === 'darren' || rawEmail.includes('smokingchilimedia') || rawEmail === 'darren@smokingchilimedia.com') {
-    workspace = 'smoking_chili';
-    workspaceLabel = 'Smoking Chili Media';
-    username = rawUser || 'darren';
+  if (rawUser === 'darren' || rawEmail.includes('smokingchilimedia') || rawEmail === 'darren@smokingchilimedia.com') {
+    username = 'darren';
     email = rawEmail || 'darren@smokingchilimedia.com';
-    role = headerRole || 'user';
-  } else if (rawUser === 'deb' || rawEmail.includes('deb@')) {
-    workspace = 'tse';
-    workspaceLabel = 'The Search Equation';
+    role = 'user';
+    allowedWorkspaces = ['smoking_chili'];
+  } else if (rawUser === 'deb' || rawUser === 'deborah' || rawEmail.includes('deb@') || rawEmail.includes('deborah@')) {
     username = 'deb';
     email = rawEmail || 'deb@thesearchequation.co.uk';
+    role = 'user';
+    allowedWorkspaces = ['tse'];
+  } else {
+    // Mac McCarthy (admin with authorised access to both workspaces)
+    username = 'mac';
+    email = 'mac@thesearchequation.co.uk';
+    role = 'admin';
+    allowedWorkspaces = ['tse', 'smoking_chili'];
   }
+
+  // 2. Resolve active workspace strictly constrained by allowedWorkspaces
+  let workspace = allowedWorkspaces[0];
+
+  if (allowedWorkspaces.length > 1) {
+    // Multi-workspace authorized user (Mac)
+    if (explicitWs === 'smoking_chili' || explicitWs === 'smoking-chili') {
+      workspace = 'smoking_chili';
+    } else {
+      workspace = 'tse';
+    }
+  } else {
+    // Single workspace user (Deborah or Darren)
+    workspace = allowedWorkspaces[0];
+  }
+
+  const workspaceLabel = workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation';
 
   req.workspace = workspace;
   req.user = {
@@ -132,7 +157,8 @@ app.use((req, res, next) => {
     email,
     role,
     workspace,
-    workspaceLabel
+    workspaceLabel,
+    allowedWorkspaces
   };
 
   next();
@@ -144,6 +170,35 @@ const jobs = [];
 // API user & workspace info endpoint
 app.get('/api/me', (req, res) => {
   res.json(req.user);
+});
+
+// API workspace switch endpoint (for Mac and authorized multi-workspace users)
+app.post('/api/workspace/switch', (req, res) => {
+  const targetWorkspace = (req.body?.workspace || '').toLowerCase().trim();
+
+  if (!targetWorkspace || (targetWorkspace !== 'tse' && targetWorkspace !== 'smoking_chili')) {
+    return res.status(400).json({ error: 'Invalid workspace specified' });
+  }
+
+  if (!req.user.allowedWorkspaces.includes(targetWorkspace)) {
+    return res.status(403).json({ error: `You do not have permission to access the ${targetWorkspace} workspace` });
+  }
+
+  const workspaceLabel = targetWorkspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation';
+
+  // Set HTTP cookie for persistence across browser sessions
+  res.setHeader('Set-Cookie', `tse_leadgen_workspace=${targetWorkspace}; Path=/; SameSite=Lax`);
+
+  const updatedUser = {
+    ...req.user,
+    workspace: targetWorkspace,
+    workspaceLabel
+  };
+
+  res.json({
+    success: true,
+    user: updatedUser
+  });
 });
 
 // API health endpoint
