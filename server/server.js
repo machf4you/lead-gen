@@ -365,6 +365,11 @@ app.post('/api/search', async (req, res) => {
   }
 });
 
+const MULTI_PART_TLD_PREFIXES = new Set([
+  'co', 'com', 'org', 'net', 'ltd', 'plc', 'me', 'gov', 'ac', 'sch', 
+  'nhs', 'police', 'mod', 'edu', 'asso', 'firm', 'gen', 'ind', 'nom', 'tm', 'web', 'ne', 'or', 'gr'
+]);
+
 function normalizeDomain(urlOrDomain) {
   if (!urlOrDomain) return '';
   let str = String(urlOrDomain).trim().toLowerCase();
@@ -372,12 +377,36 @@ function normalizeDomain(urlOrDomain) {
     try {
       str = new URL(str).hostname;
     } catch (e) {
-      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+      str = str.replace(/^[a-z0-9+.-]+:\/\//i, '').split('/')[0];
     }
   } else {
-    str = str.split('/')[0].split('?')[0];
+    str = str.split('/')[0].split('?')[0].split('#')[0].split(':')[0];
   }
-  return str.replace(/^www\./i, '').trim();
+  
+  str = str.replace(/:\d+$/, '').replace(/^\.+|\.+$/g, '').trim();
+  
+  while (str.startsWith('www.') || str.startsWith('www1.') || str.startsWith('www2.')) {
+    str = str.split('.').slice(1).join('.');
+  }
+
+  const parts = str.split('.');
+  if (parts.length <= 1) {
+    return str;
+  }
+
+  const tld = parts[parts.length - 1];
+  const penultimate = parts[parts.length - 2];
+
+  // If penultimate is a known 2nd-level prefix and TLD is 2-letter ccTLD (e.g. .co.uk, .org.uk, .com.au)
+  if (tld.length === 2 && MULTI_PART_TLD_PREFIXES.has(penultimate)) {
+    if (parts.length >= 3) {
+      return parts.slice(-3).join('.');
+    }
+    return parts.join('.');
+  }
+
+  // Standard 1-part TLD (e.g. .com, .uk, .org, .net, .co, .io, .ai, .london)
+  return parts.slice(-2).join('.');
 }
 
 function isDomainExcluded(urlOrDomain, excludedList) {
@@ -1809,41 +1838,57 @@ async function crawlProspectContactEmails(targetUrl) {
     return null;
   };
 
-  // 1. Fetch homepage
-  let homeResult = await fetchPage(fetchUrl);
-  if (!homeResult && !fetchUrl.startsWith('https://www.') && fetchUrl.startsWith('https://')) {
+  // 1. Fetch ranking landing page
+  let landingResult = await fetchPage(fetchUrl);
+  if (!landingResult && !fetchUrl.startsWith('https://www.') && fetchUrl.startsWith('https://')) {
     const wwwUrl = fetchUrl.replace('https://', 'https://www.');
-    homeResult = await fetchPage(wwwUrl);
+    landingResult = await fetchPage(wwwUrl);
   }
 
   const contactLinks = [];
-  if (homeResult?.html) {
-    const homeEmails = extractEmailsFromHtml(homeResult.html, baseDomain);
-    homeEmails.forEach(e => {
-      allEmails.add(e);
-      if (!emailSourcesMap.has(e)) emailSourcesMap.set(e, homeResult.finalUrl);
-      if (!primarySource) primarySource = homeResult.finalUrl;
-    });
+  const pagesToScan = [landingResult].filter(Boolean);
 
-    // Find contact page links in HTML
-    try {
-      const $ = cheerio.load(homeResult.html);
-      $('a[href]').each((i, el) => {
-        const href = $(el).attr('href')?.trim();
-        const text = $(el).text()?.trim().toLowerCase();
-        if (!href) return;
-        if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|pdf|zip|woff|woff2)$/i.test(href)) return;
-        if (/contact|get-in-touch|reach-us|enquir|about/i.test(href) || /contact|get in touch|reach us|enquire|about us/i.test(text)) {
-          try {
-            const resolved = new URL(href, homeResult.finalUrl).toString();
-            const cleanResolved = resolved.split('#')[0];
-            if (normalizeDomain(cleanResolved) === baseDomain && !contactLinks.includes(cleanResolved) && cleanResolved !== homeResult.finalUrl) {
-              contactLinks.push(cleanResolved);
-            }
-          } catch (e) {}
-        }
+  // 2. Also fetch company root homepage if fetchUrl is an inner page or subdomain
+  const rootHomepageUrl = `https://${baseDomain}`;
+  if (fetchUrl.replace(/\/+$/, '') !== rootHomepageUrl) {
+    let rootResult = await fetchPage(rootHomepageUrl);
+    if (!rootResult) {
+      rootResult = await fetchPage(`https://www.${baseDomain}`);
+    }
+    if (rootResult) {
+      pagesToScan.push(rootResult);
+    }
+  }
+
+  for (const pageRes of pagesToScan) {
+    if (pageRes?.html) {
+      const pageEmails = extractEmailsFromHtml(pageRes.html, baseDomain);
+      pageEmails.forEach(e => {
+        allEmails.add(e);
+        if (!emailSourcesMap.has(e)) emailSourcesMap.set(e, pageRes.finalUrl);
+        if (!primarySource) primarySource = pageRes.finalUrl;
       });
-    } catch (e) {}
+
+      // Find contact page links in HTML
+      try {
+        const $ = cheerio.load(pageRes.html);
+        $('a[href]').each((i, el) => {
+          const href = $(el).attr('href')?.trim();
+          const text = $(el).text()?.trim().toLowerCase();
+          if (!href) return;
+          if (/\.(png|jpg|jpeg|gif|svg|webp|css|js|pdf|zip|woff|woff2)$/i.test(href)) return;
+          if (/contact|get-in-touch|reach-us|enquir|about/i.test(href) || /contact|get in touch|reach us|enquire|about us/i.test(text)) {
+            try {
+              const resolved = new URL(href, pageRes.finalUrl).toString();
+              const cleanResolved = resolved.split('#')[0];
+              if (normalizeDomain(cleanResolved) === baseDomain && !contactLinks.includes(cleanResolved) && cleanResolved !== pageRes.finalUrl) {
+                contactLinks.push(cleanResolved);
+              }
+            } catch (e) {}
+          }
+        });
+      } catch (e) {}
+    }
   }
 
   // If no contact links discovered, probe standard paths

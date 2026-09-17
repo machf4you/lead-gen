@@ -183,8 +183,73 @@ export async function getDb() {
   await migrateSenderVariablesInTemplates(db);
   await migrateTemplateClassifications(db);
   await repairAndMigratePackIds(db);
+  await migrateCompanyDomains(db);
   
   return db;
+}
+
+const MULTI_PART_TLD_PREFIXES = new Set([
+  'co', 'com', 'org', 'net', 'ltd', 'plc', 'me', 'gov', 'ac', 'sch', 
+  'nhs', 'police', 'mod', 'edu', 'asso', 'firm', 'gen', 'ind', 'nom', 'tm', 'web', 'ne', 'or', 'gr'
+]);
+
+export function normalizeCompanyDomain(urlOrDomain) {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^[a-z0-9+.-]+:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0].split('#')[0].split(':')[0];
+  }
+  
+  str = str.replace(/:\d+$/, '').replace(/^\.+|\.+$/g, '').trim();
+  
+  while (str.startsWith('www.') || str.startsWith('www1.') || str.startsWith('www2.')) {
+    str = str.split('.').slice(1).join('.');
+  }
+
+  const parts = str.split('.');
+  if (parts.length <= 1) {
+    return str;
+  }
+
+  const tld = parts[parts.length - 1];
+  const penultimate = parts[parts.length - 2];
+
+  if (tld.length === 2 && MULTI_PART_TLD_PREFIXES.has(penultimate)) {
+    if (parts.length >= 3) {
+      return parts.slice(-3).join('.');
+    }
+    return parts.join('.');
+  }
+
+  return parts.slice(-2).join('.');
+}
+
+export async function migrateCompanyDomains(database) {
+  try {
+    const shortlistRows = await database.all('SELECT id, domain, url FROM outreach_shortlist');
+    for (const r of shortlistRows) {
+      const cleanDom = normalizeCompanyDomain(r.domain || r.url);
+      if (cleanDom && cleanDom !== r.domain) {
+        await database.run('UPDATE outreach_shortlist SET domain = ? WHERE id = ?', [cleanDom, r.id]);
+      }
+    }
+
+    const historyRows = await database.all('SELECT id, domain FROM outreach_contact_history');
+    for (const h of historyRows) {
+      const cleanDom = normalizeCompanyDomain(h.domain);
+      if (cleanDom && cleanDom !== h.domain) {
+        await database.run('UPDATE outreach_contact_history SET domain = ? WHERE id = ?', [cleanDom, h.id]);
+      }
+    }
+  } catch (e) {
+    console.error('Error migrating company domains:', e);
+  }
 }
 
 // Initialize default app settings in database per workspace

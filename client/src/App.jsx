@@ -150,6 +150,11 @@ Kind regards,
   return email;
 };
 
+const MULTI_PART_TLD_PREFIXES = new Set([
+  'co', 'com', 'org', 'net', 'ltd', 'plc', 'me', 'gov', 'ac', 'sch', 
+  'nhs', 'police', 'mod', 'edu', 'asso', 'firm', 'gen', 'ind', 'nom', 'tm', 'web', 'ne', 'or', 'gr'
+]);
+
 const normalizeDomain = (urlOrDomain) => {
   if (!urlOrDomain) return '';
   let str = String(urlOrDomain).trim().toLowerCase();
@@ -157,12 +162,36 @@ const normalizeDomain = (urlOrDomain) => {
     try {
       str = new URL(str).hostname;
     } catch (e) {
-      str = str.replace(/^https?:\/\//i, '').split('/')[0];
+      str = str.replace(/^[a-z0-9+.-]+:\/\//i, '').split('/')[0];
     }
   } else {
-    str = str.split('/')[0].split('?')[0];
+    str = str.split('/')[0].split('?')[0].split('#')[0].split(':')[0];
   }
-  return str.replace(/^www\./i, '').trim();
+  
+  str = str.replace(/:\d+$/, '').replace(/^\.+|\.+$/g, '').trim();
+  
+  while (str.startsWith('www.') || str.startsWith('www1.') || str.startsWith('www2.')) {
+    str = str.split('.').slice(1).join('.');
+  }
+
+  const parts = str.split('.');
+  if (parts.length <= 1) {
+    return str;
+  }
+
+  const tld = parts[parts.length - 1];
+  const penultimate = parts[parts.length - 2];
+
+  // If penultimate is a known 2nd-level prefix and TLD is 2-letter ccTLD (e.g. .co.uk, .org.uk, .com.au)
+  if (tld.length === 2 && MULTI_PART_TLD_PREFIXES.has(penultimate)) {
+    if (parts.length >= 3) {
+      return parts.slice(-3).join('.');
+    }
+    return parts.join('.');
+  }
+
+  // Standard 1-part TLD (e.g. .com, .uk, .org, .net, .co, .io, .ai, .london)
+  return parts.slice(-2).join('.');
 };
 
 const GENERIC_LOCAL_PARTS = new Set([
