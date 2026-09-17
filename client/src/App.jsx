@@ -2416,8 +2416,17 @@ function App() {
     setSortDirection('asc');
     setCurrentView('search');
 
-    // If any items are unscored, automatically resume bulk scoring in the background
-    const unscored = enriched.filter(i => !i.analysis || i.analysis.leadOpportunityScore === undefined);
+    // If any items are unscored or have stale/defective analysis, automatically resume bulk scoring in the background
+    const unscored = enriched.filter(i => 
+      !i.analysis || 
+      i.analysis.leadOpportunityScore === undefined || 
+      i.analysis.leadOpportunityScore === null ||
+      i.analysis.leadOpportunityScore.score === null ||
+      i.analysis.gbp === null ||
+      i.analysis.gbp === undefined ||
+      i.analysis.analysisProblem === undefined ||
+      i.analysis.httpStatus === 'Not Found'
+    );
     if (unscored.length > 0) {
       runBulkAnalysis(unscored, saved.searchId, saved.location || 'Anywhere');
     }
@@ -2567,7 +2576,17 @@ function App() {
     const itemKey = isOrganic ? item.url : (item.website || item.name);
     const searchLoc = searchLocation || location || 'Anywhere';
 
-    if (item.analysis) {
+    const isModernAnalysis = item.analysis && 
+      item.analysis.leadOpportunityScore !== null && 
+      item.analysis.leadOpportunityScore !== undefined && 
+      item.analysis.leadOpportunityScore.score !== null &&
+      item.analysis.leadOpportunityScore.score !== undefined &&
+      item.analysis.gbp !== null && 
+      item.analysis.gbp !== undefined &&
+      item.analysis.analysisProblem !== undefined &&
+      item.analysis.httpStatus !== 'Not Found';
+
+    if (isModernAnalysis) {
       return item.analysis;
     }
 
@@ -2896,7 +2915,17 @@ function App() {
     const domain = isOrganic ? item.domain : (item.website ? getDomain(item.website) : '');
     const itemKey = isOrganic ? item.url : (item.website || item.name);
 
-    if (item.analysis && item.analysis.leadOpportunityScore?.score !== null) {
+    const isModernAnalysis = item.analysis && 
+      item.analysis.leadOpportunityScore !== null && 
+      item.analysis.leadOpportunityScore !== undefined && 
+      item.analysis.leadOpportunityScore.score !== null &&
+      item.analysis.leadOpportunityScore.score !== undefined &&
+      item.analysis.gbp !== null && 
+      item.analysis.gbp !== undefined &&
+      item.analysis.analysisProblem !== undefined &&
+      item.analysis.httpStatus !== 'Not Found';
+
+    if (isModernAnalysis) {
       const analysisObj = {
         ...item.analysis,
         domain,
@@ -3103,6 +3132,7 @@ function App() {
       const data = await response.json();
       
       const completedAnalysis = {
+        rank: activeAnalysisItem.leadOpportunity?.rank || activeAnalysisItem.rank || data.rank || 0,
         pageTitle: data.pageTitle || 'Not Found',
         metaDescription: data.metaDescription || 'Not Found',
         h1: data.h1 || 'Not Found',
@@ -3110,12 +3140,21 @@ function App() {
         canonicalUrl: data.canonicalUrl || 'Not Found',
         indexable: data.indexable || 'No',
         lastAnalysed: data.lastAnalysed || new Date().toISOString(),
+        analysisProblem: !!data.analysisProblem,
+        analysisProblemReason: data.analysisProblemReason || null,
+        retryStatus: data.retryStatus || null,
+        retryCount: data.retryCount || 0,
+        lastAttemptTimestamp: data.lastAttemptTimestamp || new Date().toISOString(),
         seoHealth: data.seoHealth || null,
         aiReport: data.aiReport || null,
         leadOpportunity: data.leadOpportunity || null,
         gbp: data.gbp || null,
         leadOpportunityScore: data.leadOpportunityScore || null,
-        leadPriority: data.leadPriority || null
+        leadPriority: data.leadPriority || null,
+        contactEmail: data.contactEmail || null,
+        allFoundEmails: data.allFoundEmails || [],
+        emailStatus: data.emailStatus || (data.contactEmail ? 'Email Found' : 'No Email'),
+        emailSource: data.emailSource || null
       };
 
       const itemKey = activeAnalysisItem.url || activeAnalysisItem.domain;

@@ -1362,6 +1362,127 @@ async function runOvernightAnalysisRetryQueue() {
   }
 }
 
+// Global Re-analysis and Invalidation for Stale/Pre-v1.54 Records
+async function reanalyseStaleSavedSearchesAndShortlist() {
+  console.log('[Stale Invalidation] Checking for stale/defective analysis records across saved searches and shortlist...');
+  try {
+    const db = await getDb();
+    let updatedSearchesCount = 0;
+    let updatedProspectsCount = 0;
+
+    // 1. Process saved_searches across all workspaces
+    const savedSearches = await db.all('SELECT * FROM saved_searches');
+    for (const row of savedSearches) {
+      if (!row.data) continue;
+      let data = [];
+      try { data = JSON.parse(row.data); } catch (e) { continue; }
+      let rowUpdated = false;
+
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        const analysis = item.analysis;
+        const isStale = !analysis || 
+          analysis.leadOpportunityScore === null || 
+          analysis.leadOpportunityScore === undefined || 
+          analysis.leadOpportunityScore.score === null ||
+          analysis.gbp === null || 
+          analysis.gbp === undefined ||
+          analysis.httpStatus === 'Not Found' ||
+          analysis.pageTitle === 'Not Found' ||
+          analysis.analysisProblem === undefined;
+
+        if (isStale) {
+          const targetUrl = item.url || item.website || (item.domain ? `https://${item.domain}` : '');
+          if (!targetUrl) continue;
+
+          console.log(`[Stale Invalidation] Re-analysing stale prospect: ${targetUrl} (Search: ${row.searchId || row.id}, Rank: #${item.rank})`);
+          try {
+            const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', item.rank || 0, row.location || 'Anywhere');
+            data[i].analysis = newAnalysis;
+            rowUpdated = true;
+            updatedProspectsCount++;
+          } catch (err) {
+            console.error(`[Stale Invalidation Error] Failed to reanalyse ${targetUrl}:`, err.message);
+          }
+        }
+      }
+
+      if (rowUpdated) {
+        await db.run('UPDATE saved_searches SET data = ? WHERE id = ?', [JSON.stringify(data), row.id]);
+        updatedSearchesCount++;
+      }
+    }
+
+    // 2. Process outreach_shortlist across all workspaces
+    const shortlistRows = await db.all('SELECT * FROM outreach_shortlist');
+    for (const row of shortlistRows) {
+      let analysis = null;
+      if (row.analysisData) {
+        try { analysis = JSON.parse(row.analysisData); } catch (e) {}
+      }
+      const isStale = !analysis ||
+        analysis.leadOpportunityScore === null ||
+        analysis.leadOpportunityScore === undefined ||
+        analysis.leadOpportunityScore.score === null ||
+        analysis.gbp === null ||
+        analysis.gbp === undefined ||
+        analysis.httpStatus === 'Not Found' ||
+        analysis.pageTitle === 'Not Found' ||
+        analysis.analysisProblem === undefined;
+
+      if (isStale) {
+        const targetUrl = row.url || (row.domain ? `https://${row.domain}` : '');
+        if (!targetUrl) continue;
+        console.log(`[Stale Invalidation] Re-analysing stale shortlist prospect: ${targetUrl} (Domain: ${row.domain})`);
+        try {
+          const newAnalysis = await analyseProspectUrl(targetUrl, row.searchType || 'Organic', row.rank || 0, row.location || 'Anywhere');
+          await db.run(
+            `UPDATE outreach_shortlist SET 
+              analysisData = ?, 
+              opportunityScore = ?, 
+              opportunityBand = ?, 
+              commercialStrengthStars = ?, 
+              commercialStrengthLabel = ?, 
+              commercialStrengthPoints = ?, 
+              gbpStatus = ? 
+            WHERE id = ?`,
+            [
+              JSON.stringify(newAnalysis),
+              newAnalysis.leadOpportunityScore?.score ?? row.opportunityScore,
+              newAnalysis.leadOpportunityScore?.band || row.opportunityBand,
+              newAnalysis.leadPriority?.stars || row.commercialStrengthStars,
+              newAnalysis.leadPriority?.label || row.commercialStrengthLabel,
+              newAnalysis.leadPriority?.points ?? row.commercialStrengthPoints,
+              newAnalysis.gbp?.status === 'Found' ? 'Found' : (newAnalysis.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched'),
+              row.id
+            ]
+          );
+          updatedProspectsCount++;
+        } catch (err) {
+          console.error(`[Stale Invalidation Error] Failed to reanalyse shortlist ${targetUrl}:`, err.message);
+        }
+      }
+    }
+
+    console.log(`[Stale Invalidation Complete] Upgraded ${updatedProspectsCount} prospects across ${updatedSearchesCount} searches.`);
+    return { success: true, updatedSearchesCount, updatedProspectsCount };
+  } catch (err) {
+    console.error('[Stale Invalidation Fatal Error]:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// POST endpoint to trigger global stale analysis reanalysis manually
+app.post('/api/analyse/reanalyse-stale', async (req, res) => {
+  const result = await reanalyseStaleSavedSearchesAndShortlist();
+  res.json(result);
+});
+
+// Run stale analysis migration in background on server startup
+setTimeout(() => {
+  reanalyseStaleSavedSearchesAndShortlist().catch(err => console.error('[Startup Migration Error]:', err));
+}, 2000);
+
 // POST endpoint to trigger overnight retry queue manually
 app.post('/api/analyse/retry-queue/run', async (req, res) => {
   const result = await runOvernightAnalysisRetryQueue();
