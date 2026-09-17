@@ -1456,6 +1456,23 @@ function App() {
 
   const handleRemoveFromOutreach = async (idOrDomain) => {
     if (!idOrDomain) return;
+    const targetNorm = normalizeDomain(idOrDomain);
+
+    // Immediate optimistic local UI update
+    const previousList = [...outreachList];
+    setOutreachList(prev => prev.filter(item => {
+      const matchId = item.id && item.id === idOrDomain;
+      const matchDomain = (item.domain && item.domain === idOrDomain) || (targetNorm && normalizeDomain(item.domain || item.url || '') === targetNorm);
+      return !matchId && !matchDomain;
+    }));
+
+    setSelectedShortlistIds(prev => {
+      const next = new Set(prev);
+      next.delete(idOrDomain);
+      if (targetNorm) next.delete(targetNorm);
+      return next;
+    });
+
     try {
       const res = await fetch(`${API_BASE}/api/outreach/${encodeURIComponent(idOrDomain)}`, {
         method: 'DELETE',
@@ -1464,9 +1481,15 @@ function App() {
       if (res.ok) {
         await fetchOutreachList();
         broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setOutreachList(previousList);
+        alert(err.error || 'Failed to remove prospect from shortlist.');
       }
     } catch (e) {
       console.error("Error removing from outreach list:", e);
+      setOutreachList(previousList);
+      alert('Error removing prospect from shortlist: ' + e.message);
     }
   };
 

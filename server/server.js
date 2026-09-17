@@ -1574,6 +1574,34 @@ app.post('/api/outreach', async (req, res) => {
   }
 });
 
+// DELETE remove prospect from outreach shortlist
+app.delete('/api/outreach/:idOrDomain', async (req, res) => {
+  try {
+    const { idOrDomain } = req.params;
+    if (!idOrDomain) {
+      return res.status(400).json({ error: 'Prospect ID or domain is required' });
+    }
+
+    const cleanDomain = normalizeDomain(idOrDomain);
+    const db = await getDb();
+
+    // Delete by id OR domain matching the current workspace
+    const result = await db.run(
+      'DELETE FROM outreach_shortlist WHERE (id = ? OR domain = ? OR domain = ?) AND workspace = ?',
+      [idOrDomain, idOrDomain, cleanDomain, req.workspace]
+    );
+
+    res.json({
+      success: true,
+      deletedCount: result.changes,
+      idOrDomain,
+      workspace: req.workspace
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper to decode Cloudflare-obfuscated emails (data-cfemail / email-protection)
 function decodeCfEmail(encodedString) {
   if (!encodedString || typeof encodedString !== 'string') return '';
