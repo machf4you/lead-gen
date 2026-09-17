@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import './App.css'
 import GlobalDeploymentIndicator from './components/GlobalDeploymentIndicator'
+import { broadcastLeadGenEvent, REALTIME_EVENTS, useLeadGenRealtime } from './services/supabaseRealtime.js'
 
 // Helper to construct a natural UK English Contact Strategy summary (2-4 sentences)
 const getContactStrategySummary = (item) => {
@@ -812,6 +813,7 @@ function App() {
         if (data.settings) setSenderSettings(data.settings);
         setSenderSettingsSavedMsg(true);
         setTimeout(() => setSenderSettingsSavedMsg(false), 3000);
+        broadcastLeadGenEvent(REALTIME_EVENTS.SETTINGS_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       } else {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to save sender settings');
@@ -966,6 +968,7 @@ function App() {
         await fetchEmailTemplates();
         setIsTemplateEditorModalOpen(false);
         setEditingTemplate(null);
+        broadcastLeadGenEvent(REALTIME_EVENTS.EMAIL_TEMPLATES_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       } else {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to save template');
@@ -984,6 +987,7 @@ function App() {
       });
       if (res.ok) {
         await fetchEmailTemplates();
+        broadcastLeadGenEvent(REALTIME_EVENTS.EMAIL_TEMPLATES_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (err) {
       console.error('Error deleting template:', err);
@@ -1151,25 +1155,25 @@ function App() {
     setIsCreatingPackModalOpen(true);
   };
 
+  const fetchExclusions = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/exclusions`);
+      if (res.ok) {
+        const data = await res.json();
+        setExcludedDomains(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch server exclusions:', err);
+    }
+  };
+
   // Initial load: Fetch server exclusions & clear legacy localStorage keys so they never overwrite server master baseline
   useEffect(() => {
-    const initExclusions = async () => {
-      try {
-        try {
-          localStorage.removeItem('tse_excluded_domains');
-          localStorage.removeItem('leadgen_excluded_domains');
-        } catch (e) {}
-
-        const res = await fetch(`${API_BASE}/api/exclusions`);
-        if (res.ok) {
-          const data = await res.json();
-          setExcludedDomains(data);
-        }
-      } catch (err) {
-        console.error('Failed to initialize server exclusions:', err);
-      }
-    };
-    initExclusions();
+    try {
+      localStorage.removeItem('tse_excluded_domains');
+      localStorage.removeItem('leadgen_excluded_domains');
+    } catch (e) {}
+    fetchExclusions();
     fetchSenderStatus();
   }, []);
   const [activeAnalysisItem, setActiveAnalysisItem] = useState(null)
@@ -1358,6 +1362,7 @@ function App() {
       });
       if (res.ok) {
         await fetchOutreachList();
+        broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
       console.error("Error adding to outreach list:", e);
@@ -1372,6 +1377,7 @@ function App() {
       });
       if (res.ok) {
         await fetchOutreachList();
+        broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
       console.error("Error removing from outreach list:", e);
@@ -1473,6 +1479,8 @@ function App() {
         setSelectedShortlistIds(new Set());
         setIsCreatingPackModalOpen(false);
         setNewPackNameInput('');
+        broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse' });
+        broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
         if (data.pack) {
           setActivePack(data.pack);
           setOutreachSubView('pack-detail');
@@ -1517,6 +1525,8 @@ function App() {
         setActivePack(data.pack);
         setOutreachPacks(prev => prev.map(p => p.packId === packId ? data.pack : p));
         await fetchContactHistory();
+        broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId });
+        broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
       console.error("Error updating pack:", e);
@@ -1533,6 +1543,9 @@ function App() {
         await fetchOutreachPacks();
         await fetchOutreachList();
         await fetchContactHistory();
+        broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId });
+        broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
+        broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
         if (activePack?.packId === packId) {
           setActivePack(null);
           setOutreachSubView('packs');
@@ -1569,6 +1582,8 @@ function App() {
         setOutreachPacks(prev => prev.map(p => p.packId === activePack.packId ? data.pack : p));
         await fetchContactHistory();
         setIsSendConfirmModalOpen(false);
+        broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId: activePack?.packId });
+        broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (err) {
       console.error("Error sending outreach pack:", err);
@@ -1729,6 +1744,54 @@ function App() {
     await handleUpdatePack(packId, { prospects: updatedProspects });
   };
 
+  // Multi-user Realtime Synchronization via Supabase Realtime Broadcast (Scoped by Workspace)
+  useLeadGenRealtime(currentUser?.workspace || 'tse', {
+    onSavedSearchesChanged: () => {
+      fetchSavedSearches();
+    },
+    onShortlistChanged: () => {
+      fetchOutreachList();
+    },
+    onPacksChanged: (payload) => {
+      fetchOutreachPacks();
+      if (payload?.packId) {
+        setActivePack(prev => {
+          if (prev && (prev.packId === payload.packId || prev.id === payload.packId)) {
+            fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(payload.packId)}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(updatedPack => {
+                if (updatedPack) setActivePack(updatedPack);
+              })
+              .catch(() => {});
+          }
+          return prev;
+        });
+      }
+    },
+    onExclusionsChanged: () => {
+      fetchExclusions();
+      fetchSavedSearches();
+    },
+    onSettingsChanged: () => {
+      fetchSenderSettings();
+    },
+    onContactHistoryChanged: () => {
+      fetchContactHistory();
+    },
+    onEmailTemplatesChanged: () => {
+      fetchEmailTemplates();
+    },
+    onReconnect: () => {
+      fetchSavedSearches();
+      fetchOutreachList();
+      fetchOutreachPacks();
+      fetchContactHistory();
+      fetchExclusions();
+      fetchSenderSettings();
+      fetchEmailTemplates();
+    }
+  });
+
   useEffect(() => {
     fetchCurrentUser();
     fetchMilestones();
@@ -1738,6 +1801,7 @@ function App() {
     fetchContactHistory();
     fetchEmailTemplates();
     fetchSenderSettings();
+    fetchExclusions();
 
     applyRouteFromLocation();
 
@@ -2041,6 +2105,10 @@ function App() {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(updatedSearch)
+                }).then(res => {
+                  if (res.ok) {
+                    broadcastLeadGenEvent(REALTIME_EVENTS.SAVED_SEARCHES_CHANGED, { workspace: currentUser?.workspace || 'tse', searchId: updatedSearch.searchId });
+                  }
                 }).catch(err => console.error("Error updating search during refresh:", err));
 
                 return updatedSearch;
@@ -2085,6 +2153,10 @@ function App() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newSearch)
+          }).then(res => {
+            if (res.ok) {
+              broadcastLeadGenEvent(REALTIME_EVENTS.SAVED_SEARCHES_CHANGED, { workspace: currentUser?.workspace || 'tse', searchId: nextIdStr });
+            }
           }).catch(err => console.error("Error saving search:", err));
 
           setSavedSearches(prev => [newSearch, ...prev]);
@@ -2248,6 +2320,10 @@ function App() {
     // Delete from backend database
     fetch(`${API_BASE}/api/saved-searches/${id}`, {
       method: 'DELETE'
+    }).then(res => {
+      if (res.ok) {
+        broadcastLeadGenEvent(REALTIME_EVENTS.SAVED_SEARCHES_CHANGED, { workspace: currentUser?.workspace || 'tse' });
+      }
     }).catch(err => console.error("Error deleting search:", err));
 
     setSavedSearches(prev => prev.filter(s => s.id !== id));
@@ -3042,6 +3118,7 @@ function App() {
         const updatedList = await response.json();
         setExcludedDomains(updatedList);
         setSearchResults(prev => prev.filter(item => !isDomainExcluded(item.domain || item.website || item.url, updatedList)));
+        broadcastLeadGenEvent(REALTIME_EVENTS.EXCLUSIONS_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
       console.error('Error adding server exclusion:', e);
@@ -3057,6 +3134,7 @@ function App() {
       if (response.ok) {
         const updatedList = await response.json();
         setExcludedDomains(updatedList);
+        broadcastLeadGenEvent(REALTIME_EVENTS.EXCLUSIONS_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
       console.error('Error removing server exclusion:', e);

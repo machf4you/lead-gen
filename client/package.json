@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node ../scripts/tse_production_gate.cjs && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node ../scripts/tse_production_gate.cjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
