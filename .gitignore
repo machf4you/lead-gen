@@ -17,14 +17,28 @@ dist/
 dist-ssr/
 *.local
 
-# Environment variables
+# Environment variables & secrets
 .env
+.env.*
+*.env
+**/*.env
+server.env
+**/server.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 **/.env
 **/.env.local
+
+# Backups & archives
+backups/
+**/backups/
+*.tar.gz
+**/*.tar.gz
+*.zip
+**/*.zip
+.git_backup_security/
 
 # Editor directories and files
 .vscode/*
