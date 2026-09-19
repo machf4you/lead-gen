@@ -2,7 +2,7 @@
   "appName": "lead-gen",
   "acceptedVersion": "1.54",
   "acceptedTag": "lg-v1.54-full-disaster-recovery",
-  "acceptedCommit": "323ebac",
+  "acceptedCommit": "e34e636",
   "status": "Authoritative Accepted Production Baseline",
   "enforceAncestryLock": true
 }

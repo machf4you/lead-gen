@@ -2,7 +2,7 @@
   "application": "lead-generator",
   "baselineTag": "lg-v1.54-full-disaster-recovery",
   "baselineVersion": "v1.54-lg-stable",
-  "baselineCommit": "0e59ec1",
+  "baselineCommit": "5efef55",
   "acceptedDate": "16 SEP 2026",
   "macAccepted": true,
   "macAcceptedTimestamp": 1789548777000,
