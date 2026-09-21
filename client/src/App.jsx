@@ -3,6 +3,84 @@ import './App.css'
 import GlobalDeploymentIndicator from './components/GlobalDeploymentIndicator'
 import { broadcastLeadGenEvent, REALTIME_EVENTS, useLeadGenRealtime } from './services/supabaseRealtime.js'
 
+// Standardized Opportunity Classifications: Well-Optimized, Optimized, Average, Follow-Up
+export const normalizeOpportunityClassification = (band, score) => {
+  if (typeof band === 'string') {
+    const clean = band.trim().toLowerCase();
+    if (clean === 'well-optimized' || clean === 'well optimized') return 'Well-Optimized';
+    if (clean === 'optimized') return 'Optimized';
+    if (clean === 'average') return 'Average';
+    if (clean === 'follow-up' || clean === 'follow up') return 'Follow-Up';
+    if (clean === 'very high' || clean === 'high') {
+      if (score !== null && score !== undefined && !isNaN(Number(score))) {
+        const s = Number(score);
+        return s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up'));
+      }
+      return 'Well-Optimized';
+    }
+    if (clean === 'moderate') {
+      if (score !== null && score !== undefined && !isNaN(Number(score))) {
+        const s = Number(score);
+        return s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up'));
+      }
+      return 'Optimized';
+    }
+    if (clean === 'low') {
+      if (score !== null && score !== undefined && !isNaN(Number(score))) {
+        const s = Number(score);
+        return s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up'));
+      }
+      return 'Follow-Up';
+    }
+  }
+  if (score !== null && score !== undefined && !isNaN(Number(score))) {
+    const s = Number(score);
+    if (s >= 80) return 'Well-Optimized';
+    if (s >= 60) return 'Optimized';
+    if (s >= 40) return 'Average';
+    return 'Follow-Up';
+  }
+  return 'Follow-Up';
+};
+
+export const getClassificationColors = (classification) => {
+  switch (classification) {
+    case 'Well-Optimized':
+      return {
+        color: '#10b981',
+        bg: 'rgba(16, 185, 129, 0.15)',
+        bgLarge: 'rgba(16, 185, 129, 0.2)',
+        border: 'rgba(16, 185, 129, 0.35)',
+        borderLarge: 'rgba(16, 185, 129, 0.4)'
+      };
+    case 'Optimized':
+      return {
+        color: '#38bdf8',
+        bg: 'rgba(56, 189, 248, 0.15)',
+        bgLarge: 'rgba(56, 189, 248, 0.2)',
+        border: 'rgba(56, 189, 248, 0.35)',
+        borderLarge: 'rgba(56, 189, 248, 0.4)'
+      };
+    case 'Average':
+      return {
+        color: '#cbd5e1',
+        bg: 'rgba(148, 163, 184, 0.15)',
+        bgLarge: 'rgba(148, 163, 184, 0.2)',
+        border: 'rgba(148, 163, 184, 0.35)',
+        borderLarge: 'rgba(148, 163, 184, 0.4)'
+      };
+    case 'Follow-Up':
+    default:
+      return {
+        color: '#eab308',
+        bg: 'rgba(234, 179, 8, 0.15)',
+        bgLarge: 'rgba(234, 179, 8, 0.2)',
+        border: 'rgba(234, 179, 8, 0.35)',
+        borderLarge: 'rgba(234, 179, 8, 0.4)'
+      };
+  }
+};
+
 // Helper to construct a natural UK English Contact Strategy summary (2-4 sentences)
 const getContactStrategySummary = (item) => {
   const keyword = item.searchKeyword || 'your services';
@@ -1438,7 +1516,7 @@ function App() {
     const allFoundEmails = item.allFoundEmails || item.analysis?.allFoundEmails || (contactEmail ? [contactEmail] : []);
     const emailStatus = contactEmail ? 'Email Found' : (item.emailStatus || 'No Email');
     const oppScore = item.analysis?.leadOpportunityScore?.score !== undefined ? item.analysis.leadOpportunityScore.score : null;
-    const oppBand = item.analysis?.leadOpportunityScore?.band || '';
+    const oppBand = normalizeOpportunityClassification(item.analysis?.leadOpportunityScore?.band, oppScore);
     const strengthStars = item.analysis?.leadPriority?.stars || '★★★☆☆';
     const strengthLabel = item.analysis?.leadPriority?.label || 'Good Lead';
     const strengthPoints = item.analysis?.leadPriority?.points || 0;
@@ -2788,8 +2866,8 @@ function App() {
         gbp: null,
         diagnosticFailureReason: e?.message || 'Connection error while communicating with analysis server',
         leadOpportunityScore: {
-          score: 50,
-          band: 'Moderate',
+          score: 35,
+          band: 'Follow-Up',
           isIncomplete: true,
           reasons: [
             "⚠ Website connection timed out or restricted by server",
@@ -2799,9 +2877,9 @@ function App() {
         },
         leadPriority: {
           stars: '★★★☆☆',
-          label: 'Moderate Opportunity',
+          label: 'Good Lead',
           explanation: "Website connection timed out or was inaccessible. Direct technical review recommended.",
-          points: 50
+          points: 35
         }
       };
       updateItemAnalysis(itemKey, failedAnalysis, targetSearchId, item.rank);
@@ -3886,11 +3964,10 @@ function App() {
                               <td>
                                 {item.analysis ? (
                                   (() => {
-                                    const s = item.analysis.leadOpportunityScore?.score ?? 50;
-                                    const band = item.analysis.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
-                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
-                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                    const s = item.analysis.leadOpportunityScore?.score;
+                                    const rawBand = item.analysis.leadOpportunityScore?.band;
+                                    const band = normalizeOpportunityClassification(rawBand, s);
+                                    const { color, bg, border } = getClassificationColors(band);
                                     return (
                                       <span style={{ 
                                         display: 'inline-flex', 
@@ -3991,11 +4068,10 @@ function App() {
                               <td>
                                 {item.analysis ? (
                                   (() => {
-                                    const s = item.analysis.leadOpportunityScore?.score ?? 50;
-                                    const band = item.analysis.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
-                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
-                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                    const s = item.analysis.leadOpportunityScore?.score;
+                                    const rawBand = item.analysis.leadOpportunityScore?.band;
+                                    const band = normalizeOpportunityClassification(rawBand, s);
+                                    const { color, bg, border } = getClassificationColors(band);
                                     return (
                                       <span style={{ 
                                         display: 'inline-flex', 
@@ -4631,11 +4707,8 @@ function App() {
                             <td>
                               {score !== null && score !== undefined ? (
                                 (() => {
-                                  const s = score;
-                                  const band = item.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                  const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
-                                  const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
-                                  const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                  const band = normalizeOpportunityClassification(item.opportunityBand, score);
+                                  const { color, bg, border } = getClassificationColors(band);
                                   return (
                                     <span style={{ 
                                       display: 'inline-flex', 
@@ -5448,11 +5521,8 @@ function App() {
                                 )}
                                 {prospect.opportunityBand || (prospect.opportunityScore !== null && prospect.opportunityScore !== undefined) ? (
                                   (() => {
-                                    const s = prospect.opportunityScore ?? 50;
-                                    const band = prospect.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
-                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
-                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                    const band = normalizeOpportunityClassification(prospect.opportunityBand, prospect.opportunityScore);
+                                    const { color, bg, border } = getClassificationColors(band);
                                     return (
                                       <span style={{ 
                                         display: 'inline-flex', 
@@ -7131,19 +7201,18 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.5rem 0' }}>
                   {activeAnalysisItem.leadOpportunityScore?.band || (activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined) ? (
                     (() => {
-                      const s = activeAnalysisItem.leadOpportunityScore?.score ?? 50;
-                      const band = activeAnalysisItem.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                      const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
-                      const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.2)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.2)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(234, 179, 8, 0.2)'));
-                      const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.4)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.4)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.4)' : 'rgba(234, 179, 8, 0.4)'));
+                      const s = activeAnalysisItem.leadOpportunityScore?.score;
+                      const rawBand = activeAnalysisItem.leadOpportunityScore?.band;
+                      const band = normalizeOpportunityClassification(rawBand, s);
+                      const colors = getClassificationColors(band);
                       return (
                         <>
                           <div style={{
                             padding: '0.8rem 1.8rem',
                             borderRadius: '28px',
-                            backgroundColor: bg,
-                            border: `2px solid ${border}`,
-                            color,
+                            backgroundColor: colors.bgLarge,
+                            border: `2px solid ${colors.borderLarge}`,
+                            color: colors.color,
                             fontSize: '1.6rem',
                             fontWeight: '800',
                             letterSpacing: '0.02em',
