@@ -724,6 +724,8 @@ function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [searchError, setSearchError] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [classificationFilter, setClassificationFilter] = useState('All')
+  const [rowsPerPage, setRowsPerPage] = useState(30)
   const [searchMode, setSearchMode] = useState('organic')
   const [excludedDomains, setExcludedDomains] = useState([]);
   const [outreachList, setOutreachList] = useState([]);
@@ -3894,16 +3896,126 @@ function App() {
             </div>
 
             {Array.isArray(searchResults) && searchResults.length > 0 && (() => {
-              const ITEMS_PER_PAGE = 10;
+              const allCount = searchResults.length;
+              let followUpCount = 0;
+              let averageCount = 0;
+              let optimizedCount = 0;
+              let wellOptimizedCount = 0;
+
+              searchResults.forEach(item => {
+                const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
+                const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
+                const band = normalizeOpportunityClassification(rawBand, s);
+                if (band === 'Follow-Up') followUpCount++;
+                else if (band === 'Average') averageCount++;
+                else if (band === 'Optimized') optimizedCount++;
+                else if (band === 'Well-Optimized') wellOptimizedCount++;
+              });
+
               const sortedResults = getSortedResults();
-              const totalPages = Math.ceil(sortedResults.length / ITEMS_PER_PAGE);
-              const paginatedResults = sortedResults.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+              const filteredResults = classificationFilter === 'All'
+                ? sortedResults
+                : sortedResults.filter(item => {
+                    const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
+                    const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
+                    const band = normalizeOpportunityClassification(rawBand, s);
+                    return band === classificationFilter;
+                  });
+
+              const isAllRows = rowsPerPage === 'All';
+              const pageSize = isAllRows ? (filteredResults.length || 1) : Number(rowsPerPage);
+              const totalPages = isAllRows ? 1 : Math.max(1, Math.ceil(filteredResults.length / pageSize));
+              const safeCurrentPage = Math.min(currentPage, totalPages);
+              const paginatedResults = isAllRows
+                ? filteredResults
+                : filteredResults.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
               const isOrganicResult = searchMode === 'organic';
 
               return (
                 <>
-                <div style={{ width: '100%', maxWidth: '1440px', margin: '0 auto 0.75rem auto', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500', boxSizing: 'border-box' }}>
-                  Classification: Well-Optimized (Green), Optimized (Blue), Average (Neutral), Follow-Up (Yellow).
+                <div style={{
+                  width: '100%',
+                  maxWidth: '1440px',
+                  margin: '0 auto 0.75rem auto',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  boxSizing: 'border-box'
+                }}>
+                  {/* Classification Filter Tabs: All | Follow-Up | Average | Optimized | Well-Optimized */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'All', label: 'All', count: allCount, color: '#38bdf8' },
+                      { key: 'Follow-Up', label: 'Follow-Up', count: followUpCount, color: '#eab308' },
+                      { key: 'Average', label: 'Average', count: averageCount, color: '#94a3b8' },
+                      { key: 'Optimized', label: 'Optimized', count: optimizedCount, color: '#38bdf8' },
+                      { key: 'Well-Optimized', label: 'Well-Optimized', count: wellOptimizedCount, color: '#10b981' }
+                    ].map(tab => {
+                      const isActive = classificationFilter === tab.key;
+                      return (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => {
+                            setClassificationFilter(tab.key);
+                            setCurrentPage(1);
+                          }}
+                          style={{
+                            padding: '0.4rem 0.85rem',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem',
+                            fontWeight: isActive ? '700' : '500',
+                            cursor: 'pointer',
+                            border: isActive ? `1.5px solid ${tab.color}` : '1px solid #334155',
+                            backgroundColor: isActive ? `${tab.color}22` : '#0f172a',
+                            color: isActive ? (tab.key === 'Average' ? '#cbd5e1' : tab.color) : '#94a3b8',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {tab.key !== 'All' && (
+                            <span style={{ fontSize: '0.65rem', color: tab.color, lineHeight: '1' }}>●</span>
+                          )}
+                          <span>{tab.label} ({tab.count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Rows Selector: Rows: 10 | 30 | 50 | All */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
+                    <span style={{ marginRight: '0.2rem' }}>Rows:</span>
+                    {[10, 30, 50, 'All'].map(val => {
+                      const isSelected = rowsPerPage === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => {
+                            setRowsPerPage(val);
+                            setCurrentPage(1);
+                          }}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '5px',
+                            fontSize: '0.82rem',
+                            fontWeight: isSelected ? '700' : '500',
+                            cursor: 'pointer',
+                            border: isSelected ? '1px solid #3b82f6' : '1px solid #334155',
+                            backgroundColor: isSelected ? '#1e3a8a' : '#0f172a',
+                            color: isSelected ? '#ffffff' : '#94a3b8',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {val}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div className="results-table-container">
                   <table className="results-table">
@@ -3946,7 +4058,14 @@ function App() {
                       )}
                     </thead>
                     <tbody>
-                      {paginatedResults.map((item, index) => {
+                      {paginatedResults.length === 0 ? (
+                        <tr>
+                          <td colSpan={isOrganicResult ? 6 : 9} style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
+                            No prospects match the &ldquo;{classificationFilter}&rdquo; classification for this search.
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedResults.map((item, index) => {
                         if (isOrganicResult) {
                           const isItemShortlisted = isShortlisted(item.domain || item.url);
                           return (
@@ -4146,16 +4265,16 @@ function App() {
                             </tr>
                           );
                         }
-                      })}
+                      }))}
                     </tbody>
                   </table>
                 </div>
 
-                {totalPages > 1 && (
+                {!isAllRows && totalPages > 1 && (
                   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '2rem' }}>
                     <button 
                       onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                      disabled={currentPage === 1}
+                      disabled={safeCurrentPage === 1}
                       className="table-btn"
                       style={{ padding: '0.5rem 1rem' }}
                     >
@@ -4169,7 +4288,7 @@ function App() {
                         className="table-btn"
                         style={{ 
                           padding: '0.5rem 1rem', 
-                          backgroundColor: currentPage === page ? '#3b82f6' : '#1e293b',
+                          backgroundColor: safeCurrentPage === page ? '#3b82f6' : '#1e293b',
                           border: '1px solid #334155',
                           color: '#ffffff'
                         }}
@@ -4180,7 +4299,7 @@ function App() {
 
                     <button 
                       onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                      disabled={currentPage === totalPages}
+                      disabled={safeCurrentPage === totalPages}
                       className="table-btn"
                       style={{ padding: '0.5rem 1rem' }}
                     >
