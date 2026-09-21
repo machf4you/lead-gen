@@ -3825,7 +3825,7 @@ function App() {
               return (
                 <>
                 <div style={{ width: '100%', maxWidth: '1440px', margin: '0 auto 0.75rem auto', fontSize: '0.9rem', color: '#94a3b8', fontWeight: '500', boxSizing: 'border-box' }}>
-                  Opportunity Score: The higher the score, the better the lead opportunity. ★ = score 60+.
+                  Classification: Well-Optimized (Green), Optimized (Blue), Average (Neutral), Follow-Up (Yellow).
                 </div>
                 <div className="results-table-container">
                   <table className="results-table">
@@ -3837,7 +3837,7 @@ function App() {
                           </th>
                           <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
                           <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Score {renderSortIndicator('score')}
+                            Classification {renderSortIndicator('score')}
                           </th>
                           <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                             Domain / URL {renderSortIndicator('domain')}
@@ -3855,7 +3855,7 @@ function App() {
                             Rating {renderSortIndicator('rating')}
                           </th>
                           <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Score {renderSortIndicator('score')}
+                            Classification {renderSortIndicator('score')}
                           </th>
                           <th>Business Name</th>
                           <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
@@ -3885,71 +3885,33 @@ function App() {
                               </td>
                               <td>
                                 {item.analysis ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
-                                    {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                      (() => {
-                                        const s = item.analysis.leadOpportunityScore.score;
-                                        const band = item.analysis.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                        const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
-                                        return (
-                                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                            <span style={{ 
-                                              color,
-                                              marginRight: '6px',
-                                              fontSize: '1.1rem',
-                                              lineHeight: '1'
-                                            }}>●</span>
-                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
-                                              {s}
-                                            </span>
-                                            <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
-                                              {band}
-                                            </span>
-                                          </span>
-                                        );
-                                      })()
-                                    ) : (
-                                      <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                        -
-                                      </span>
-                                    )}
-
-                                    {item.analysis.retryStatus === 'manual_check' ? (
+                                  (() => {
+                                    const s = item.analysis.leadOpportunityScore?.score ?? 50;
+                                    const band = item.analysis.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
+                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
+                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                    return (
                                       <span style={{ 
-                                        fontSize: '0.72rem', 
-                                        fontWeight: '700', 
-                                        color: '#f87171', 
-                                        backgroundColor: 'rgba(239, 68, 68, 0.15)', 
-                                        border: '1px solid rgba(239, 68, 68, 0.4)',
-                                        padding: '1px 6px', 
-                                        borderRadius: '4px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        padding: '3px 10px',
+                                        borderRadius: '12px',
+                                        backgroundColor: bg,
+                                        border: `1px solid ${border}`,
+                                        color,
+                                        fontSize: '0.82rem',
+                                        fontWeight: '700',
                                         whiteSpace: 'nowrap'
-                                      }} title="Overnight retry failed. Direct manual review required.">
-                                        🔴 Manual Check Required
+                                      }}>
+                                        <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
+                                        <span>{band}</span>
                                       </span>
-                                    ) : (item.analysis.analysisProblem ? (
-                                      <span style={{ 
-                                        fontSize: '0.72rem', 
-                                        fontWeight: '700', 
-                                        color: '#f59e0b', 
-                                        backgroundColor: 'rgba(245, 158, 11, 0.15)', 
-                                        border: '1px solid rgba(245, 158, 11, 0.4)',
-                                        padding: '1px 6px', 
-                                        borderRadius: '4px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                        whiteSpace: 'nowrap'
-                                      }} title={`Server access restricted (${item.analysis.analysisProblemReason || 'Protected'}). Queued for overnight retry.`}>
-                                        ⚠ Analysis Problem
-                                      </span>
-                                    ) : null)}
-                                  </div>
+                                    );
+                                  })()
                                 ) : (
-                                  <span style={{ color: '#64748b' }}>-</span>
+                                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
                                 )}
                               </td>
                               <td className="domain-url-cell">
@@ -4028,71 +3990,33 @@ function App() {
                               </td>
                               <td>
                                 {item.analysis ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
-                                    {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
-                                      (() => {
-                                        const s = item.analysis.leadOpportunityScore.score;
-                                        const band = item.analysis.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                        const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
-                                        return (
-                                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                            <span style={{ 
-                                              color,
-                                              marginRight: '6px',
-                                              fontSize: '1.1rem',
-                                              lineHeight: '1'
-                                            }}>●</span>
-                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
-                                              {s}
-                                            </span>
-                                            <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
-                                              {band}
-                                            </span>
-                                          </span>
-                                        );
-                                      })()
-                                    ) : (
-                                      <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                        -
-                                      </span>
-                                    )}
-
-                                    {item.analysis.retryStatus === 'manual_check' ? (
+                                  (() => {
+                                    const s = item.analysis.leadOpportunityScore?.score ?? 50;
+                                    const band = item.analysis.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
+                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
+                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                    return (
                                       <span style={{ 
-                                        fontSize: '0.72rem', 
-                                        fontWeight: '700', 
-                                        color: '#f87171', 
-                                        backgroundColor: 'rgba(239, 68, 68, 0.15)', 
-                                        border: '1px solid rgba(239, 68, 68, 0.4)',
-                                        padding: '1px 6px', 
-                                        borderRadius: '4px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        padding: '3px 10px',
+                                        borderRadius: '12px',
+                                        backgroundColor: bg,
+                                        border: `1px solid ${border}`,
+                                        color,
+                                        fontSize: '0.82rem',
+                                        fontWeight: '700',
                                         whiteSpace: 'nowrap'
-                                      }} title="Overnight retry failed. Direct manual review required.">
-                                        🔴 Manual Check Required
+                                      }}>
+                                        <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
+                                        <span>{band}</span>
                                       </span>
-                                    ) : (item.analysis.analysisProblem ? (
-                                      <span style={{ 
-                                        fontSize: '0.72rem', 
-                                        fontWeight: '700', 
-                                        color: '#f59e0b', 
-                                        backgroundColor: 'rgba(245, 158, 11, 0.15)', 
-                                        border: '1px solid rgba(245, 158, 11, 0.4)',
-                                        padding: '1px 6px', 
-                                        borderRadius: '4px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                        whiteSpace: 'nowrap'
-                                      }} title={`Server access restricted (${item.analysis.analysisProblemReason || 'Protected'}). Queued for overnight retry.`}>
-                                        ⚠ Analysis Problem
-                                      </span>
-                                    ) : null)}
-                                  </div>
+                                    );
+                                  })()
                                 ) : (
-                                  <span style={{ color: '#64748b' }}>-</span>
+                                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
                                 )}
                               </td>
                               <td><strong>{item.name || "Not available"}</strong></td>
@@ -4544,7 +4468,7 @@ function App() {
                         <th>Search Phrase</th>
                         <th>Location</th>
                         <th>Rank / Rating</th>
-                        <th>Opportunity Score</th>
+                        <th>Classification</th>
                         <th>Commercial Strength</th>
                         <th>Date Shortlisted</th>
                         <th className="action-cell">Actions</th>
@@ -4705,61 +4629,35 @@ function App() {
                               )}
                             </td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
-                                {score !== null && score !== undefined ? (
-                                  (() => {
-                                    const s = score;
-                                    const band = item.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                    const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
-                                    return (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                        <span style={{ 
-                                          color,
-                                          marginRight: '6px',
-                                          fontSize: '1.1rem',
-                                          lineHeight: '1'
-                                        }}>●</span>
-                                        <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
-                                          {s}
-                                        </span>
-                                        <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
-                                          {band}
-                                        </span>
-                                      </span>
-                                    );
-                                  })()
-                                ) : (
-                                  <span style={{ color: '#64748b' }}>-</span>
-                                )}
-
-                                {item.analysisData?.retryStatus === 'manual_check' ? (
-                                  <span style={{ 
-                                    fontSize: '0.72rem', 
-                                    fontWeight: '700', 
-                                    color: '#f87171', 
-                                    backgroundColor: 'rgba(239, 68, 68, 0.15)', 
-                                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                                    padding: '1px 6px', 
-                                    borderRadius: '4px',
-                                    whiteSpace: 'nowrap'
-                                  }} title="Overnight retry failed. Direct manual review required.">
-                                    🔴 Manual Check Required
-                                  </span>
-                                ) : (item.analysisData?.analysisProblem ? (
-                                  <span style={{ 
-                                    fontSize: '0.72rem', 
-                                    fontWeight: '700', 
-                                    color: '#f59e0b', 
-                                    backgroundColor: 'rgba(245, 158, 11, 0.15)', 
-                                    border: '1px solid rgba(245, 158, 11, 0.4)',
-                                    padding: '1px 6px', 
-                                    borderRadius: '4px',
-                                    whiteSpace: 'nowrap'
-                                  }} title="Server access restricted. Queued for overnight retry.">
-                                    ⚠ Analysis Problem
-                                  </span>
-                                ) : null)}
-                              </div>
+                              {score !== null && score !== undefined ? (
+                                (() => {
+                                  const s = score;
+                                  const band = item.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                  const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
+                                  const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
+                                  const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
+                                  return (
+                                    <span style={{ 
+                                      display: 'inline-flex', 
+                                      alignItems: 'center', 
+                                      gap: '6px',
+                                      padding: '3px 10px',
+                                      borderRadius: '12px',
+                                      backgroundColor: bg,
+                                      border: `1px solid ${border}`,
+                                      color,
+                                      fontSize: '0.82rem',
+                                      fontWeight: '700',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
+                                      <span>{band}</span>
+                                    </span>
+                                  );
+                                })()
+                              ) : (
+                                <span style={{ color: '#64748b' }}>-</span>
+                              )}
                             </td>
                             <td>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -5464,7 +5362,7 @@ function App() {
                           />
                         </th>
                         <th>Domain</th>
-                        <th>Rank & Score</th>
+                        <th>Rank & Classification</th>
                         <th>Contact Email</th>
                         <th>Status</th>
                       </tr>
@@ -5548,16 +5446,29 @@ function App() {
                                 ) : (
                                   <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
                                 )}
-                                {prospect.opportunityScore !== null && prospect.opportunityScore !== undefined ? (
+                                {prospect.opportunityBand || (prospect.opportunityScore !== null && prospect.opportunityScore !== undefined) ? (
                                   (() => {
-                                    const s = prospect.opportunityScore;
+                                    const s = prospect.opportunityScore ?? 50;
                                     const band = prospect.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                                    const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
+                                    const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
+                                    const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.15)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.15)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(234, 179, 8, 0.15)'));
+                                    const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.35)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.35)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.35)' : 'rgba(234, 179, 8, 0.35)'));
                                     return (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.9rem' }}>
-                                        <span style={{ color, marginRight: '4px' }}>●</span>
-                                        <strong style={{ color: '#ffffff', marginRight: '4px' }}>{s}</strong>
-                                        <span style={{ fontSize: '0.72rem', color, fontWeight: '600' }}>({band})</span>
+                                      <span style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        gap: '4px',
+                                        padding: '2px 8px',
+                                        borderRadius: '10px',
+                                        backgroundColor: bg,
+                                        border: `1px solid ${border}`,
+                                        color,
+                                        fontSize: '0.78rem',
+                                        fontWeight: '700',
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        <span style={{ fontSize: '0.65rem', lineHeight: '1' }}>●</span>
+                                        <span>{band}</span>
                                       </span>
                                     );
                                   })()
@@ -7214,34 +7125,37 @@ function App() {
             </div>
 
             <div className="analysis-grid">
-              {/* Card 1: Lead Opportunity Score */}
+              {/* Card 1: Opportunity Classification */}
               <div className="analysis-section" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <h3>Lead Opportunity Score</h3>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.25rem 0' }}>
-                  {activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined ? (
+                <h3>Opportunity Classification</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.5rem 0' }}>
+                  {activeAnalysisItem.leadOpportunityScore?.band || (activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined) ? (
                     (() => {
-                      const s = activeAnalysisItem.leadOpportunityScore.score;
-                      const band = activeAnalysisItem.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
-                      const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
-                      const bg = s >= 80 ? 'rgba(16, 185, 129, 0.2)' : (s >= 60 ? 'rgba(56, 189, 248, 0.2)' : (s >= 40 ? 'rgba(148, 163, 184, 0.2)' : 'rgba(234, 179, 8, 0.2)'));
+                      const s = activeAnalysisItem.leadOpportunityScore?.score ?? 50;
+                      const band = activeAnalysisItem.leadOpportunityScore?.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                      const color = band === 'Well-Optimized' ? '#10b981' : (band === 'Optimized' ? '#38bdf8' : (band === 'Average' ? '#cbd5e1' : '#eab308'));
+                      const bg = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.2)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.2)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.2)' : 'rgba(234, 179, 8, 0.2)'));
+                      const border = band === 'Well-Optimized' ? 'rgba(16, 185, 129, 0.4)' : (band === 'Optimized' ? 'rgba(56, 189, 248, 0.4)' : (band === 'Average' ? 'rgba(148, 163, 184, 0.4)' : 'rgba(234, 179, 8, 0.4)'));
                       return (
                         <>
-                          <span style={{ fontSize: '4.5rem', fontWeight: '800', color, lineHeight: '1' }}>
-                            {s}
-                          </span>
-                          <span style={{ 
-                            marginTop: '0.75rem',
-                            fontWeight: 'bold', 
-                            fontSize: '1.05rem',
-                            padding: '0.25rem 0.75rem', 
-                            borderRadius: '20px', 
+                          <div style={{
+                            padding: '0.8rem 1.8rem',
+                            borderRadius: '28px',
                             backgroundColor: bg,
-                            color
+                            border: `2px solid ${border}`,
+                            color,
+                            fontSize: '1.6rem',
+                            fontWeight: '800',
+                            letterSpacing: '0.02em',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '10px'
                           }}>
-                            {band}
-                          </span>
+                            <span style={{ fontSize: '1.2rem', lineHeight: '1' }}>●</span>
+                            <span>{band}</span>
+                          </div>
                           {(activeAnalysisItem.analysisProblem || activeAnalysisItem.leadOpportunityScore?.isIncomplete) && (
-                            <span style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
+                            <span style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
                               ⚠ Analysis Incomplete
                             </span>
                           )}
@@ -7249,22 +7163,17 @@ function App() {
                       );
                     })()
                   ) : (
-                    <>
-                      <span style={{ fontSize: '3.5rem', fontWeight: '800', color: activeAnalysisItem.retryStatus === 'manual_check' ? '#ef4444' : (activeAnalysisItem.analysisProblem ? '#f59e0b' : '#94a3b8'), lineHeight: '1' }}>
-                        {activeAnalysisItem.retryStatus === 'manual_check' ? '🔴' : (activeAnalysisItem.analysisProblem ? '⚠' : 'N/A')}
-                      </span>
-                      <span style={{ 
-                        marginTop: '0.75rem',
-                        fontWeight: 'bold', 
-                        fontSize: '0.95rem',
-                        padding: '0.25rem 0.75rem', 
-                        borderRadius: '20px', 
-                        backgroundColor: activeAnalysisItem.retryStatus === 'manual_check' ? 'rgba(239, 68, 68, 0.2)' : (activeAnalysisItem.analysisProblem ? 'rgba(245, 158, 11, 0.2)' : 'rgba(148, 163, 184, 0.2)'),
-                        color: activeAnalysisItem.retryStatus === 'manual_check' ? '#ef4444' : (activeAnalysisItem.analysisProblem ? '#f59e0b' : '#94a3b8')
-                      }}>
-                        {activeAnalysisItem.retryStatus === 'manual_check' ? 'Manual Check Required' : (activeAnalysisItem.analysisProblem ? 'Analysis Problem' : 'N/A')}
-                      </span>
-                    </>
+                    <div style={{
+                      padding: '0.6rem 1.4rem',
+                      borderRadius: '20px',
+                      backgroundColor: 'rgba(148, 163, 184, 0.15)',
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                      color: '#94a3b8',
+                      fontSize: '1.1rem',
+                      fontWeight: '700'
+                    }}>
+                      Pending Analysis
+                    </div>
                   )}
                 </div>
               </div>
