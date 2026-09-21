@@ -25,44 +25,34 @@ function isPlaceholderTitle(title, testUrl = '') {
   const t = (title || '').toLowerCase().trim();
   const u = (testUrl || '').toLowerCase();
 
-  if (u.includes('sgcaptcha') || u.includes('/challenge') || u.includes('captcha') || u.includes('cf-browser-verification')) {
+  if (u.includes('sgcaptcha') || u.includes('/challenge') || u.includes('captcha') || u.includes('cf-browser-verification') || u.includes('/cdn-cgi/challenge-platform')) {
     return true;
   }
 
-  const placeholders = [
-    'just a moment',
-    'loading',
-    'please wait',
+  const explicitChallengeRegex = /^(just a moment\.\.\.|attention required!|security check|cloudflare|ddos guard|verify you are human|human verification|robot challenge|bot challenge|403\s*-\s*forbidden|403\s*forbidden|access denied|access forbidden)$/i;
+  if (explicitChallengeRegex.test(t)) return true;
+
+  const containsPatterns = [
+    'just a moment...',
     'checking your browser',
     'checking your browser before accessing',
     'attention required',
-    'one more step',
-    'security check',
     'ddos guard',
     'cloudflare',
-    'robot challenge screen',
-    'challenge screen',
-    'bot challenge',
-    'security challenge',
     'verify you are human',
-    'human verification',
-    'captcha',
-    '403 - forbidden',
-    '403 forbidden',
-    '403 error',
-    'forbidden',
-    'access denied',
-    'access forbidden',
     'bot detection',
-    'blocked',
     'rate limited',
     'too many requests',
+    'you have been blocked',
+    'access is blocked',
+    'request blocked',
+    'temporarily blocked',
     'site under maintenance',
     'error 403',
     'error 429',
     'error 503'
   ];
-  return placeholders.some(p => t.includes(p));
+  return containsPatterns.some(p => t.includes(p));
 }
 
 // Helper to fetch page content using a headless browser with network/DOM stability wait
@@ -72,36 +62,50 @@ async function fetchPageWithPuppeteer(targetUrl) {
   try {
     browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions'
+      ]
     });
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     
-    const response = await page.goto(targetUrl, {
-      waitUntil: ['load', 'networkidle0'],
-      timeout: 15000
-    });
+    let status = 200;
+    try {
+      const response = await page.goto(targetUrl, {
+        waitUntil: 'domcontentloaded',
+        timeout: 12000
+      });
+      status = response ? response.status() : 200;
+    } catch (navErr) {
+      console.warn(`[Puppeteer Scraper] Navigation notice for ${targetUrl}: ${navErr.message}`);
+    }
     
-    // Wait for DOM stability / dynamic javascript challenge to load
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Brief 1.5s DOM stabilization wait
+    await new Promise(resolve => setTimeout(resolve, 1500));
     
     const html = await page.content();
-    const finalUrl = page.url();
-    const status = response ? response.status() : 200;
+    const finalUrl = page.url() || targetUrl;
     
-    return {
-      success: true,
-      html,
-      finalUrl,
-      status
-    };
+    if (html && html.length > 200) {
+      return {
+        success: true,
+        html,
+        finalUrl,
+        status
+      };
+    }
+    return { success: false, error: 'Empty page content' };
   } catch (err) {
     console.error(`[Puppeteer Scraper Error]`, err);
     return { success: false, error: err.message };
   } finally {
     if (browser) {
-      await browser.close();
+      try { await browser.close(); } catch (e) {}
     }
   }
 }
@@ -752,132 +756,134 @@ const performGbpMatching = async (targetUrl, html, title, h1Text, searchLocation
 };
 
 function getOpportunityScoreAndReasons(health, gbp, rank, crawlFailed = false, crawlStatusText = '') {
-  let score = 0;
+  let deductions = 0;
   const reasonsList = [];
 
-  // 1. Organic Ranking (Max 15 points) — Factual from SERP
+  // 1. Organic Ranking (Max 15 deduction) — Factual from SERP
   const rankNum = parseInt(rank, 10);
-  if (isNaN(rankNum) || rankNum <= 0) {
-    score += 15;
-    reasonsList.push({ points: 15, text: "Organic search ranking position is not in the top 50" });
-  } else if (rankNum > 20) {
-    score += 15;
-    reasonsList.push({ points: 15, text: `Organic ranking position (#${rankNum}) is deep on pages 3-5` });
+  if (isNaN(rankNum) || rankNum <= 0 || rankNum > 20) {
+    deductions += 15;
+    reasonsList.push({ points: 15, text: `Organic ranking position (#${rankNum || '50+'}) is deep on pages 3+` });
   } else if (rankNum > 10) {
-    score += 10;
+    deductions += 10;
     reasonsList.push({ points: 10, text: `Organic ranking position (#${rankNum}) is on page 2` });
   } else if (rankNum > 3) {
-    score += 5;
-    reasonsList.push({ points: 5, text: `Organic ranking position (#${rankNum}) is on page 1 but outside the top 3` });
+    deductions += 5;
+    reasonsList.push({ points: 5, text: `Organic ranking position (#${rankNum}) is outside the top 3` });
   }
 
-  // 2. HTTPS Security (Max 8 points) — Factual from URL
+  // 2. HTTPS Security (Max 8 deduction) — Factual from URL
   if (health && !health.isHttps) {
-    score += 8;
+    deductions += 8;
     reasonsList.push({ points: 8, text: "Website lacks HTTPS encryption, showing security warnings" });
   }
 
-  // 3. Google Business Profile Quality (Max 20 points) — Factual from GBP matching
+  // 3. Google Business Profile Quality (Max 20 deduction) — Factual from GBP matching
   if (gbp) {
-    if (gbp.status === 'Not Found') {
-      score += 20;
+    if (gbp.status === 'Not Found' || gbp.status === 'No Profile Matched') {
+      deductions += 20;
       reasonsList.push({ points: 20, text: "No Google Business Profile was detected for the business" });
     } else if (gbp.status === 'Multiple Matches') {
-      score += 10;
+      deductions += 10;
       reasonsList.push({ points: 10, text: "Multiple matching business profiles found, causing listing confusion" });
     } else if (gbp.status === 'Found') {
       const ratingVal = typeof gbp.rating === 'number' ? gbp.rating : parseFloat(gbp.rating);
       const votesCount = typeof gbp.reviewCount === 'number' ? gbp.reviewCount : parseInt(gbp.reviewCount, 10);
       
       if (!isNaN(ratingVal) && ratingVal < 4.0 && ratingVal > 0) {
-        score += 10;
+        deductions += 10;
         reasonsList.push({ points: 10, text: `Google Business Profile rating is low (${ratingVal} stars)` });
       } else if (!isNaN(votesCount) && votesCount < 30) {
-        score += 10;
+        deductions += 10;
         reasonsList.push({ points: 10, text: `Google Business Profile has low review volume (${votesCount} reviews)` });
       }
     }
   }
 
   // 4. On-Page / Crawl-dependent Technical Health & SEO Factors
-  // RULE: If crawl was blocked/failed, do NOT penalize or award points for uninspected elements!
   if (crawlFailed) {
     if (crawlStatusText) {
       reasonsList.push({ points: 0, text: `⚠ On-page technical inspection restricted by server (${crawlStatusText})` });
     }
   } else if (health) {
     if (health.statusCode !== 200 && health.statusCode !== 0) {
-      score += 15;
+      deductions += 15;
       reasonsList.push({ points: 15, text: `Non-200 HTTP response code (${health.statusCode}) indicates server errors` });
     } else if (health.statusCode === 0) {
-      score += 15;
+      deductions += 15;
       reasonsList.push({ points: 15, text: "Website connection failed or timed out" });
     }
 
     if (health.indexable === false) {
-      score += 7;
+      deductions += 7;
       reasonsList.push({ points: 7, text: "Page is blocked from indexation by noindex tags" });
     }
 
-    // Metadata (Max 20 points)
+    // Metadata
     if (health.titlePresent === false || health.titleLength === 0) {
-      score += 10;
+      deductions += 10;
       reasonsList.push({ points: 10, text: "HTML meta title tag is missing" });
     } else if (health.titleLength > 0 && (health.titleLength < 50 || health.titleLength > 60)) {
-      score += 4;
+      deductions += 4;
       reasonsList.push({ points: 4, text: `HTML meta title length (${health.titleLength} chars) is outside optimal 50-60 range` });
     }
 
     if (health.descriptionPresent === false || health.descriptionLength === 0) {
-      score += 10;
+      deductions += 10;
       reasonsList.push({ points: 10, text: "HTML meta description tag is missing" });
     } else if (health.descriptionLength > 0 && (health.descriptionLength < 120 || health.descriptionLength > 160)) {
-      score += 4;
+      deductions += 4;
       reasonsList.push({ points: 4, text: `HTML meta description length (${health.descriptionLength} chars) is outside optimal 120-160 range` });
     }
 
-    // Heading Structure (Max 10 points)
+    // Heading Structure
     if (health.h1Present === false || health.h1Count === 0) {
-      score += 10;
+      deductions += 10;
       reasonsList.push({ points: 10, text: "First H1 heading tag is missing" });
     } else if (health.h1Count > 1) {
-      score += 4;
+      deductions += 4;
       reasonsList.push({ points: 4, text: `Duplicate H1 heading tags found (${health.h1Count} tags)` });
     }
 
-    // Content Depth (Max 10 points)
+    // Content Depth
     if (typeof health.wordCount === 'number') {
       if (health.wordCount < 300) {
-        score += 10;
+        deductions += 10;
         reasonsList.push({ points: 10, text: `Page content is thin (${health.wordCount} words, recommend 600+)` });
       } else if (health.wordCount < 600) {
-        score += 5;
+        deductions += 5;
         reasonsList.push({ points: 5, text: `Page content is moderate (${health.wordCount} words, recommend 600+)` });
       }
     }
 
-    // Internal & External Linking (Max 10 points)
+    // Internal & External Linking
     if (typeof health.internalLinksCount === 'number' && health.internalLinksCount < 5) {
-      score += 5;
+      deductions += 5;
       reasonsList.push({ points: 5, text: `Low internal linking count (${health.internalLinksCount} links)` });
     }
     if (typeof health.externalLinksCount === 'number' && health.externalLinksCount < 1) {
-      score += 5;
+      deductions += 5;
       reasonsList.push({ points: 5, text: "Low external linking count (0 links)" });
     }
   }
 
-  // Ensure score is capped at 100
-  score = Math.min(score, 100);
+  // Calculate optimization score: 100 base minus deductions, clamped between 0 and 100
+  const score = Math.max(0, Math.min(100, 100 - deductions));
 
-  // Determine Opportunity Band
-  let band = 'Low';
+  // Determine 4-tier Opportunity Band:
+  // 80–100: Well-Optimized (Green)
+  // 60–79: Optimized (Blue)
+  // 40–59: Average
+  // 0–39: Follow-Up (Yellow — strongest outreach candidates)
+  let band = 'Follow-Up';
   if (score >= 80) {
-    band = 'Very High';
+    band = 'Well-Optimized';
   } else if (score >= 60) {
-    band = 'High';
-  } else if (score >= 30) {
-    band = 'Moderate';
+    band = 'Optimized';
+  } else if (score >= 40) {
+    band = 'Average';
+  } else {
+    band = 'Follow-Up';
   }
 
   const topReasons = reasonsList
@@ -1457,6 +1463,90 @@ app.post('/api/prospects/find-email', async (req, res) => {
     const contactResult = await crawlProspectContactEmails(target);
     res.json(contactResult);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST endpoint for manual email update/fallback across saved searches and shortlist
+app.post('/api/prospects/update-email', async (req, res) => {
+  try {
+    const { searchId, domain, url, rank, contactEmail, email } = req.body;
+    const db = await getDb();
+    const rawEmail = contactEmail !== undefined ? contactEmail : email;
+    const cleanEmail = rawEmail ? String(rawEmail).trim().toLowerCase() : null;
+
+    let updatedInSearch = false;
+
+    // 1. Update in saved_searches if searchId or domain is provided
+    if (searchId) {
+      const row = await db.get('SELECT * FROM saved_searches WHERE (searchId = ? OR id = ?) AND workspace = ?', [searchId, searchId, req.workspace]);
+      if (row) {
+        const data = JSON.parse(row.data || '[]');
+        for (let i = 0; i < data.length; i++) {
+          const item = data[i];
+          const isMatch = (url && item.url === url) ||
+                          (domain && (item.domain === domain || normalizeDomain(item.url || item.website) === normalizeDomain(domain))) ||
+                          (rank !== undefined && rank !== null && item.rank === rank);
+          if (isMatch) {
+            data[i].contactEmail = cleanEmail;
+            data[i].emailStatus = cleanEmail ? 'Email Found' : 'No Email';
+            data[i].manualEmail = Boolean(cleanEmail);
+            if (data[i].analysis) {
+              data[i].analysis.contactEmail = cleanEmail;
+              data[i].analysis.emailStatus = cleanEmail ? 'Email Found' : 'No Email';
+              data[i].analysis.manualEmail = Boolean(cleanEmail);
+            }
+            updatedInSearch = true;
+          }
+        }
+        if (updatedInSearch) {
+          await db.run('UPDATE saved_searches SET data = ? WHERE id = ? AND workspace = ?', [JSON.stringify(data), row.id, req.workspace]);
+        }
+      }
+    }
+
+    // 2. Also update across all saved searches matching domain if not found by searchId
+    const targetDomain = domain ? normalizeDomain(domain) : (url ? normalizeDomain(url) : '');
+    if (targetDomain) {
+      const allSearches = await db.all('SELECT id, data FROM saved_searches WHERE workspace = ?', [req.workspace]);
+      for (const s of allSearches) {
+        let changed = false;
+        try {
+          const sData = JSON.parse(s.data || '[]');
+          for (let i = 0; i < sData.length; i++) {
+            const dom = normalizeDomain(sData[i].domain || sData[i].url || sData[i].website);
+            if (dom === targetDomain) {
+              sData[i].contactEmail = cleanEmail;
+              sData[i].emailStatus = cleanEmail ? 'Email Found' : 'No Email';
+              sData[i].manualEmail = Boolean(cleanEmail);
+              if (sData[i].analysis) {
+                sData[i].analysis.contactEmail = cleanEmail;
+                sData[i].analysis.emailStatus = cleanEmail ? 'Email Found' : 'No Email';
+                sData[i].analysis.manualEmail = Boolean(cleanEmail);
+              }
+              changed = true;
+            }
+          }
+          if (changed) {
+            await db.run('UPDATE saved_searches SET data = ? WHERE id = ? AND workspace = ?', [JSON.stringify(sData), s.id, req.workspace]);
+          }
+        } catch (e) {}
+      }
+
+      // 3. Update outreach_shortlist table
+      await db.run(
+        `UPDATE outreach_shortlist SET contactEmail = ?, emailStatus = ? WHERE (domain = ? OR domain = ? OR url LIKE ?) AND workspace = ?`,
+        [cleanEmail, cleanEmail ? 'Email Found' : 'No Email', targetDomain, domain || '', `%${targetDomain}%`, req.workspace]
+      );
+    }
+
+    res.json({
+      success: true,
+      contactEmail: cleanEmail,
+      emailStatus: cleanEmail ? 'Email Found' : 'No Email'
+    });
+  } catch (error) {
+    console.error('[Update Email Error]', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -2188,14 +2278,14 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  // If no contact links discovered, probe standard paths
+  // If no contact links discovered from HTML, probe standard contact paths
   if (contactLinks.length === 0) {
-    const origin = homeResult?.finalUrl ? new URL(homeResult.finalUrl).origin : `https://${baseDomain}`;
-    contactLinks.push(`${origin}/contact/`, `${origin}/contact-us/`, `${origin}/about/`);
+    const origin = landingResult?.finalUrl ? new URL(landingResult.finalUrl).origin : `https://${baseDomain}`;
+    contactLinks.push(`${origin}/contact/`, `${origin}/contact-us/`, `${origin}/contact`, `${origin}/contact-us`, `${origin}/about/`, `${origin}/about-us/`);
   }
 
-  // 2. Fetch top contact pages if found
-  for (const contactUrl of contactLinks.slice(0, 4)) {
+  // 3. Fetch top contact pages if found
+  for (const contactUrl of contactLinks.slice(0, 5)) {
     const contactResult = await fetchPage(contactUrl);
     if (contactResult?.html) {
       const contactEmails = extractEmailsFromHtml(contactResult.html, baseDomain);
@@ -2225,15 +2315,22 @@ async function crawlProspectContactEmails(targetUrl) {
     if (!preferredEmail) {
       preferredEmail = domainFilteredEmails[0];
     }
+  } else if (allEmails.size > 0) {
+    // Fallback: If no strict domain-match, pick valid business email discovered from the website's contact page (e.g. gmail/outlook business accounts)
+    const validCandidates = Array.from(allEmails).filter(e => isValidEmail(e, baseDomain));
+    if (validCandidates.length > 0) {
+      preferredEmail = validCandidates.find(e => priorityPrefixes.some(p => e.startsWith(p))) || validCandidates[0];
+    }
   }
 
+  const allFoundList = domainFilteredEmails.length > 0 ? domainFilteredEmails : Array.from(allEmails);
   const emailSource = preferredEmail ? (emailSourcesMap.get(preferredEmail) || primarySource || fetchUrl) : null;
   const status = preferredEmail ? 'Email Found' : 'No Email';
 
   return {
     status,
     contactEmail: preferredEmail || null,
-    allFoundEmails: domainFilteredEmails,
+    allFoundEmails: allFoundList,
     emailSource: emailSource
   };
 }

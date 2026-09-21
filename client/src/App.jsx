@@ -1307,6 +1307,8 @@ function App() {
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
   useEffect(() => {
+    setEditingCard2Email(false);
+    setCard2EmailInput('');
     if (activeAnalysisItem) {
       setOutreachEmail(generateFirstEmail(activeAnalysisItem));
     } else {
@@ -2155,6 +2157,109 @@ function App() {
   };
   
   const [savedSearches, setSavedSearches] = useState([]);
+  const [editingCard2Email, setEditingCard2Email] = useState(false);
+  const [card2EmailInput, setCard2EmailInput] = useState('');
+  const [isSavingCard2Email, setIsSavingCard2Email] = useState(false);
+
+  const handleSaveCard2Email = async () => {
+    if (!activeAnalysisItem) return;
+    const cleanEmail = (card2EmailInput || '').trim();
+    setIsSavingCard2Email(true);
+    try {
+      await fetch(`${API_BASE}/api/prospects/update-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain: activeAnalysisItem.domain,
+          url: activeAnalysisItem.url,
+          searchId: activeAnalysisItem.searchId,
+          email: cleanEmail
+        })
+      });
+
+      // Update activeAnalysisItem in memory
+      setActiveAnalysisItem(prev => {
+        if (!prev) return prev;
+        const newFound = cleanEmail 
+          ? (prev.allFoundEmails?.includes(cleanEmail) ? prev.allFoundEmails : [cleanEmail, ...(prev.allFoundEmails || [])])
+          : (prev.allFoundEmails || []);
+        return {
+          ...prev,
+          contactEmail: cleanEmail || null,
+          emailStatus: cleanEmail ? 'Email Found' : 'No Email',
+          allFoundEmails: newFound
+        };
+      });
+
+      // Update searchResults in memory
+      setSearchResults(prev => prev.map(item => {
+        const match = (item.domain && activeAnalysisItem.domain && item.domain.toLowerCase() === activeAnalysisItem.domain.toLowerCase()) ||
+                      (item.url && activeAnalysisItem.url && item.url.toLowerCase() === activeAnalysisItem.url.toLowerCase());
+        if (!match) return item;
+        return {
+          ...item,
+          contactEmail: cleanEmail || null,
+          emailStatus: cleanEmail ? 'Email Found' : 'No Email',
+          allFoundEmails: cleanEmail ? [cleanEmail, ...(item.allFoundEmails || [])] : item.allFoundEmails,
+          analysis: item.analysis ? {
+            ...item.analysis,
+            contactEmail: cleanEmail || null,
+            emailStatus: cleanEmail ? 'Email Found' : 'No Email',
+            allFoundEmails: cleanEmail ? [cleanEmail, ...(item.analysis.allFoundEmails || [])] : item.analysis.allFoundEmails
+          } : item.analysis
+        };
+      }));
+
+      // Update savedSearches in memory
+      setSavedSearches(prev => prev.map(s => {
+        let changed = false;
+        const newItems = (s.items || []).map(item => {
+          const match = (item.domain && activeAnalysisItem.domain && item.domain.toLowerCase() === activeAnalysisItem.domain.toLowerCase()) ||
+                        (item.url && activeAnalysisItem.url && item.url.toLowerCase() === activeAnalysisItem.url.toLowerCase());
+          if (!match) return item;
+          changed = true;
+          return {
+            ...item,
+            contactEmail: cleanEmail || null,
+            emailStatus: cleanEmail ? 'Email Found' : 'No Email',
+            allFoundEmails: cleanEmail ? [cleanEmail, ...(item.allFoundEmails || [])] : item.allFoundEmails,
+            analysis: item.analysis ? {
+              ...item.analysis,
+              contactEmail: cleanEmail || null,
+              emailStatus: cleanEmail ? 'Email Found' : 'No Email'
+            } : item.analysis
+          };
+        });
+        return changed ? { ...s, items: newItems } : s;
+      }));
+
+      // Update outreachPacks in memory
+      setOutreachPacks(prev => prev.map(pack => {
+        let changed = false;
+        const newProspects = (pack.prospects || []).map(p => {
+          const match = (p.domain && activeAnalysisItem.domain && p.domain.toLowerCase() === activeAnalysisItem.domain.toLowerCase()) ||
+                        (p.url && activeAnalysisItem.url && p.url.toLowerCase() === activeAnalysisItem.url.toLowerCase()) ||
+                        (p.id && (p.id === activeAnalysisItem.domain || p.id === activeAnalysisItem.url));
+          if (!match) return p;
+          changed = true;
+          return {
+            ...p,
+            contactEmail: cleanEmail || null,
+            allFoundEmails: cleanEmail ? (p.allFoundEmails?.includes(cleanEmail) ? p.allFoundEmails : [cleanEmail, ...(p.allFoundEmails || [])]) : (p.allFoundEmails || []),
+            manualEmail: Boolean(cleanEmail),
+            emailStatus: cleanEmail ? 'Email Found' : 'No Email'
+          };
+        });
+        return changed ? { ...pack, prospects: newProspects } : pack;
+      }));
+
+      setEditingCard2Email(false);
+    } catch (err) {
+      console.error('Failed to update email in Card 2:', err);
+    } finally {
+      setIsSavingCard2Email(false);
+    }
+  };
 
   const handleSearch = async () => {
     setIsSearching(true);
@@ -3784,43 +3889,22 @@ function App() {
                                     {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
                                       (() => {
                                         const s = item.analysis.leadOpportunityScore.score;
-                                        const isHot = s >= 70;
+                                        const band = item.analysis.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                        const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
                                         return (
-                                          <span style={{ 
-                                            display: 'inline-flex', 
-                                            alignItems: 'center',
-                                            padding: isHot ? '2px 8px' : '0',
-                                            borderRadius: isHot ? '6px' : '0',
-                                            backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                                            border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
-                                            boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
-                                          }}>
+                                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                                             <span style={{ 
-                                              color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                              color,
                                               marginRight: '6px',
                                               fontSize: '1.1rem',
                                               lineHeight: '1'
                                             }}>●</span>
-                                            {s >= 60 && (
-                                              <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                            )}
-                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
                                               {s}
                                             </span>
-                                            {isHot && (
-                                              <span style={{ 
-                                                marginLeft: '6px', 
-                                                fontSize: '0.68rem', 
-                                                fontWeight: '800', 
-                                                letterSpacing: '0.04em',
-                                                color: '#ffffff',
-                                                backgroundColor: '#dc2626',
-                                                padding: '1px 5px',
-                                                borderRadius: '3px'
-                                              }}>
-                                                HOT
-                                              </span>
-                                            )}
+                                            <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
+                                              {band}
+                                            </span>
                                           </span>
                                         );
                                       })()
@@ -3948,43 +4032,22 @@ function App() {
                                     {item.analysis.leadOpportunityScore?.score !== null && item.analysis.leadOpportunityScore?.score !== undefined ? (
                                       (() => {
                                         const s = item.analysis.leadOpportunityScore.score;
-                                        const isHot = s >= 70;
+                                        const band = item.analysis.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                        const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
                                         return (
-                                          <span style={{ 
-                                            display: 'inline-flex', 
-                                            alignItems: 'center',
-                                            padding: isHot ? '2px 8px' : '0',
-                                            borderRadius: isHot ? '6px' : '0',
-                                            backgroundColor: isHot ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-                                            border: isHot ? '1px solid rgba(239, 68, 68, 0.5)' : 'none',
-                                            boxShadow: isHot ? '0 0 6px rgba(239, 68, 68, 0.2)' : 'none'
-                                          }}>
+                                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                                             <span style={{ 
-                                              color: s >= 70 ? '#ef4444' : (s >= 40 ? '#f59e0b' : '#10b981'),
+                                              color,
                                               marginRight: '6px',
                                               fontSize: '1.1rem',
                                               lineHeight: '1'
                                             }}>●</span>
-                                            {s >= 60 && (
-                                              <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                            )}
-                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isHot ? '#fca5a5' : '#ffffff' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
                                               {s}
                                             </span>
-                                            {isHot && (
-                                              <span style={{ 
-                                                marginLeft: '6px', 
-                                                fontSize: '0.68rem', 
-                                                fontWeight: '800', 
-                                                letterSpacing: '0.04em',
-                                                color: '#ffffff',
-                                                backgroundColor: '#dc2626',
-                                                padding: '1px 5px',
-                                                borderRadius: '3px'
-                                              }}>
-                                                HOT
-                                              </span>
-                                            )}
+                                            <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
+                                              {band}
+                                            </span>
                                           </span>
                                         );
                                       })()
@@ -4644,20 +4707,27 @@ function App() {
                             <td>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
                                 {score !== null && score !== undefined ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                                    <span style={{ 
-                                      color: score >= 70 ? '#ef4444' : (score >= 40 ? '#f59e0b' : '#10b981'),
-                                      marginRight: '6px',
-                                      fontSize: '1.1rem',
-                                      lineHeight: '1'
-                                    }}>●</span>
-                                    {score >= 60 && (
-                                      <span style={{ color: '#f59e0b', marginRight: '4px', fontSize: '1rem', fontWeight: 'bold' }}>★</span>
-                                    )}
-                                    <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff' }}>
-                                      {score}
-                                    </span>
-                                  </span>
+                                  (() => {
+                                    const s = score;
+                                    const band = item.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                    const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
+                                    return (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                        <span style={{ 
+                                          color,
+                                          marginRight: '6px',
+                                          fontSize: '1.1rem',
+                                          lineHeight: '1'
+                                        }}>●</span>
+                                        <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#ffffff', marginRight: '6px' }}>
+                                          {s}
+                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color, fontWeight: '600' }}>
+                                          {band}
+                                        </span>
+                                      </span>
+                                    );
+                                  })()
                                 ) : (
                                   <span style={{ color: '#64748b' }}>-</span>
                                 )}
@@ -5479,11 +5549,18 @@ function App() {
                                   <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>#{prospect.rank || '-'}</span>
                                 )}
                                 {prospect.opportunityScore !== null && prospect.opportunityScore !== undefined ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.9rem' }}>
-                                    <span style={{ color: prospect.opportunityScore >= 70 ? '#ef4444' : (prospect.opportunityScore >= 40 ? '#f59e0b' : '#10b981'), marginRight: '4px' }}>●</span>
-                                    {prospect.opportunityScore >= 60 && <span style={{ color: '#f59e0b', marginRight: '2px' }}>★</span>}
-                                    <strong style={{ color: '#ffffff' }}>{prospect.opportunityScore}</strong>
-                                  </span>
+                                  (() => {
+                                    const s = prospect.opportunityScore;
+                                    const band = prospect.opportunityBand || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                                    const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
+                                    return (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '0.9rem' }}>
+                                        <span style={{ color, marginRight: '4px' }}>●</span>
+                                        <strong style={{ color: '#ffffff', marginRight: '4px' }}>{s}</strong>
+                                        <span style={{ fontSize: '0.72rem', color, fontWeight: '600' }}>({band})</span>
+                                      </span>
+                                    );
+                                  })()
                                 ) : (
                                   <span style={{ color: '#64748b', fontSize: '0.85rem' }}>-</span>
                                 )}
@@ -7142,27 +7219,35 @@ function App() {
                 <h3>Lead Opportunity Score</h3>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.25rem 0' }}>
                   {activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined ? (
-                    <>
-                      <span style={{ fontSize: '4.5rem', fontWeight: '800', color: activeAnalysisItem.leadOpportunityScore?.score >= 80 ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.score >= 60 ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.score >= 30 ? '#3b82f6' : '#10b981')), lineHeight: '1' }}>
-                        {activeAnalysisItem.leadOpportunityScore.score}
-                      </span>
-                      <span style={{ 
-                        marginTop: '0.75rem',
-                        fontWeight: 'bold', 
-                        fontSize: '1.05rem',
-                        padding: '0.25rem 0.75rem', 
-                        borderRadius: '20px', 
-                        backgroundColor: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? 'rgba(239, 68, 68, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? 'rgba(245, 158, 11, 0.2)' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(16, 185, 129, 0.2)')),
-                        color: activeAnalysisItem.leadOpportunityScore?.band === 'Very High' ? '#ef4444' : (activeAnalysisItem.leadOpportunityScore?.band === 'High' ? '#f59e0b' : (activeAnalysisItem.leadOpportunityScore?.band === 'Moderate' ? '#3b82f6' : '#10b981'))
-                      }}>
-                        {activeAnalysisItem.leadOpportunityScore?.band || 'Low'} Opportunity
-                      </span>
-                      {(activeAnalysisItem.analysisProblem || activeAnalysisItem.leadOpportunityScore?.isIncomplete) && (
-                        <span style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
-                          ⚠ Analysis Incomplete
-                        </span>
-                      )}
-                    </>
+                    (() => {
+                      const s = activeAnalysisItem.leadOpportunityScore.score;
+                      const band = activeAnalysisItem.leadOpportunityScore.band || (s >= 80 ? 'Well-Optimized' : (s >= 60 ? 'Optimized' : (s >= 40 ? 'Average' : 'Follow-Up')));
+                      const color = s >= 80 ? '#10b981' : (s >= 60 ? '#38bdf8' : (s >= 40 ? '#94a3b8' : '#eab308'));
+                      const bg = s >= 80 ? 'rgba(16, 185, 129, 0.2)' : (s >= 60 ? 'rgba(56, 189, 248, 0.2)' : (s >= 40 ? 'rgba(148, 163, 184, 0.2)' : 'rgba(234, 179, 8, 0.2)'));
+                      return (
+                        <>
+                          <span style={{ fontSize: '4.5rem', fontWeight: '800', color, lineHeight: '1' }}>
+                            {s}
+                          </span>
+                          <span style={{ 
+                            marginTop: '0.75rem',
+                            fontWeight: 'bold', 
+                            fontSize: '1.05rem',
+                            padding: '0.25rem 0.75rem', 
+                            borderRadius: '20px', 
+                            backgroundColor: bg,
+                            color
+                          }}>
+                            {band}
+                          </span>
+                          {(activeAnalysisItem.analysisProblem || activeAnalysisItem.leadOpportunityScore?.isIncomplete) && (
+                            <span style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
+                              ⚠ Analysis Incomplete
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()
                   ) : (
                     <>
                       <span style={{ fontSize: '3.5rem', fontWeight: '800', color: activeAnalysisItem.retryStatus === 'manual_check' ? '#ef4444' : (activeAnalysisItem.analysisProblem ? '#f59e0b' : '#94a3b8'), lineHeight: '1' }}>
@@ -7231,6 +7316,89 @@ function App() {
                         {activeAnalysisItem.gbp.websiteUrl}
                       </a>
                     ) : (activeAnalysisItem.gbp?.websiteUrl === 'Not Found' || !activeAnalysisItem.gbp?.websiteUrl ? 'No Profile Matched' : activeAnalysisItem.gbp.websiteUrl)}
+                  </span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Email Address</span>
+                  <span className="analysis-value">
+                    {editingCard2Email ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end', width: '100%' }}>
+                        <input
+                          type="email"
+                          value={card2EmailInput}
+                          onChange={(e) => setCard2EmailInput(e.target.value)}
+                          placeholder="e.g. hello@domain.co.uk"
+                          autoComplete="off"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          style={{
+                            backgroundColor: '#0f172a',
+                            color: '#ffffff',
+                            border: '1px solid #3b82f6',
+                            borderRadius: '4px',
+                            padding: '0.2rem 0.5rem',
+                            fontSize: '0.85rem',
+                            width: '190px'
+                          }}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveCard2Email();
+                            if (e.key === 'Escape') setEditingCard2Email(false);
+                          }}
+                        />
+                        <button
+                          onClick={handleSaveCard2Email}
+                          disabled={isSavingCard2Email}
+                          className="table-btn"
+                          style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                          title="Save Email"
+                        >
+                          {isSavingCard2Email ? '...' : '✓ Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingCard2Email(false)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || (activeAnalysisItem.allFoundEmails && activeAnalysisItem.allFoundEmails[0]) ? (
+                          <>
+                            <span style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                              {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails[0]}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setCard2EmailInput(activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails?.[0] || '');
+                                setEditingCard2Email(true);
+                              }}
+                              className="table-btn"
+                              style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                            >
+                              Edit
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Not Found</span>
+                            <button
+                              onClick={() => {
+                                setCard2EmailInput('');
+                                setEditingCard2Email(true);
+                              }}
+                              className="table-btn"
+                              style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                            >
+                              Add Email
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </span>
                 </div>
                 <div className="analysis-row">
