@@ -440,19 +440,56 @@ function normalizeDomain(urlOrDomain) {
   return parts.slice(-2).join('.');
 }
 
-function isDomainExcluded(urlOrDomain, excludedList) {
-  if (!urlOrDomain || !excludedList || !Array.isArray(excludedList) || excludedList.length === 0) return false;
-  const target = normalizeDomain(urlOrDomain);
-  if (!target) return false;
+const SYSTEM_EXCLUSIONS = ['.gov.uk', '.gov'];
 
-  return excludedList.some(exc => {
-    const excNorm = normalizeDomain(exc);
-    if (!excNorm) return false;
-    if (target === excNorm) return true;
-    if (target.endsWith('.' + excNorm)) return true;
-    if (excNorm.endsWith('.' + target)) return true;
-    return false;
-  });
+function extractHostname(urlOrDomain) {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^[a-z0-9+.-]+:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0].split('#')[0].split(':')[0];
+  }
+  str = str.replace(/:\d+$/, '').replace(/^\.+|\.+$/g, '').trim();
+  while (str.startsWith('www.') || str.startsWith('www1.') || str.startsWith('www2.')) {
+    str = str.split('.').slice(1).join('.');
+  }
+  return str;
+}
+
+function isDomainExcluded(urlOrDomain, excludedList = []) {
+  if (!urlOrDomain) return false;
+  const host = extractHostname(urlOrDomain);
+  if (!host) return false;
+
+  // 1. Check global system exclusions by hostname suffix
+  for (const sys of SYSTEM_EXCLUSIONS) {
+    const cleanSys = sys.startsWith('.') ? sys : '.' + sys;
+    if (host === cleanSys.slice(1) || host.endsWith(cleanSys)) {
+      return true;
+    }
+  }
+
+  // 2. Check user/workspace dynamic exclusions
+  if (Array.isArray(excludedList) && excludedList.length > 0) {
+    const target = normalizeDomain(urlOrDomain);
+    if (!target) return false;
+
+    return excludedList.some(exc => {
+      const excNorm = normalizeDomain(exc);
+      if (!excNorm) return false;
+      if (target === excNorm) return true;
+      if (target.endsWith('.' + excNorm)) return true;
+      if (excNorm.endsWith('.' + target)) return true;
+      return false;
+    });
+  }
+
+  return false;
 }
 
 function getDomain(urlStr) {

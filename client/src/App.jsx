@@ -665,19 +665,56 @@ const isPackLocal = (pack) => {
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:5000' : '';
 
-const isDomainExcluded = (urlOrDomain, excludedList) => {
-  if (!urlOrDomain || !excludedList || !Array.isArray(excludedList) || excludedList.length === 0) return false;
-  const target = normalizeDomain(urlOrDomain);
-  if (!target) return false;
+const SYSTEM_EXCLUSIONS = ['.gov.uk', '.gov'];
 
-  return excludedList.some(exc => {
-    const excNorm = normalizeDomain(exc);
-    if (!excNorm) return false;
-    if (target === excNorm) return true;
-    if (target.endsWith('.' + excNorm)) return true;
-    if (excNorm.endsWith('.' + target)) return true;
-    return false;
-  });
+const extractHostname = (urlOrDomain) => {
+  if (!urlOrDomain) return '';
+  let str = String(urlOrDomain).trim().toLowerCase();
+  if (str.includes('://')) {
+    try {
+      str = new URL(str).hostname;
+    } catch (e) {
+      str = str.replace(/^[a-z0-9+.-]+:\/\//i, '').split('/')[0];
+    }
+  } else {
+    str = str.split('/')[0].split('?')[0].split('#')[0].split(':')[0];
+  }
+  str = str.replace(/:\d+$/, '').replace(/^\.+|\.+$/g, '').trim();
+  while (str.startsWith('www.') || str.startsWith('www1.') || str.startsWith('www2.')) {
+    str = str.split('.').slice(1).join('.');
+  }
+  return str;
+};
+
+const isDomainExcluded = (urlOrDomain, excludedList = []) => {
+  if (!urlOrDomain) return false;
+  const host = extractHostname(urlOrDomain);
+  if (!host) return false;
+
+  // 1. Check global system exclusions by hostname suffix
+  for (const sys of SYSTEM_EXCLUSIONS) {
+    const cleanSys = sys.startsWith('.') ? sys : '.' + sys;
+    if (host === cleanSys.slice(1) || host.endsWith(cleanSys)) {
+      return true;
+    }
+  }
+
+  // 2. Check user/workspace dynamic exclusions
+  if (Array.isArray(excludedList) && excludedList.length > 0) {
+    const target = normalizeDomain(urlOrDomain);
+    if (!target) return false;
+
+    return excludedList.some(exc => {
+      const excNorm = normalizeDomain(exc);
+      if (!excNorm) return false;
+      if (target === excNorm) return true;
+      if (target.endsWith('.' + excNorm)) return true;
+      if (excNorm.endsWith('.' + target)) return true;
+      return false;
+    });
+  }
+
+  return false;
 };
 
 const getDomain = (url) => {
@@ -2415,15 +2452,43 @@ function App() {
         setSortColumn(null);
         setSortDirection('asc');
         
-        let targetSearchId = activeSearchId;
+        const cleanBusinessType = businessType.trim() || 'Any';
+        const cleanLocation = location.trim() || 'Anywhere';
+        const cleanSearchMode = searchMode || 'organic';
+        const cleanSearchType = cleanSearchMode === 'organic' ? 'Organic' : 'GMB';
 
-        // Save search automatically or update if refreshing
+        // Check if there is an active search being genuinely re-run (same businessType + location + searchMode)
+        let isRerun = false;
         if (activeSearchId) {
+          const activeSaved = savedSearches.find(s => s.searchId === activeSearchId);
+          if (activeSaved) {
+            const savedBt = (activeSaved.businessType || '').trim().toLowerCase();
+            const currBt = cleanBusinessType.toLowerCase();
+            const savedLoc = (activeSaved.location || '').trim().toLowerCase();
+            const currLoc = cleanLocation.toLowerCase();
+            const savedMode = (activeSaved.searchMode || (activeSaved.searchType === 'Organic' ? 'organic' : 'local')).toLowerCase();
+            const currMode = cleanSearchMode.toLowerCase();
+
+            if (savedBt === currBt && savedLoc === currLoc && savedMode === currMode) {
+              isRerun = true;
+            }
+          }
+        }
+
+        let targetSearchId = null;
+
+        // Save search automatically or update if refreshing the exact same search
+        if (isRerun && activeSearchId) {
+          targetSearchId = activeSearchId;
           setSavedSearches(prev => {
             const updated = prev.map(saved => {
               if (saved.searchId === activeSearchId) {
                 const updatedSearch = {
                   ...saved,
+                  searchType: cleanSearchType,
+                  businessType: cleanBusinessType,
+                  location: cleanLocation,
+                  searchMode: cleanSearchMode,
                   count: enrichedData.length,
                   data: enrichedData,
                   dateTime: new Date().toLocaleString()
@@ -2447,6 +2512,7 @@ function App() {
             return updated;
           });
         } else {
+          // If search parameters differ, generate a new Search ID and never overwrite existing search
           let maxIdNum = 0;
           savedSearches.forEach(s => {
             if (s.searchId) {
@@ -2468,10 +2534,10 @@ function App() {
           const newSearch = {
             id: Date.now().toString(),
             searchId: nextIdStr,
-            searchType: searchMode === 'organic' ? 'Organic' : 'GMB',
-            businessType: businessType.trim() || 'Any',
-            location: location.trim() || 'Anywhere',
-            searchMode: searchMode,
+            searchType: cleanSearchType,
+            businessType: cleanBusinessType,
+            location: cleanLocation,
+            searchMode: cleanSearchMode,
             dateTime: new Date().toLocaleString(),
             count: enrichedData.length,
             data: enrichedData
@@ -4443,28 +4509,36 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {excludedDomains.length === 0 ? (
-                  <tr>
-                    <td colSpan="2" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                      No domains excluded yet.
+                <tr>
+                  <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
+                    .gov.uk <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
+                  </td>
+                  <td>
+                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
+                    .gov <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
+                  </td>
+                  <td>
+                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
+                  </td>
+                </tr>
+                {excludedDomains.map((domain, index) => (
+                  <tr key={index}>
+                    <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>{domain}</td>
+                    <td>
+                      <button 
+                        onClick={() => handleRemoveExclusion(domain)} 
+                        className="table-btn"
+                        style={{ backgroundColor: '#ef4444' }}
+                      >
+                        Remove Exclusion
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  excludedDomains.map((domain, index) => (
-                    <tr key={index}>
-                      <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>{domain}</td>
-                      <td>
-                        <button 
-                          onClick={() => handleRemoveExclusion(domain)} 
-                          className="table-btn"
-                          style={{ backgroundColor: '#ef4444' }}
-                        >
-                          Remove Exclusion
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
