@@ -55,10 +55,42 @@ function isPlaceholderTitle(title, testUrl = '') {
   return containsPatterns.some(p => t.includes(p));
 }
 
+// Simple async semaphore for limiting Puppeteer browser concurrency (Max 2)
+class ConcurrencyLimiter {
+  constructor(max) {
+    this.max = max;
+    this.current = 0;
+    this.queue = [];
+  }
+
+  async acquire() {
+    if (this.current < this.max) {
+      this.current++;
+      return;
+    }
+    await new Promise(resolve => this.queue.push(resolve));
+    this.current++;
+  }
+
+  release() {
+    this.current--;
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      next();
+    }
+  }
+}
+
+const puppeteerLimiter = new ConcurrencyLimiter(2);
+
 // Helper to fetch page content using a headless browser with network/DOM stability wait
 async function fetchPageWithPuppeteer(targetUrl) {
+  console.log(`[Puppeteer Scraper] Acquiring concurrency slot for: ${targetUrl}`);
+  await puppeteerLimiter.acquire();
   console.log(`[Puppeteer Scraper] Launching browser to fetch: ${targetUrl}`);
-  let browser;
+  
+  let browser = null;
+  let page = null;
   try {
     browser = await puppeteer.launch({
       headless: 'new',
@@ -70,7 +102,7 @@ async function fetchPageWithPuppeteer(targetUrl) {
         '--disable-extensions'
       ]
     });
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     
@@ -104,9 +136,13 @@ async function fetchPageWithPuppeteer(targetUrl) {
     console.error(`[Puppeteer Scraper Error]`, err);
     return { success: false, error: err.message };
   } finally {
-    if (browser) {
-      try { await browser.close(); } catch (e) {}
+    if (page) {
+      try { await page.close(); } catch (e) { console.error('[Puppeteer Scraper] Page close notice:', e.message); }
     }
+    if (browser) {
+      try { await browser.close(); } catch (e) { console.error('[Puppeteer Scraper] Browser close notice:', e.message); }
+    }
+    puppeteerLimiter.release();
   }
 }
 
@@ -2246,16 +2282,9 @@ async function crawlProspectContactEmails(targetUrl) {
 
     // Fallback to Puppeteer for dynamic / SPA / protected sites
     try {
-      const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-      const page = await browser.newPage();
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await new Promise(r => setTimeout(r, 1000));
-      const html = await page.content();
-      const finalUrl = page.url();
-      await browser.close();
-      if (html && html.length > 200) {
-        return { html, finalUrl };
+      const pupRes = await fetchPageWithPuppeteer(url);
+      if (pupRes.success && pupRes.html && pupRes.html.length > 200) {
+        return { html: pupRes.html, finalUrl: pupRes.finalUrl };
       }
     } catch (e) {}
 
@@ -3608,13 +3637,16 @@ app.get('/api/screenshot', async (req, res) => {
       }
     } catch (e) {}
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-    });
-
+    await puppeteerLimiter.acquire();
+    let browser = null;
+    let page = null;
     try {
-      const page = await browser.newPage();
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      });
+
+      page = await browser.newPage();
       await page.setViewport({ width: 1280, height: 800 });
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
@@ -3636,7 +3668,13 @@ app.get('/api/screenshot', async (req, res) => {
       res.set('Cache-Control', 'public, max-age=86400');
       return res.send(buffer);
     } finally {
-      await browser.close().catch(() => {});
+      if (page) {
+        try { await page.close(); } catch (e) {}
+      }
+      if (browser) {
+        try { await browser.close(); } catch (e) {}
+      }
+      puppeteerLimiter.release();
     }
   } catch (error) {
     console.error(`[Screenshot Error for ${targetUrl}]:`, error.message);
