@@ -615,8 +615,6 @@ export async function repairAndMigratePackIds(database) {
       }
     }
   } catch (err) {
-    }
-  } catch (err) {
     console.error('Error repairing and migrating pack IDs:', err);
   }
 }
