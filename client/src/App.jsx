@@ -7842,7 +7842,7 @@ function App() {
               
               {/* Metrics Row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                {/* Search Information (Spans 2 columns if space allows) */}
+                {/* 1. Search Information (Spans 2 columns if space allows) */}
                 <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gridColumn: 'span 2' }}>
                   <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Search Information</span>
                   <div style={{ fontSize: '0.85rem', color: '#cbd5e1', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -7871,23 +7871,115 @@ function App() {
                   </div>
                 </div>
 
-                {/* Commercial Lead Strength */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Commercial Lead Strength</span>
-                  <span style={{ fontSize: '1.25rem', color: '#f59e0b', fontWeight: 'bold', lineHeight: '1.2' }}>{activeAnalysisItem.leadPriority?.stars || '★★★☆☆'}</span>
-                  <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>{activeAnalysisItem.leadPriority?.label || 'Good Lead'}</span>
+                {/* 2. EMAIL */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>EMAIL</span>
+                  {editingCard2Email ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
+                      <input
+                        type="email"
+                        value={card2EmailInput}
+                        onChange={(e) => setCard2EmailInput(e.target.value)}
+                        placeholder="e.g. hello@domain.co.uk"
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        style={{
+                          backgroundColor: '#1e293b',
+                          color: '#ffffff',
+                          border: '1px solid #3b82f6',
+                          borderRadius: '4px',
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.85rem',
+                          width: '100%',
+                          textAlign: 'center',
+                          boxSizing: 'border-box'
+                        }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveCard2Email();
+                          if (e.key === 'Escape') setEditingCard2Email(false);
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.3rem' }}>
+                        <button
+                          onClick={handleSaveCard2Email}
+                          disabled={isSavingCard2Email}
+                          className="table-btn"
+                          style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                          title="Save Email"
+                        >
+                          {isSavingCard2Email ? '...' : '✓ Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingCard2Email(false)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                      {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || (activeAnalysisItem.allFoundEmails && activeAnalysisItem.allFoundEmails[0]) ? (
+                        <>
+                          <span style={{ fontSize: '0.95rem', color: '#38bdf8', fontWeight: 'bold', wordBreak: 'break-all', lineHeight: '1.2' }}>
+                            {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails[0]}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setCard2EmailInput(activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails?.[0] || '');
+                              setEditingCard2Email(true);
+                            }}
+                            className="table-btn"
+                            style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '0.95rem', color: '#94a3b8', fontStyle: 'italic', lineHeight: '1.2' }}>Not Found</span>
+                          <button
+                            onClick={() => {
+                              setCard2EmailInput('');
+                              setEditingCard2Email(true);
+                            }}
+                            className="table-btn"
+                            style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
+                          >
+                            Add Email
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Google Business Profile Status */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>GBP Status</span>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: activeAnalysisItem.gbp?.status === 'Found' ? '#10b981' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? '#f59e0b' : '#ef4444'), lineHeight: '1.2' }}>
-                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Found' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>Google Business</span>
+                {/* 3. OPPORTUNITY CLASSIFICATION */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>OPPORTUNITY CLASSIFICATION</span>
+                  {(() => {
+                    const s = activeAnalysisItem.leadOpportunityScore?.score;
+                    const rawBand = activeAnalysisItem.leadOpportunityScore?.band;
+                    const band = normalizeOpportunityClassification(rawBand, s);
+                    const colors = getClassificationColors(band);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: colors.color, lineHeight: '1.2' }}>
+                          {band}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>
+                          Classification
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
-                {/* Organic Ranking */}
+                {/* 4. ORGANIC RANKING */}
                 <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Organic Ranking</span>
                   <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#38bdf8', lineHeight: '1.2' }}>
@@ -7899,70 +7991,15 @@ function App() {
             </div>
 
             <div className="analysis-grid">
-              {/* Card 1: Opportunity Classification */}
-              <div className="analysis-section" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <h3>Opportunity Classification</h3>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: '1.5rem 0' }}>
-                  {activeAnalysisItem.leadOpportunityScore?.band || (activeAnalysisItem.leadOpportunityScore?.score !== null && activeAnalysisItem.leadOpportunityScore?.score !== undefined) ? (
-                    (() => {
-                      const s = activeAnalysisItem.leadOpportunityScore?.score;
-                      const rawBand = activeAnalysisItem.leadOpportunityScore?.band;
-                      const band = normalizeOpportunityClassification(rawBand, s);
-                      const colors = getClassificationColors(band);
-                      return (
-                        <>
-                          <div style={{
-                            padding: '0.8rem 1.8rem',
-                            borderRadius: '28px',
-                            backgroundColor: colors.bgLarge,
-                            border: `2px solid ${colors.borderLarge}`,
-                            color: colors.color,
-                            fontSize: '1.6rem',
-                            fontWeight: '800',
-                            letterSpacing: '0.02em',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '10px'
-                          }}>
-                            <span style={{ fontSize: '1.2rem', lineHeight: '1' }}>●</span>
-                            <span>{band}</span>
-                          </div>
-                          {(activeAnalysisItem.analysisProblem || activeAnalysisItem.leadOpportunityScore?.isIncomplete) && (
-                            <span style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: '600' }}>
-                              ⚠ Analysis Incomplete
-                            </span>
-                          )}
-                        </>
-                      );
-                    })()
-                  ) : (
-                    <div style={{
-                      padding: '0.6rem 1.4rem',
-                      borderRadius: '20px',
-                      backgroundColor: 'rgba(148, 163, 184, 0.15)',
-                      border: '1px solid rgba(148, 163, 184, 0.3)',
-                      color: '#94a3b8',
-                      fontSize: '1.1rem',
-                      fontWeight: '700'
-                    }}>
-                      Pending Analysis
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Card 2: Google Business Profile */}
               <div className="analysis-section">
-                <h3>Google Business Profile</h3>
-                <div className="analysis-row">
-                  <span className="analysis-label">Profile Status</span>
-                  <span className="analysis-value" style={{ 
-                    fontWeight: 'bold', 
-                    color: activeAnalysisItem.gbp?.status === 'Found' ? '#10b981' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? '#f59e0b' : '#ef4444')
-                  }}>
-                    {activeAnalysisItem.gbp?.status === 'Found' ? 'Profile Matched' : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched')}
-                  </span>
-                </div>
+                <h3>
+                  Google Business Profile ({
+                    activeAnalysisItem.gbp?.status === 'Found' 
+                      ? 'Found' 
+                      : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'Not Found')
+                  })
+                </h3>
                 <div className="analysis-row">
                   <span className="analysis-label">Business Name</span>
                   <span className="analysis-value">{!activeAnalysisItem.gbp?.businessName || activeAnalysisItem.gbp?.businessName === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.businessName}</span>
@@ -7998,89 +8035,6 @@ function App() {
                         {activeAnalysisItem.gbp.websiteUrl}
                       </a>
                     ) : (activeAnalysisItem.gbp?.websiteUrl === 'Not Found' || !activeAnalysisItem.gbp?.websiteUrl ? 'No Profile Matched' : activeAnalysisItem.gbp.websiteUrl)}
-                  </span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Email Address</span>
-                  <span className="analysis-value">
-                    {editingCard2Email ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'flex-end', width: '100%' }}>
-                        <input
-                          type="email"
-                          value={card2EmailInput}
-                          onChange={(e) => setCard2EmailInput(e.target.value)}
-                          placeholder="e.g. hello@domain.co.uk"
-                          autoComplete="off"
-                          data-lpignore="true"
-                          data-1p-ignore="true"
-                          style={{
-                            backgroundColor: '#0f172a',
-                            color: '#ffffff',
-                            border: '1px solid #3b82f6',
-                            borderRadius: '4px',
-                            padding: '0.2rem 0.5rem',
-                            fontSize: '0.85rem',
-                            width: '190px'
-                          }}
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveCard2Email();
-                            if (e.key === 'Escape') setEditingCard2Email(false);
-                          }}
-                        />
-                        <button
-                          onClick={handleSaveCard2Email}
-                          disabled={isSavingCard2Email}
-                          className="table-btn"
-                          style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
-                          title="Save Email"
-                        >
-                          {isSavingCard2Email ? '...' : '✓ Save'}
-                        </button>
-                        <button
-                          onClick={() => setEditingCard2Email(false)}
-                          className="table-btn"
-                          style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
-                          title="Cancel"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                        {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || (activeAnalysisItem.allFoundEmails && activeAnalysisItem.allFoundEmails[0]) ? (
-                          <>
-                            <span style={{ color: '#38bdf8', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                              {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails[0]}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setCard2EmailInput(activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails?.[0] || '');
-                                setEditingCard2Email(true);
-                              }}
-                              className="table-btn"
-                              style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold' }}
-                            >
-                              Edit
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ color: '#94a3b8', fontSize: '0.85rem', fontStyle: 'italic' }}>Not Found</span>
-                            <button
-                              onClick={() => {
-                                setCard2EmailInput('');
-                                setEditingCard2Email(true);
-                              }}
-                              className="table-btn"
-                              style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold' }}
-                            >
-                              Add Email
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </span>
                 </div>
                 <div className="analysis-row">
