@@ -810,6 +810,13 @@ function App() {
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailStatusMsg, setTestEmailStatusMsg] = useState(null);
 
+  // Persistent Sent Email History state
+  const [sentEmails, setSentEmails] = useState([]);
+  const [isSentEmailsLoading, setIsSentEmailsLoading] = useState(false);
+  const [sentEmailSearchInput, setSentEmailSearchInput] = useState('');
+  const [selectedSentEmailModal, setSelectedSentEmailModal] = useState(null);
+  const [prospectHistoryModalDomain, setProspectHistoryModalDomain] = useState(null);
+
   // Current authenticated user & workspace (persists instantly across page/view navigation)
   // Current authenticated user & workspace (persists instantly across page/view navigation)
   const [currentUser, setCurrentUser] = useState(() => {
@@ -898,7 +905,8 @@ function App() {
           fetchExclusions(targetWs),
           fetchSenderSettings(targetWs),
           fetchEmailTemplates(targetWs),
-          fetchSenderStatus(targetWs)
+          fetchSenderStatus(targetWs),
+          fetchSentEmails(targetWs)
         ]);
       } else {
         const err = await res.json().catch(() => ({}));
@@ -952,6 +960,13 @@ function App() {
       if (contextParam === 'local') setTemplateTab('local');
       else if (contextParam === 'organic') setTemplateTab('organic');
       else setTemplateTab('master');
+      setActivePack(null);
+      setActiveAnalysisItem(null);
+      return;
+    }
+    if (pathname === '/sent-emails' || pathname === '/outreach-sent-history' || (pathname === '/outreach' && tabParam === 'sent-history') || viewParam === 'sent-history' || (viewParam === 'outreach' && tabParam === 'sent-history')) {
+      setCurrentView('outreach');
+      setOutreachSubView('sent-history');
       setActivePack(null);
       setActiveAnalysisItem(null);
       return;
@@ -1674,6 +1689,32 @@ function App() {
     }
   };
 
+  const fetchSentEmails = async (overrideWs = null) => {
+    try {
+      setIsSentEmailsLoading(true);
+      const ws = overrideWs || currentUser?.workspace || 'tse';
+      const res = await fetch(`${API_BASE}/api/sent-emails?workspace=${ws}`, {
+        headers: getAuthHeaders(overrideWs)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.sentEmails)) {
+          setSentEmails(data.sentEmails);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching sent emails history:", e);
+    } finally {
+      setIsSentEmailsLoading(false);
+    }
+  };
+
+  const getProspectSentHistory = (domain) => {
+    if (!domain || !sentEmails.length) return [];
+    const norm = normalizeDomain(domain);
+    return sentEmails.filter(se => normalizeDomain(se.domain) === norm);
+  };
+
   const getContactHistoryWarning = (domain, currentPackId = null) => {
     if (!domain || !contactHistory.length) return null;
     const norm = normalizeDomain(domain);
@@ -1844,6 +1885,7 @@ function App() {
         setActivePack(data.pack);
         setOutreachPacks(prev => prev.map(p => p.packId === activePack.packId ? data.pack : p));
         await fetchContactHistory();
+        await fetchSentEmails();
         setIsSendConfirmModalOpen(false);
         broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId: activePack?.packId });
         broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
@@ -2065,6 +2107,7 @@ function App() {
     fetchEmailTemplates();
     fetchSenderSettings();
     fetchExclusions();
+    fetchSentEmails();
 
     applyRouteFromLocation();
 
@@ -3752,6 +3795,16 @@ function App() {
                 >
                   <span>Email Templates ({masterTemplates.length})</span>
                 </button>
+
+                <button 
+                  onClick={() => {
+                    navigate('/sent-emails');
+                  }} 
+                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'sent-history' ? 'active' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Sent Emails ({sentEmails.length})</span>
+                </button>
               </div>
             </div>
             <button 
@@ -4616,6 +4669,28 @@ function App() {
                   >
                     Email Templates ({masterTemplates.length})
                   </button>
+                  <button
+                    onClick={() => {
+                      setOutreachSubView('sent-history');
+                      setActivePack(null);
+                      try {
+                        const u = new URL(window.location.href);
+                        u.search = '?view=outreach&tab=sent-history';
+                        window.history.replaceState(null, '', u.toString());
+                      } catch (e) {}
+                    }}
+                    className="table-btn"
+                    style={{
+                      backgroundColor: outreachSubView === 'sent-history' ? '#2563eb' : '#0f172a',
+                      border: outreachSubView === 'sent-history' ? '1px solid #3b82f6' : '1px solid #334155',
+                      color: '#ffffff',
+                      fontWeight: outreachSubView === 'sent-history' ? 'bold' : 'normal',
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.9rem'
+                    }}
+                  >
+                    Sent Emails ({sentEmails.length})
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -4836,6 +4911,41 @@ function App() {
                                       📞 {phone}
                                     </span>
                                   )}
+                                  {(() => {
+                                    const prospectSentHist = getProspectSentHistory(item.domain);
+                                    if (prospectSentHist.length > 0) {
+                                      const lastSent = prospectSentHist[0];
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setProspectHistoryModalDomain(item.domain);
+                                          }}
+                                          className="table-btn"
+                                          style={{
+                                            marginTop: '4px',
+                                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                            border: '1px solid #10b981',
+                                            color: '#34d399',
+                                            padding: '0.15rem 0.45rem',
+                                            borderRadius: '4px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            width: 'fit-content'
+                                          }}
+                                          title={`Contacted ${prospectSentHist.length} time(s). Last: ${formatLastAnalysed(lastSent.sentAt)} via ${lastSent.templateName || 'Template'}`}
+                                        >
+                                          <span>✉ Sent ({prospectSentHist.length})</span>
+                                        </button>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                 </div>
                               </td>
                               <td>
@@ -5392,6 +5502,161 @@ function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              );
+            })()}
+
+            {/* Sub-view 4: Sent Emails History */}
+            {outreachSubView === 'sent-history' && (() => {
+              const filteredSentEmails = sentEmails.filter(item => {
+                if (!sentEmailSearchInput.trim()) return true;
+                const query = sentEmailSearchInput.toLowerCase().trim();
+                const domain = (item.domain || '').toLowerCase();
+                const email = (item.email || '').toLowerCase();
+                const template = (item.templateName || item.templateId || '').toLowerCase();
+                const subject = (item.subject || '').toLowerCase();
+                const packId = (item.packId || '').toLowerCase();
+                return domain.includes(query) || email.includes(query) || template.includes(query) || subject.includes(query) || packId.includes(query);
+              });
+
+              const totalSent = sentEmails.length;
+              const uniqueDomains = new Set(sentEmails.map(s => normalizeDomain(s.domain))).size;
+              const uniqueTemplates = new Set(sentEmails.map(s => s.templateName || s.templateId || 'Outreach Email')).size;
+
+              return (
+                <div className="results-table-container">
+                  <div style={{ padding: '1.5rem 1.5rem 0.75rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Sent Email History</h2>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                        Permanent server database record of all confirmed successful email sends (newest first).
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => fetchSentEmails()}
+                        className="table-btn"
+                        style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#60a5fa', fontSize: '0.85rem' }}
+                      >
+                        🔄 Refresh History
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary Cards Row */}
+                  <div style={{ padding: '0 1.5rem 1rem 1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <div style={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Emails Sent</span>
+                      <span style={{ fontSize: '1.5rem', color: '#10b981', fontWeight: 'bold' }}>{totalSent}</span>
+                    </div>
+                    <div style={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>Unique Prospects Contacted</span>
+                      <span style={{ fontSize: '1.5rem', color: '#38bdf8', fontWeight: 'bold' }}>{uniqueDomains}</span>
+                    </div>
+                    <div style={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>Templates Utilized</span>
+                      <span style={{ fontSize: '1.5rem', color: '#c084fc', fontWeight: 'bold' }}>{uniqueTemplates}</span>
+                    </div>
+                  </div>
+
+                  {/* Search Filter Bar */}
+                  <div style={{ padding: '0 1.5rem 1rem 1.5rem' }}>
+                    <input
+                      type="text"
+                      value={sentEmailSearchInput}
+                      onChange={(e) => setSentEmailSearchInput(e.target.value)}
+                      placeholder="Filter sent emails by domain, email address, template or subject..."
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box', backgroundColor: '#0f172a', border: '1px solid #334155' }}
+                    />
+                  </div>
+
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th>Date / Time Sent</th>
+                        <th>Domain</th>
+                        <th>Recipient Email Address</th>
+                        <th>Template Used</th>
+                        <th>Pack ID</th>
+                        <th>Subject Line</th>
+                        <th className="action-cell">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isSentEmailsLoading && sentEmails.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                            Loading sent email history...
+                          </td>
+                        </tr>
+                      ) : filteredSentEmails.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                            <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>
+                              {sentEmailSearchInput ? 'No sent emails match your filter search.' : 'No sent email history recorded yet.'}
+                            </p>
+                            <p style={{ fontSize: '0.9rem', margin: 0 }}>Confirmed successful email sends will be automatically logged here.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredSentEmails.map((item) => (
+                          <tr key={item.id}>
+                            <td style={{ color: '#34d399', fontWeight: '500', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                              {formatLastAnalysed(item.sentAt)}
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => setProspectHistoryModalDomain(item.domain)}
+                                className="table-btn"
+                                style={{
+                                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                  border: '1px solid #0284c7',
+                                  color: '#38bdf8',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.85rem'
+                                }}
+                                title="Click to view full email history for this prospect domain"
+                              >
+                                {item.domain}
+                              </button>
+                            </td>
+                            <td>
+                              <span style={{ color: '#f8fafc', fontWeight: '600', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                                {item.email}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ color: '#c084fc', fontWeight: '500', fontSize: '0.85rem' }}>
+                                {item.templateName || item.templateId || 'Outreach Email'}
+                              </span>
+                            </td>
+                            <td>
+                              {item.packId ? (
+                                <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                  {item.packId}
+                                </span>
+                              ) : (
+                                <span style={{ color: '#64748b' }}>-</span>
+                              )}
+                            </td>
+                            <td style={{ color: '#cbd5e1', fontSize: '0.85rem', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.subject || '(No Subject)'}
+                            </td>
+                            <td className="action-cell">
+                              <button
+                                onClick={() => setSelectedSentEmailModal(item)}
+                                className="table-btn"
+                                style={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', color: '#60a5fa', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                              >
+                                View Email
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               );
             })()}
@@ -6962,6 +7227,252 @@ function App() {
                 </div>
               </div>
             )}
+            {/* Modal: View Single Sent Email Details */}
+            {selectedSentEmailModal && (
+              <div className="modal-overlay" style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem'
+              }}>
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: '10px',
+                  width: '100%',
+                  maxWidth: '700px',
+                  maxHeight: '90vh',
+                  overflowY: 'auto',
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1.25rem',
+                  boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                        Sent Email Log Details
+                      </h3>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        Confirmed delivery log record from server database.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedSentEmailModal(null)}
+                      style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <div style={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    display: 'grid',
+                    gridTemplateColumns: '140px 1fr',
+                    gap: '0.6rem 1rem',
+                    fontSize: '0.85rem'
+                  }}>
+                    <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Date / Time Sent:</span>
+                    <span style={{ color: '#10b981', fontWeight: 'bold' }}>{formatLastAnalysed(selectedSentEmailModal.sentAt)}</span>
+
+                    <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Domain:</span>
+                    <span style={{ color: '#38bdf8', fontWeight: 'bold' }}>{selectedSentEmailModal.domain}</span>
+
+                    <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Recipient Email:</span>
+                    <span style={{ color: '#ffffff', fontFamily: 'monospace' }}>{selectedSentEmailModal.email}</span>
+
+                    <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Template Name:</span>
+                    <span style={{ color: '#c084fc', fontWeight: '500' }}>{selectedSentEmailModal.templateName || selectedSentEmailModal.templateId || 'Outreach Email'}</span>
+
+                    {selectedSentEmailModal.packId && (
+                      <>
+                        <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Pack ID:</span>
+                        <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>{selectedSentEmailModal.packId}</span>
+                      </>
+                    )}
+
+                    <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Subject Line:</span>
+                    <span style={{ color: '#f8fafc', fontWeight: '600' }}>{selectedSentEmailModal.subject || '(No Subject)'}</span>
+                  </div>
+
+                  {selectedSentEmailModal.body && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                        Email Body Delivered
+                      </label>
+                      <div style={{
+                        backgroundColor: '#090d16',
+                        border: '1px solid #334155',
+                        borderRadius: '8px',
+                        padding: '1.25rem',
+                        color: '#f1f5f9',
+                        fontSize: '0.9rem',
+                        lineHeight: '1.6',
+                        whiteSpace: 'pre-wrap',
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        fontFamily: 'inherit'
+                      }}>
+                        {selectedSentEmailModal.body}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                    <button
+                      onClick={() => setSelectedSentEmailModal(null)}
+                      className="table-btn"
+                      style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Prospect Sent Email History */}
+            {prospectHistoryModalDomain && (() => {
+              const history = getProspectSentHistory(prospectHistoryModalDomain);
+              return (
+                <div className="modal-overlay" style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 99999,
+                  padding: '1.5rem'
+                }}>
+                  <div style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: '10px',
+                    width: '100%',
+                    maxWidth: '750px',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    padding: '2rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.25rem',
+                    boxShadow: '0 25px 50px rgba(0,0,0,0.9)'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <span style={{ fontSize: '1.3rem' }}>📧</span>
+                          <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem' }}>
+                            Email History for {prospectHistoryModalDomain}
+                          </h3>
+                        </div>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          Showing {history.length} confirmed successful email send{history.length === 1 ? '' : 's'}.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setProspectHistoryModalDomain(null)}
+                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+
+                    {history.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', backgroundColor: '#1e293b', borderRadius: '8px' }}>
+                        No previous email send records found for {prospectHistoryModalDomain}.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {history.map((h, idx) => (
+                          <div
+                            key={h.id || idx}
+                            style={{
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #334155',
+                              borderRadius: '8px',
+                              padding: '1.1rem',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.75rem'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid #334155', paddingBottom: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                  ✓ Sent {formatLastAnalysed(h.sentAt)}
+                                </span>
+                                {h.packId && (
+                                  <span style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                    Pack: {h.packId}
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ color: '#c084fc', fontSize: '0.85rem', fontWeight: '500' }}>
+                                Template: {h.templateName || h.templateId || 'Outreach Email'}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.4rem', fontSize: '0.85rem' }}>
+                              <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Recipient Email:</span>
+                              <span style={{ color: '#38bdf8', fontWeight: 'bold', fontFamily: 'monospace' }}>{h.email}</span>
+
+                              <span style={{ color: '#94a3b8', fontWeight: 'bold' }}>Subject:</span>
+                              <span style={{ color: '#f8fafc', fontWeight: '600' }}>{h.subject || '(No Subject)'}</span>
+                            </div>
+
+                            {h.body && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.25rem' }}>
+                                <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase' }}>Email Body Delivered:</span>
+                                <div style={{
+                                  backgroundColor: '#0f172a',
+                                  border: '1px solid #334155',
+                                  borderRadius: '6px',
+                                  padding: '0.75rem 1rem',
+                                  color: '#cbd5e1',
+                                  fontSize: '0.85rem',
+                                  lineHeight: '1.5',
+                                  whiteSpace: 'pre-wrap',
+                                  maxHeight: '200px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {h.body}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                      <button
+                        onClick={() => setProspectHistoryModalDomain(null)}
+                        className="table-btn"
+                        style={{ backgroundColor: '#334155', color: '#cbd5e1' }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
         {currentView === 'settings' && (

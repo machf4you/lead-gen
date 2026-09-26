@@ -101,6 +101,20 @@ export async function getDb() {
       value TEXT NOT NULL,
       PRIMARY KEY (workspace, key)
     );
+
+    CREATE TABLE IF NOT EXISTS sent_email_history (
+      id TEXT PRIMARY KEY,
+      sentAt TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      email TEXT NOT NULL,
+      templateId TEXT,
+      templateName TEXT,
+      prospectId TEXT,
+      packId TEXT,
+      subject TEXT,
+      body TEXT,
+      workspace TEXT NOT NULL DEFAULT 'tse'
+    );
   `);
 
   try {
@@ -179,6 +193,7 @@ export async function getDb() {
   await initDefaultSettings(db);
   await cleanNonDomainEmails(db);
   await cleanPackTemplateGreetings(db);
+  await migrateExistingSentHistory(db);
   await seedDefaultEmailTemplates(db);
   await migrateSenderVariablesInTemplates(db);
   await migrateTemplateClassifications(db);
@@ -600,8 +615,61 @@ export async function repairAndMigratePackIds(database) {
       }
     }
   } catch (err) {
+    }
+  } catch (err) {
     console.error('Error repairing and migrating pack IDs:', err);
   }
 }
+
+// Migrate existing sent email records from outreach_packs to sent_email_history
+export async function migrateExistingSentHistory(database) {
+  try {
+    const packs = await database.all('SELECT * FROM outreach_packs');
+    for (const pack of packs) {
+      let prospects = [];
+      try {
+        prospects = JSON.parse(pack.prospects);
+      } catch (e) {
+        continue;
+      }
+      for (const p of prospects) {
+        if (p.sendStatus === 'Sent' || (p.sendHistory && p.sendHistory.some(sh => sh.status === 'Sent'))) {
+          const sentEntries = (p.sendHistory && Array.isArray(p.sendHistory))
+            ? p.sendHistory.filter(sh => sh.status === 'Sent')
+            : [{ email: p.contactEmail || (p.allFoundEmails?.[0]), sentAt: p.sentAt || pack.sentAt || pack.createdAt }];
+
+          for (const se of sentEntries) {
+            if (!se.email) continue;
+            const sentAt = se.sentAt || p.sentAt || pack.sentAt || pack.createdAt;
+            const logId = `hist_${pack.packId || pack.id}_${p.domain}_${se.email.replace(/[^a-z0-9]/gi, '_')}`;
+            const existing = await database.get('SELECT id FROM sent_email_history WHERE id = ?', [logId]);
+            if (!existing) {
+              await database.run(
+                `INSERT INTO sent_email_history (id, sentAt, domain, email, templateId, templateName, prospectId, packId, subject, body, workspace)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  logId,
+                  sentAt,
+                  p.domain || 'unknown',
+                  se.email,
+                  pack.templateId || pack.packId || null,
+                  pack.name || pack.templateName || (pack.packId ? `Pack ${pack.packId}` : 'Outreach Email'),
+                  p.id || null,
+                  pack.packId || null,
+                  pack.templateSubject || null,
+                  pack.templateBody || null,
+                  pack.workspace || 'tse'
+                ]
+              );
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error migrating existing sent history:', err);
+  }
+}
+
 
 

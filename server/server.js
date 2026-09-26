@@ -3429,6 +3429,33 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
           const info = await transporter.sendMail(mailOptions);
           emailResults.push({ email, status: 'Sent', messageId: info.messageId, sentAt: nowIso });
           anySuccess = true;
+
+          // Log ONLY on confirmed successful send
+          try {
+            const logId = `sent_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+            const templateName = packRow.name || packRow.templateName || (packRow.packId ? `Pack ${packRow.packId}` : 'Outreach Email');
+            const templateId = packRow.templateId || packRow.packId || null;
+
+            await db.run(
+              `INSERT INTO sent_email_history (id, sentAt, domain, email, templateId, templateName, prospectId, packId, subject, body, workspace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                logId,
+                nowIso,
+                p.domain,
+                email,
+                templateId,
+                templateName,
+                p.id || null,
+                packRow.packId || null,
+                renderedSubject || null,
+                renderedBody || null,
+                req.workspace || 'tse'
+              ]
+            );
+          } catch (logErr) {
+            console.error('[Sent Email History Log Error]:', logErr);
+          }
         } catch (err) {
           console.error(`[Email Send Error] Failed sending to ${email}:`, err);
           emailResults.push({ email, status: 'Failed', error: err.message, failedAt: nowIso });
@@ -3557,6 +3584,28 @@ app.get('/api/outreach/history', async (req, res) => {
     res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// GET sent email history (persistent record of all confirmed successful sends, newest first)
+app.get('/api/sent-emails', async (req, res) => {
+  try {
+    const db = await getDb();
+    const domain = req.query.domain ? String(req.query.domain).trim() : null;
+    let query = 'SELECT * FROM sent_email_history WHERE workspace = ?';
+    const params = [req.workspace];
+
+    if (domain) {
+      const cleanDom = domain.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].trim();
+      query += ' AND (LOWER(domain) = LOWER(?) OR LOWER(domain) = LOWER(?))';
+      params.push(domain, cleanDom);
+    }
+
+    query += ' ORDER BY sentAt DESC';
+    const rows = await db.all(query, params);
+    res.json({ success: true, sentEmails: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
