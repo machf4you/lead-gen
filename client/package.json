@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node ../scripts/tse_production_gate.cjs && vite build",
+    "build": "node ../scripts/tse_production_gate.cjs && node ../scripts/generate_version.cjs && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "prebuild": "node ../scripts/tse_production_gate.cjs"
+    "prebuild": "node ../scripts/tse_production_gate.cjs && node ../scripts/generate_version.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

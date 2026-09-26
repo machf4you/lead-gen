@@ -12,8 +12,15 @@ export default function GlobalDeploymentIndicator() {
     let isMounted = true;
 
     function isServerNewer(sVer, sTimestamp, sCommit) {
-      // 1. Strict timestamp check: Server timestamp is strictly newer than current bundle timestamp (+ 1000ms grace period)
-      if (sTimestamp && CURRENT_BUILD_TIMESTAMP && Number(sTimestamp) > Number(CURRENT_BUILD_TIMESTAMP) + 1000) {
+      // 0. If commit hashes match (or prefix match), the server is running the current bundle
+      if (sCommit && CURRENT_BUILD_HASH && sCommit !== 'unknown' && sCommit !== 'dev') {
+        if (sCommit === CURRENT_BUILD_HASH || sCommit.startsWith(CURRENT_BUILD_HASH) || CURRENT_BUILD_HASH.startsWith(sCommit)) {
+          return false;
+        }
+      }
+
+      // 1. Strict timestamp check: Server timestamp is strictly newer than current bundle timestamp (+ 5000ms grace period)
+      if (sTimestamp && CURRENT_BUILD_TIMESTAMP && Number(sTimestamp) > Number(CURRENT_BUILD_TIMESTAMP) + 5000) {
         return true;
       }
 
@@ -181,19 +188,6 @@ export default function GlobalDeploymentIndicator() {
         <div className="global-deploy-indicator global-deploy-updating" role="status" aria-live="polite" title="Deployment in progress - Do NOT refresh yet">
           <span className="deploy-spin-icon" aria-hidden="true">⏳</span>
           <span className="deploy-text-updating">UPDATING — PLEASE WAIT</span>
-        </div>
-      ) : deployState === 'update_ready' ? (
-        <div className="global-deploy-indicator">
-          <button 
-            type="button"
-            className="global-deploy-update-ready-btn" 
-            onClick={handleManualRefresh}
-            title="New version is live! Click to reload latest changes"
-            id="btn-global-click-to-refresh"
-          >
-            <span className="deploy-ready-icon" aria-hidden="true">↻</span>
-            <span className="deploy-ready-text">CLICK TO REFRESH</span>
-          </button>
         </div>
       ) : (
         <div className="global-deploy-indicator global-deploy-normal">
