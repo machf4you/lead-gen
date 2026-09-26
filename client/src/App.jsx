@@ -3745,15 +3745,7 @@ function App() {
             >
               Saved Searches ({savedSearches.length})
             </button>
-            <button 
-              onClick={() => {
-                navigate('/domain-exclusions');
-              }} 
-              className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
-            >
-              Manage Exclusions ({excludedDomains.length})
-            </button>
-            {/* Outreach Section with Shortlist, Packs, and Templates sub-items */}
+            {/* Outreach Section with Shortlist, Packs, Templates, and Sent Emails sub-items */}
             <div className="sidebar-group">
               <button 
                 onClick={() => {
@@ -3814,6 +3806,14 @@ function App() {
               className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
             >
               Settings
+            </button>
+            <button 
+              onClick={() => {
+                navigate('/domain-exclusions');
+              }} 
+              className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
+            >
+              Manage Exclusions ({excludedDomains.length})
             </button>
           </div>
 
