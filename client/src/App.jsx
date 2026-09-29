@@ -7596,6 +7596,153 @@ function App() {
               </form>
             </div>
 
+            {/* Email Template Variables Section */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Email Template Variables</h2>
+                <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                  Reference guide for all supported <code style={{ color: '#38bdf8' }}>{"{{variables}}"}</code> available for outreach email templates and drafts.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Group 1: Sender Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Sender Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_first_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender first name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Mac</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender full name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Mac McCarthy</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{company_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender company / agency name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>The Search Equation</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 2: Prospect / Business Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Prospect / Business Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{businessName}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect business name — Scraped website header or map listing</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London Shutters Ltd</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{domain}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect website domain — Clean hostname from search result</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>londonshutters.co.uk</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{phone}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect phone number — Scraped contact phone or Google Business Profile</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>020 7946 0123</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rating}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Google Business rating — Review rating from Google Business Profile</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>4.9</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 3: Search / Campaign Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Search / Campaign Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{trade}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search trade / business type — Keyword service category (Aliases: <code style={{ color: '#94a3b8' }}>{"{{businessType}}"}</code>, <code style={{ color: '#94a3b8' }}>{"{{searchPhrase}}"}</code>, <code style={{ color: '#94a3b8' }}>{"{{searchKeyword}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Bathroom Showrooms</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{location}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search location — Target city or geographical search area</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Kent</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 4: Contact Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Contact Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{firstName}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Recipient first name — Derived from recipient email address (Fallback: <code style={{ color: '#94a3b8' }}>there</code>) (Alias: <code style={{ color: '#94a3b8' }}>{"{{first_name}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>John</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{greeting}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Automatic greeting line — Derived greeting (e.g. <code style={{ color: '#94a3b8' }}>Hi John</code> or <code style={{ color: '#94a3b8' }}>Hi Team</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Hi John</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Version History & Milestone Manager */}
             <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Version History & Milestone Manager</h2>
