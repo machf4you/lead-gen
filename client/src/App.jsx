@@ -6198,67 +6198,6 @@ function App() {
                     />
                   </div>
 
-                  {/* Master Template Selector */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>Choose Email Template</label>
-                      <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Personalised per recipient upon sending</span>
-                    </div>
-                    <select
-                      value={newPackTemplateId}
-                      onChange={(e) => {
-                        const selectedId = e.target.value;
-                        setNewPackTemplateId(selectedId);
-                        const found = masterTemplates.find(t => t.id === selectedId);
-                        if (found) {
-                          setNewPackSubjectInput(found.subject);
-                          setNewPackBodyInput(stripLeadingGreeting(found.body));
-                        }
-                      }}
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box', cursor: 'pointer', backgroundColor: '#1e293b' }}
-                    >
-                      {renderTemplateOptions(masterTemplates, '-- Choose a Master Template --')}
-                    </select>
-                  </div>
-
-                  {/* Editable Template Subject */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>Subject Line</label>
-                    <input
-                      type="text"
-                      value={newPackSubjectInput}
-                      onChange={(e) => setNewPackSubjectInput(e.target.value)}
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box' }}
-                    />
-                  </div>
-
-                  {/* Editable Template Body */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 'bold' }}>
-                      Email Body <span style={{ color: '#64748b', fontWeight: 'normal' }}>(Salutation is automatically prepended upon sending)</span>
-                    </label>
-                    <textarea
-                      value={newPackBodyInput}
-                      onChange={(e) => setNewPackBodyInput(e.target.value)}
-                      rows={8}
-                      style={{
-                        backgroundColor: '#1e293b',
-                        color: '#f8fafc',
-                        border: '1px solid #334155',
-                        borderRadius: '6px',
-                        padding: '0.85rem',
-                        fontSize: '0.85rem',
-                        lineHeight: '1.5',
-                        fontFamily: 'inherit',
-                        resize: 'vertical',
-                        width: '100%',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                  </div>
-
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                     <button
                       onClick={() => setIsCreatingPackModalOpen(false)}
@@ -6268,7 +6207,7 @@ function App() {
                       Cancel
                     </button>
                     <button
-                      onClick={() => handleCreatePackSubmit(newPackNameInput.trim(), newPackSubjectInput.trim(), newPackBodyInput.trim())}
+                      onClick={() => handleCreatePackSubmit(newPackNameInput.trim())}
                       className="analyse-btn-green"
                       style={{ padding: '0.6rem 1.5rem', fontWeight: 'bold' }}
                     >
@@ -7624,17 +7563,17 @@ function App() {
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_first_name}}"}</td>
                           <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender first name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Mac</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_first_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren' : 'Mac')}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_name}}"}</td>
                           <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender full name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Mac McCarthy</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren Tipping' : 'Mac McCarthy')}</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{company_name}}"}</td>
                           <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender company / agency name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>The Search Equation</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.company_name || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</td>
                         </tr>
                       </tbody>
                     </table>
