@@ -3083,8 +3083,8 @@ app.post('/api/outreach-packs', async (req, res) => {
     const isLocalPack = processedProspects.some(p => p.searchType === 'GMB' || p.searchType === 'local');
     const packPrefix = isLocalPack ? 'GM' : 'OR';
 
-    // Query existing packs with this prefix to get sequential number in this workspace
-    const rows = await db.all(`SELECT packId FROM outreach_packs WHERE packId LIKE '${packPrefix}%' AND workspace = ?`, [req.workspace]);
+    // Query ALL existing packs table-wide across ALL workspaces to find highest sequential number
+    const rows = await db.all(`SELECT packId FROM outreach_packs WHERE packId LIKE '${packPrefix}%'`);
     let maxNum = 0;
     for (const r of rows) {
       const match = r.packId?.match(new RegExp(`^${packPrefix}(\\d+)`, 'i'));
@@ -3093,7 +3093,18 @@ app.post('/api/outreach-packs', async (req, res) => {
         if (num > maxNum) maxNum = num;
       }
     }
-    const nextPackId = `${packPrefix}${String(maxNum + 1).padStart(4, '0')}`;
+
+    // Guarantee global uniqueness with an auto-incrementing lookup loop
+    let candidateNum = maxNum + 1;
+    let nextPackId = `${packPrefix}${String(candidateNum).padStart(4, '0')}`;
+    let existingPack = await db.get('SELECT packId FROM outreach_packs WHERE packId = ?', [nextPackId]);
+
+    while (existingPack) {
+      candidateNum++;
+      nextPackId = `${packPrefix}${String(candidateNum).padStart(4, '0')}`;
+      existingPack = await db.get('SELECT packId FROM outreach_packs WHERE packId = ?', [nextPackId]);
+    }
+
     const id = `pack_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const createdAt = new Date().toISOString();
 
