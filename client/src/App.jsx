@@ -1343,7 +1343,14 @@ function App() {
   };
 
   const handleOpenCreatePackModal = () => {
-    const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
+    const selectedProspects = outreachList.filter(item => {
+      const itemKey = item.id || item.domain;
+      const domKey = item.domain ? normalizeDomain(item.domain) : null;
+      return selectedShortlistIds.has(itemKey) ||
+             (item.id && selectedShortlistIds.has(item.id)) ||
+             (item.domain && selectedShortlistIds.has(item.domain)) ||
+             (domKey && selectedShortlistIds.has(domKey));
+    });
     const phrases = [...new Set(selectedProspects.map(p => (p.searchPhrase || p.searchKeyword || '').trim()).filter(Boolean))];
     const locations = [...new Set(selectedProspects.map(p => (p.location || '').trim()).filter(Boolean))];
 
@@ -1762,8 +1769,19 @@ function App() {
   };
 
   const handleCreatePackSubmit = async (customName, customSubject, customBody) => {
-    const selectedProspects = outreachList.filter(item => selectedShortlistIds.has(item.id || item.domain));
-    if (selectedProspects.length === 0) return;
+    const selectedProspects = outreachList.filter(item => {
+      const itemKey = item.id || item.domain;
+      const domKey = item.domain ? normalizeDomain(item.domain) : null;
+      return selectedShortlistIds.has(itemKey) ||
+             (item.id && selectedShortlistIds.has(item.id)) ||
+             (item.domain && selectedShortlistIds.has(item.domain)) ||
+             (domKey && selectedShortlistIds.has(domKey));
+    });
+
+    if (selectedProspects.length === 0) {
+      alert("No valid prospects selected for this pack. Please select at least one prospect from the Shortlist.");
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/outreach-packs`, {
@@ -1776,6 +1794,7 @@ function App() {
           prospects: selectedProspects
         })
       });
+
       if (res.ok) {
         const data = await res.json();
         await fetchOutreachPacks();
@@ -1785,15 +1804,20 @@ function App() {
         setNewPackNameInput('');
         broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse' });
         broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
+
         if (data.pack) {
           setActivePack(data.pack);
           setOutreachSubView('pack-detail');
           // Automatically trigger contact finding in background for prospects without email
-          handleFindContactsForPack(data.pack.packId, data.pack.prospects);
+          handleFindContactsForPack(data.pack.packId, data.pack.prospects, data.pack);
         }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || "Failed to create Outreach Pack. Please try again.");
       }
     } catch (e) {
       console.error("Error creating outreach pack:", e);
+      alert("Error creating outreach pack: " + (e.message || "Network request failed"));
     }
   };
 
@@ -1923,19 +1947,16 @@ function App() {
     setEditingProspectId(null);
   };
 
-  const handleFindContactsForPack = async (packId, prospectsToSearch) => {
+  const handleFindContactsForPack = async (packId, prospectsToSearch, fallbackPack = null) => {
     if (!packId || !prospectsToSearch || prospectsToSearch.length === 0) return;
     setIsFindingContacts(true);
     setSearchingProspectIds(prev => new Set([...prev, ...prospectsToSearch.map(p => p.id || p.domain)]));
 
-    const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
-    if (!currentPack) {
-      setIsFindingContacts(false);
-      setSearchingProspectIds(new Set());
-      return;
-    }
+    const currentPack = (activePack && (activePack.packId === packId || activePack.id === packId))
+      ? activePack
+      : (outreachPacks.find(p => p.packId === packId || p.id === packId) || fallbackPack || { packId, prospects: prospectsToSearch });
 
-    let updatedProspects = [...currentPack.prospects];
+    let updatedProspects = Array.isArray(currentPack?.prospects) ? [...currentPack.prospects] : [...prospectsToSearch];
 
     for (const prospect of prospectsToSearch) {
       const prospectKey = prospect.id || prospect.domain;
