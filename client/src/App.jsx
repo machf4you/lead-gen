@@ -3875,13 +3875,13 @@ function App() {
             >
               Saved Searches ({savedSearches.length})
             </button>
-            {/* Outreach Section with Shortlist, Packs, Templates, and Sent Emails sub-items */}
+            {/* Outreach Section */}
             <div className="sidebar-group">
               <button 
                 onClick={() => {
                   navigate('/outreach-shortlist');
                 }} 
-                className={`sidebar-item ${currentView === 'outreach' ? 'active-parent' : ''}`}
+                className={`sidebar-item ${currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active-parent' : ''}`}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
               >
                 <span>Outreach</span>
@@ -3907,7 +3907,44 @@ function App() {
                 >
                   <span>Outreach Packs ({outreachPacks.length})</span>
                 </button>
+              </div>
+            </div>
 
+            {/* Clear Visual Gap */}
+            <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>
+              <button 
+                onClick={() => {
+                  navigate('/settings');
+                }} 
+                className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
+              >
+                Settings
+              </button>
+              <button 
+                onClick={() => {
+                  navigate('/domain-exclusions');
+                }} 
+                className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
+              >
+                Manage Exclusions ({excludedDomains.length})
+              </button>
+            </div>
+
+            {/* Records Section */}
+            <div className="sidebar-group" style={{ marginTop: '1.25rem' }}>
+              <span style={{ 
+                fontSize: '0.8rem', 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.05em', 
+                color: '#94a3b8', 
+                display: 'block', 
+                marginBottom: '0.4rem', 
+                paddingLeft: '0.75rem', 
+                fontWeight: 'bold' 
+              }}>
+                Records
+              </span>
+              <div className="sidebar-sub-menu">
                 <button 
                   onClick={() => {
                     navigate('/outreach-email-templates');
@@ -3928,73 +3965,6 @@ function App() {
                   <span>Sent Emails ({sentEmails.length})</span>
                 </button>
               </div>
-            </div>
-            <button 
-              onClick={() => {
-                navigate('/settings');
-              }} 
-              className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
-            >
-              Settings
-            </button>
-            <button 
-              onClick={() => {
-                navigate('/domain-exclusions');
-              }} 
-              className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
-            >
-              Manage Exclusions ({excludedDomains.length})
-            </button>
-          </div>
-
-          <div style={{ flexGrow: 1 }} className="sidebar-spacer" />
-
-          {/* Recent Analyses Sidebar Section */}
-          <div className="sidebar-recent-section" style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid #334155' }}>
-            <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', display: 'block', marginBottom: '0.75rem', paddingLeft: '0.75rem', fontWeight: 'bold' }}>
-              Recent Analyses
-            </span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {recentAnalyses.slice(0, 5).map((recent, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleLoadRecentAnalysis(recent)}
-                  className="sidebar-item"
-                  style={{ 
-                    textAlign: 'left', 
-                    fontSize: '0.85rem', 
-                    padding: '0.5rem 0.75rem', 
-                    whiteSpace: 'nowrap', 
-                    overflow: 'hidden', 
-                    textOverflow: 'ellipsis',
-                    border: 'none',
-                    background: activeAnalysisItem?.domain === recent.domain && currentView === 'analyse' ? '#1e293b' : 'transparent',
-                    color: activeAnalysisItem?.domain === recent.domain && currentView === 'analyse' ? '#ffffff' : '#94a3b8',
-                    width: '100%',
-                    boxSizing: 'border-box'
-                  }}
-                  title={recent.domain}
-                >
-                  {recent.domain}
-                </button>
-              ))}
-              {recentAnalyses.length === 0 && (
-                <span style={{ fontSize: '0.8rem', color: '#64748b', paddingLeft: '0.75rem', fontStyle: 'italic' }}>
-                  No recent analyses
-                </span>
-              )}
-              {recentAnalyses.length > 0 && (
-                <a 
-                  href="#" 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    alert('View All recent analyses is coming in the next version.');
-                  }}
-                  style={{ fontSize: '0.75rem', color: '#3b82f6', textDecoration: 'none', paddingLeft: '0.75rem', marginTop: '0.25rem', display: 'inline-block' }}
-                >
-                  View All...
-                </a>
-              )}
             </div>
           </div>
         </div>
@@ -4728,147 +4698,7 @@ function App() {
         )}
         {currentView === 'outreach' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
-            {/* Outreach Top Navigation Bar (Only on Shortlist and Packs lists) */}
-            {outreachSubView !== 'pack-detail' && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: '#1e293b', padding: '1rem 1.5rem', borderRadius: '8px', border: '1px solid #334155' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('shortlist');
-                      setActivePack(null);
-                      try {
-                        const u = new URL(window.location.href);
-                        u.search = '?view=outreach&tab=shortlist';
-                        window.history.replaceState(null, '', u.toString());
-                      } catch (e) {}
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'shortlist' ? '#2563eb' : '#0f172a',
-                      border: outreachSubView === 'shortlist' ? '1px solid #3b82f6' : '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: outreachSubView === 'shortlist' ? 'bold' : 'normal',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Shortlist ({outreachList.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('packs');
-                      setActivePack(null);
-                      try {
-                        const u = new URL(window.location.href);
-                        u.search = '?view=outreach&tab=packs';
-                        window.history.replaceState(null, '', u.toString());
-                      } catch (e) {}
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'packs' ? '#2563eb' : '#0f172a',
-                      border: outreachSubView === 'packs' ? '1px solid #3b82f6' : '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: outreachSubView === 'packs' ? 'bold' : 'normal',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Outreach Packs ({outreachPacks.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('templates');
-                      setTemplateTab('master');
-                      setActivePack(null);
-                      try {
-                        const u = new URL(window.location.href);
-                        u.search = '?view=outreach&tab=templates';
-                        window.history.replaceState(null, '', u.toString());
-                      } catch (e) {}
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'templates' ? '#2563eb' : '#0f172a',
-                      border: outreachSubView === 'templates' ? '1px solid #3b82f6' : '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: outreachSubView === 'templates' ? 'bold' : 'normal',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Email Templates ({masterTemplates.length})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setOutreachSubView('sent-history');
-                      setActivePack(null);
-                      try {
-                        const u = new URL(window.location.href);
-                        u.search = '?view=outreach&tab=sent-history';
-                        window.history.replaceState(null, '', u.toString());
-                      } catch (e) {}
-                    }}
-                    className="table-btn"
-                    style={{
-                      backgroundColor: outreachSubView === 'sent-history' ? '#2563eb' : '#0f172a',
-                      border: outreachSubView === 'sent-history' ? '1px solid #3b82f6' : '1px solid #334155',
-                      color: '#ffffff',
-                      fontWeight: outreachSubView === 'sent-history' ? 'bold' : 'normal',
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    Sent Emails ({sentEmails.length})
-                  </button>
-                </div>
 
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
-                    <button
-                      onClick={handleBackToResults}
-                      className="table-btn"
-                      style={{
-                        backgroundColor: '#0f172a',
-                        border: '1px solid #3b82f6',
-                        color: '#60a5fa',
-                        fontWeight: 'bold',
-                        padding: '0.5rem 1rem',
-                        fontSize: '0.85rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        cursor: 'pointer'
-                      }}
-                      title="Return to the active search results without re-querying or consuming API credits"
-                    >
-                      <span>&larr; Back to Search Results</span>
-                      {activeSearchId && activeSearchId !== 'Not available' && (
-                        <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
-                      )}
-                    </button>
-                  )}
-
-                  {outreachSubView === 'shortlist' && (
-                    <button
-                      onClick={handleOpenCreatePackModal}
-                      disabled={selectedShortlistIds.size === 0}
-                      className="analyse-btn-green"
-                      style={{
-                        padding: '0.5rem 1.1rem',
-                        fontSize: '0.9rem',
-                        opacity: selectedShortlistIds.size === 0 ? 0.5 : 1,
-                        cursor: selectedShortlistIds.size === 0 ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      + Create Outreach Pack ({selectedShortlistIds.size} Selected)
-                    </button>
-                  )}
-
-
-                </div>
-              </div>
-            )}
 
             {/* Sub-view 1: Shortlisted Prospects */}
             {outreachSubView === 'shortlist' && (() => {
@@ -4909,6 +4739,40 @@ function App() {
                           style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
                         >
                           Deselect All
+                        </button>
+                      )}
+                      <button
+                        onClick={handleOpenCreatePackModal}
+                        disabled={selectedShortlistIds.size === 0}
+                        className="analyse-btn-green"
+                        style={{
+                          padding: '0.5rem 1.1rem',
+                          fontSize: '0.9rem',
+                          opacity: selectedShortlistIds.size === 0 ? 0.5 : 1,
+                          cursor: selectedShortlistIds.size === 0 ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        + Create Outreach Pack ({selectedShortlistIds.size} Selected)
+                      </button>
+                      {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                        <button
+                          onClick={handleBackToResults}
+                          className="table-btn"
+                          style={{
+                            backgroundColor: '#0f172a',
+                            border: '1px solid #3b82f6',
+                            color: '#60a5fa',
+                            fontWeight: 'bold',
+                            padding: '0.5rem 1rem',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            cursor: 'pointer'
+                          }}
+                          title="Return to the active search results without re-querying or consuming API credits"
+                        >
+                          <span>&larr; Back to Search Results</span>
                         </button>
                       )}
                       <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
