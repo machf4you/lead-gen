@@ -1906,9 +1906,8 @@ app.delete('/api/exclusions/:domain', async (req, res) => {
 app.get('/api/outreach', async (req, res) => {
   try {
     const db = await getDb();
-    const rows = await db.all('SELECT * FROM outreach_shortlist WHERE workspace = ? ORDER BY shortlistedAt DESC', [req.workspace]);
 
-    // Gather all sent domains for this workspace to exclude from shortlist view
+    // 1. Gather all sent domains for this workspace to permanently delete from outreach_shortlist table
     const sentHistoryRows = await db.all('SELECT DISTINCT domain FROM sent_email_history WHERE workspace = ?', [req.workspace]);
     const contactSentRows = await db.all('SELECT DISTINCT domain FROM outreach_contact_history WHERE workspace = ? AND status = ?', [req.workspace, 'Sent']);
 
@@ -1933,34 +1932,45 @@ app.get('/api/outreach', async (req, res) => {
       }
     }
 
-    const items = rows
-      .filter(r => {
-        if (r.sendStatus === 'Sent') return false;
-        const dom = normalizeDomain(r.domain || r.url || '');
-        if (dom && sentDomainsSet.has(dom)) return false;
-        return true;
-      })
-      .map(r => {
-        let parsedAnalysis = null;
-        let parsedEmails = [];
-        if (r.analysisData) {
-          try {
-            parsedAnalysis = JSON.parse(r.analysisData);
-          } catch (e) {}
+    // Perform database deletion of sent prospects from outreach_shortlist table
+    const sentDomainsList = Array.from(sentDomainsSet);
+    if (sentDomainsList.length > 0) {
+      const placeholders = sentDomainsList.map(() => '?').join(',');
+      await db.run(
+        `DELETE FROM outreach_shortlist WHERE (domain IN (${placeholders}) OR sendStatus = 'Sent') AND workspace = ?`,
+        [...sentDomainsList, req.workspace]
+      );
+    } else {
+      await db.run(
+        `DELETE FROM outreach_shortlist WHERE sendStatus = 'Sent' AND workspace = ?`,
+        [req.workspace]
+      );
+    }
+
+    // 2. Fetch remaining shortlist records directly from database
+    const rows = await db.all('SELECT * FROM outreach_shortlist WHERE workspace = ? ORDER BY shortlistedAt DESC', [req.workspace]);
+
+    const items = rows.map(r => {
+      let parsedAnalysis = null;
+      let parsedEmails = [];
+      if (r.analysisData) {
+        try {
+          parsedAnalysis = JSON.parse(r.analysisData);
+        } catch (e) {}
+      }
+      if (r.allFoundEmails) {
+        try {
+          parsedEmails = JSON.parse(r.allFoundEmails);
+        } catch (e) {
+          parsedEmails = r.contactEmail ? [r.contactEmail] : [];
         }
-        if (r.allFoundEmails) {
-          try {
-            parsedEmails = JSON.parse(r.allFoundEmails);
-          } catch (e) {
-            parsedEmails = r.contactEmail ? [r.contactEmail] : [];
-          }
-        }
-        return {
-          ...r,
-          allFoundEmails: parsedEmails,
-          analysisData: parsedAnalysis
-        };
-      });
+      }
+      return {
+        ...r,
+        allFoundEmails: parsedEmails,
+        analysisData: parsedAnalysis
+      };
+    });
 
     res.json(items);
   } catch (error) {
@@ -3582,6 +3592,18 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       p.sendStatus = anySuccess ? 'Sent' : 'Failed';
       if (anySuccess) {
         p.sentAt = nowIso;
+        // Delete prospect record from outreach_shortlist table upon confirmed successful email send
+        try {
+          const pDomain = normalizeDomain(p.domain || '');
+          if (pDomain) {
+            await db.run(
+              'DELETE FROM outreach_shortlist WHERE (id = ? OR domain = ?) AND workspace = ?',
+              [p.id || '', pDomain, req.workspace]
+            );
+          }
+        } catch (delErr) {
+          console.error('[Shortlist Send Deletion Error]:', delErr);
+        }
       }
 
       // Update contact history in SQLite
