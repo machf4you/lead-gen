@@ -1439,7 +1439,10 @@ function App() {
   };
 
   const handleOpenCreatePackModal = () => {
-    const selectedProspects = outreachList.filter(item => {
+    const activeSearch = activeSavedSearch || (activeSearchId ? savedSearches.find(s => String(s.id) === String(activeSearchId) || String(s.searchId) === String(activeSearchId)) : null);
+    const sourceList = activeSearch ? scopedShortlist : outreachList;
+
+    const selectedProspects = sourceList.filter(item => {
       const itemKey = item.id || item.domain;
       const domKey = item.domain ? normalizeDomain(item.domain) : null;
       return selectedShortlistIds.has(itemKey) ||
@@ -1990,7 +1993,11 @@ function App() {
   };
 
   const handleCreatePackSubmit = async (customName, customSubject, customBody) => {
-    const selectedProspects = outreachList.filter(item => {
+    const activeSearch = activeSavedSearch || (activeSearchId ? savedSearches.find(s => String(s.id) === String(activeSearchId) || String(s.searchId) === String(activeSearchId)) : null);
+    const targetSearchId = activeSearch?.searchId || activeSearch?.id || activeSearchId;
+    const sourceList = activeSearch ? scopedShortlist : outreachList;
+
+    const selectedProspects = sourceList.filter(item => {
       const itemKey = item.id || item.domain;
       const domKey = item.domain ? normalizeDomain(item.domain) : null;
       return selectedShortlistIds.has(itemKey) ||
@@ -2012,7 +2019,7 @@ function App() {
           name: customName || undefined,
           templateSubject: customSubject || undefined,
           templateBody: customBody || undefined,
-          searchId: activeSearchId || undefined,
+          searchId: targetSearchId || undefined,
           prospects: selectedProspects
         })
       });
@@ -2029,7 +2036,11 @@ function App() {
 
         if (data.pack) {
           setActivePack(data.pack);
-          setOutreachSubView('pack-detail');
+          if (currentView === 'saved') {
+            setSavedWorkspaceTab('packs');
+          } else {
+            setOutreachSubView('pack-detail');
+          }
           // Automatically trigger contact finding in background for prospects without email
           handleFindContactsForPack(data.pack.packId, data.pack.prospects, data.pack);
         }
@@ -4691,50 +4702,70 @@ function App() {
                     <th>Business Type</th>
                     <th>Location</th>
                     <th>Saved Date/Time</th>
-                    <th>Results Count</th>
+                    <th>Results</th>
+                    <th>Shortlisted</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {savedSearches.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                         No saved searches found. Every successful search will be automatically saved here.
                       </td>
                     </tr>
                   ) : (
-                    savedSearches.map((saved) => (
-                      <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
-                        <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
-                        <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
-                        <td>{saved.businessType}</td>
-                        <td>{saved.location}</td>
-                        <td>{saved.dateTime}</td>
-                        <td>{saved.count}</td>
-                        <td>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleLoadSavedSearch(saved);
-                            }} 
-                            className="table-btn"
-                            style={{ marginRight: '0.5rem', backgroundColor: '#2563eb', color: '#ffffff' }}
-                          >
-                            Open Workspace
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteSavedSearch(saved.id);
-                            }} 
-                            className="table-btn"
-                            style={{ backgroundColor: '#ef4444' }}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                    savedSearches.map((saved) => {
+                      const shortlistedCount = outreachList.filter(item => {
+                        if (item.searchId && (item.searchId === saved.searchId || item.searchId === saved.id)) {
+                          return true;
+                        }
+                        const itemPhrase = cleanSearchPhrase(item.searchPhrase || item.trade || item.businessType || '', item.location).toLowerCase();
+                        const searchPhrase = cleanSearchPhrase(saved.businessType || saved.searchPhrase || '', saved.location).toLowerCase();
+                        const itemLoc = (item.location || '').toLowerCase().trim();
+                        const searchLoc = (saved.location || '').toLowerCase().trim();
+                        if (itemPhrase && searchPhrase && itemPhrase === searchPhrase) {
+                          if (!itemLoc || !searchLoc || itemLoc === searchLoc || itemLoc === 'anywhere' || searchLoc === 'anywhere') {
+                            return true;
+                          }
+                        }
+                        return false;
+                      }).length;
+
+                      return (
+                        <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
+                          <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
+                          <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
+                          <td>{saved.businessType}</td>
+                          <td>{saved.location}</td>
+                          <td>{saved.dateTime}</td>
+                          <td>{saved.count}</td>
+                          <td style={{ fontWeight: 'bold', color: shortlistedCount > 0 ? '#34d399' : '#94a3b8' }}>{shortlistedCount}</td>
+                          <td>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleLoadSavedSearch(saved);
+                              }} 
+                              className="table-btn"
+                              style={{ marginRight: '0.5rem', backgroundColor: '#2563eb', color: '#ffffff' }}
+                            >
+                              Open Workspace
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSavedSearch(saved.id);
+                              }} 
+                              className="table-btn"
+                              style={{ backgroundColor: '#ef4444' }}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
