@@ -620,34 +620,13 @@ export const getTemplateClassification = (t) => {
 };
 
 const renderTemplateOptions = (templates, placeholder = '-- Select Template --') => {
-  const local = (templates || []).filter(t => getTemplateClassification(t) === 'local');
-  const organic = (templates || []).filter(t => getTemplateClassification(t) === 'organic');
-  const master = (templates || []).filter(t => getTemplateClassification(t) === 'master');
-
+  const sorted = sortTemplatesNumbered(templates);
   return (
     <>
       {placeholder && <option value="" disabled>{placeholder}</option>}
-      {local.length > 0 && (
-        <optgroup label="📍 Local Business Listings Templates (GBP / Google Maps)">
-          {local.map(t => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </optgroup>
-      )}
-      {organic.length > 0 && (
-        <optgroup label="🌐 Google Organic SERP Templates">
-          {organic.map(t => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </optgroup>
-      )}
-      {master.length > 0 && (
-        <optgroup label="General / Master Templates">
-          {master.map(t => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </optgroup>
-      )}
+      {sorted.map(t => (
+        <option key={t.id} value={t.id}>{t.name}</option>
+      ))}
     </>
   );
 };
