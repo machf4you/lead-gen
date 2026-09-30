@@ -984,6 +984,9 @@ function App() {
 
     if (pathname === '/saved-searches' || pathname === '/saved' || viewParam === 'saved') {
       setCurrentView('saved');
+      if (searchIdParam) {
+        setActiveSearchId(searchIdParam);
+      }
       setActiveAnalysisItem(null);
       return;
     }
@@ -1545,7 +1548,7 @@ function App() {
 
   const activeSavedSearch = useMemo(() => {
     if (!activeSearchId) return null;
-    return savedSearches.find(s => s.searchId === activeSearchId || s.id === activeSearchId) || {
+    return savedSearches.find(s => String(s.id) === String(activeSearchId) || String(s.searchId) === String(activeSearchId)) || {
       searchId: activeSearchId,
       businessType: businessType || 'Saved Search',
       location: location || 'Anywhere',
@@ -2879,9 +2882,16 @@ function App() {
     setBusinessType(saved.businessType === 'Any' ? '' : saved.businessType);
     setLocation(saved.location === 'Anywhere' ? '' : saved.location);
     setSearchMode(saved.searchMode || 'local');
-    setActiveSearchId(saved.searchId || null);
+    const targetId = saved.id || saved.searchId || null;
+    setActiveSearchId(targetId);
     setSavedWorkspaceTab('results');
     setCurrentView('saved');
+    if (targetId) {
+      try {
+        window.history.pushState(null, '', `/saved-searches?searchId=${encodeURIComponent(targetId)}`);
+      } catch (e) {}
+    }
+
     
     let currentExclusions = excludedDomains;
     try {
@@ -3992,7 +4002,7 @@ function App() {
               <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
             </div>
           )}
-          <div className="sidebar-menu" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 140px)' }}>
+          <div className="sidebar-menu" style={{ display: 'flex', flexDirection: 'column' }}>
             <div>
               <button 
                 onClick={() => {
@@ -4033,7 +4043,7 @@ function App() {
             </div>
 
             {/* Bottom Admin & Reference Navigation */}
-            <div style={{ marginTop: 'auto', paddingTop: '2rem' }}>
+            <div style={{ marginTop: '1.75rem' }}>
               <div style={{ marginBottom: '0.5rem' }}>
                 <button 
                   onClick={() => {
