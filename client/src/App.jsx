@@ -1538,8 +1538,10 @@ function App() {
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
+  const [savedSearches, setSavedSearches] = useState([]);
   const [savedWorkspaceTab, setSavedWorkspaceTab] = useState('results'); // 'results', 'shortlist', 'packs'
   const [isEditingSuggestedEmail, setIsEditingSuggestedEmail] = useState(false);
+
 
   const activeSavedSearch = useMemo(() => {
     if (!activeSearchId) return null;
@@ -2554,7 +2556,6 @@ function App() {
     });
   };
   
-  const [savedSearches, setSavedSearches] = useState([]);
   const [editingCard2Email, setEditingCard2Email] = useState(false);
   const [card2EmailInput, setCard2EmailInput] = useState('');
   const [isSavingCard2Email, setIsSavingCard2Email] = useState(false);
