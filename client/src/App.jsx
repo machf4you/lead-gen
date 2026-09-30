@@ -1782,7 +1782,7 @@ function App() {
     const domain = normalizeDomain(item.domain || item.url || item.website || '');
     const url = item.url || item.website || (domain ? `https://${domain}` : '');
     const businessName = item.name || item.analysis?.gbp?.businessName || item.analysis?.pageTitle || domain;
-    const searchId = activeSearchId || item.searchId || 'Not available';
+    const searchId = activeSavedSearch?.searchId || activeSavedSearch?.id || activeSearchId || item.searchId || 'Not available';
     const rawTrade = businessType || item.searchKeyword || item.businessType || item.trade || '';
     const loc = location || item.location || 'Anywhere';
     const searchPhrase = getSearchPhrase(rawTrade, loc);
@@ -3559,10 +3559,11 @@ function App() {
     );
   };
 
-  const getSortedResults = () => {
-    if (!sortColumn) return searchResults;
+  const getSortedResults = (baseList = searchResults) => {
+    const listToUse = Array.isArray(baseList) ? baseList : searchResults;
+    if (!sortColumn) return listToUse;
 
-    const sorted = [...searchResults];
+    const sorted = [...listToUse];
     sorted.sort((a, b) => {
       if (sortColumn === 'position') {
         const valA = parseInt(a.rank, 10) || 999;
@@ -3894,6 +3895,426 @@ function App() {
     } catch (e) {
       console.error('Error removing server exclusion:', e);
     }
+  };
+
+  const renderOriginalResultsView = (itemsToRender = searchResults) => {
+    const listToRender = Array.isArray(itemsToRender) ? itemsToRender : [];
+    let allCount = listToRender.length;
+    let followUpCount = 0;
+    let averageCount = 0;
+    let optimizedCount = 0;
+    let wellOptimizedCount = 0;
+
+    listToRender.forEach(item => {
+      const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
+      const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
+      const band = normalizeOpportunityClassification(rawBand, s);
+      if (band === 'Follow-Up') followUpCount++;
+      else if (band === 'Average') averageCount++;
+      else if (band === 'Optimized') optimizedCount++;
+      else if (band === 'Well-Optimized') wellOptimizedCount++;
+    });
+
+    const sortedResults = getSortedResults(listToRender);
+    const filteredResults = classificationFilter === 'All'
+      ? sortedResults
+      : sortedResults.filter(item => {
+          const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
+          const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
+          const band = normalizeOpportunityClassification(rawBand, s);
+          return band === classificationFilter;
+        });
+
+    const isAllRows = rowsPerPage === 'All';
+    const pageSize = isAllRows ? (filteredResults.length || 1) : Number(rowsPerPage);
+    const totalPages = isAllRows ? 1 : Math.max(1, Math.ceil(filteredResults.length / pageSize));
+    const safeCurrentPage = Math.min(currentPage, totalPages);
+    const paginatedResults = isAllRows
+      ? filteredResults
+      : filteredResults.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+    const isOrganicResult = activeSavedSearch 
+      ? (activeSavedSearch.searchMode === 'organic' || activeSavedSearch.searchType === 'Organic' || (listToRender.length > 0 && !listToRender[0].name))
+      : (searchMode === 'organic');
+
+    return (
+      <>
+        <div style={{
+          width: '100%',
+          maxWidth: '1440px',
+          margin: '0 auto 0.75rem auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          boxSizing: 'border-box'
+        }}>
+          {/* Classification Filter Tabs: All | Follow-Up | Average | Optimized | Well-Optimized */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+            {[
+              { key: 'All', label: 'All', count: allCount, color: '#38bdf8' },
+              { key: 'Follow-Up', label: 'Follow-Up', count: followUpCount, color: '#eab308' },
+              { key: 'Average', label: 'Average', count: averageCount, color: '#94a3b8' },
+              { key: 'Optimized', label: 'Optimized', count: optimizedCount, color: '#38bdf8' },
+              { key: 'Well-Optimized', label: 'Well-Optimized', count: wellOptimizedCount, color: '#10b981' }
+            ].map(tab => {
+              const isActive = classificationFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setClassificationFilter(tab.key);
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    padding: '0.4rem 0.85rem',
+                    borderRadius: '6px',
+                    fontSize: '0.85rem',
+                    fontWeight: isActive ? '700' : '500',
+                    cursor: 'pointer',
+                    border: isActive ? `1.5px solid ${tab.color}` : '1px solid #334155',
+                    backgroundColor: isActive ? `${tab.color}22` : '#0f172a',
+                    color: isActive ? (tab.key === 'Average' ? '#cbd5e1' : tab.color) : '#94a3b8',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {tab.key !== 'All' && (
+                    <span style={{ fontSize: '0.65rem', color: tab.color, lineHeight: '1' }}>●</span>
+                  )}
+                  <span>{tab.label} ({tab.count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Rows Selector: Rows: 10 | 30 | 50 | All */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
+            <span style={{ marginRight: '0.2rem' }}>Rows:</span>
+            {[10, 30, 50, 'All'].map(val => {
+              const isSelected = rowsPerPage === val;
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => {
+                    setRowsPerPage(val);
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '5px',
+                    fontSize: '0.82rem',
+                    fontWeight: isSelected ? '700' : '500',
+                    cursor: 'pointer',
+                    border: isSelected ? '1px solid #3b82f6' : '1px solid #334155',
+                    backgroundColor: isSelected ? '#1e3a8a' : '#0f172a',
+                    color: isSelected ? '#ffffff' : '#94a3b8',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {val}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="results-table-container">
+          <table className="results-table">
+            <thead>
+              {isOrganicResult ? (
+                <tr>
+                  <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Position {renderSortIndicator('position')}
+                  </th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
+                  <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Classification {renderSortIndicator('score')}
+                  </th>
+                  <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Domain / URL {renderSortIndicator('domain')}
+                  </th>
+                  <th>Google Snippet</th>
+                  <th className="action-cell">Action</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Position {renderSortIndicator('position')}
+                  </th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
+                  <th onClick={() => handleSort('rating')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Rating {renderSortIndicator('rating')}
+                  </th>
+                  <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Classification {renderSortIndicator('score')}
+                  </th>
+                  <th>Business Name</th>
+                  <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    Website {renderSortIndicator('domain')}
+                  </th>
+                  <th>Phone</th>
+                  <th>Address</th>
+                  <th className="action-cell">Action</th>
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {paginatedResults.length === 0 ? (
+                <tr>
+                  <td colSpan={isOrganicResult ? 6 : 9} style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
+                    No prospects match the &ldquo;{classificationFilter}&rdquo; classification for this search.
+                  </td>
+                </tr>
+              ) : (
+                paginatedResults.map((item, index) => {
+                if (isOrganicResult) {
+                  const isItemShortlisted = isShortlisted(item.domain || item.url);
+                  return (
+                    <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
+                      <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
+                      <td style={{ textAlign: 'center', width: '60px' }}>
+                        {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
+                          <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
+                        ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
+                        )}
+                      </td>
+                      <td>
+                        {item.analysis ? (
+                          (() => {
+                            const s = item.analysis.leadOpportunityScore?.score;
+                            const rawBand = item.analysis.leadOpportunityScore?.band;
+                            const band = normalizeOpportunityClassification(rawBand, s);
+                            const { color, bg, border } = getClassificationColors(band);
+                            return (
+                              <span style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                backgroundColor: bg,
+                                border: `1px solid ${border}`,
+                                color,
+                                fontSize: '0.82rem',
+                                fontWeight: '700',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
+                                <span>{band}</span>
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
+                        )}
+                      </td>
+                      <td className="domain-url-cell">
+                        <div>
+                          {item.url ? (
+                            <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold', fontSize: '1rem' }}>
+                              {item.domain || item.url}
+                            </a>
+                          ) : "Not available"}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', wordBreak: 'break-all', marginTop: '0.25rem' }}>
+                          {item.url || "Not available"}
+                        </div>
+                      </td>
+                      <td className="organic-description-cell">{item.description || "Not available"}</td>
+                      <td className="action-cell">
+                        <button 
+                          onClick={() => handleAnalyse(item)}
+                          className="analyse-btn-green" 
+                          style={{ marginRight: '8px' }}
+                        >
+                          {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
+                        </button>
+                        {isItemShortlisted ? (
+                          <button 
+                            onClick={() => handleRemoveFromOutreach(item.domain || item.url)}
+                            className="table-btn"
+                            style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
+                            title="Click to remove from Outreach List"
+                          >
+                            ✓ Shortlisted
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleAddToOutreach(item)}
+                            className="table-btn"
+                            style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
+                          >
+                            + Shortlist
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleExcludeDomain(item.domain || item.url)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#ef4444' }}
+                        >
+                          Exclude
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                } else {
+                  let domain = '';
+                  if (item.website) {
+                    try {
+                      domain = new URL(item.website).hostname.replace(/^www\./, '');
+                    } catch (e) {
+                      domain = item.website.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+                    }
+                  }
+                  const isItemShortlisted = isShortlisted(domain || item.website || item.name);
+                  return (
+                    <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
+                      <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
+                      <td style={{ textAlign: 'center', width: '60px' }}>
+                        {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
+                          <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
+                        ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
+                          <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
+                        )}
+                      </td>
+                      <td>
+                        {item.rating !== null && item.rating !== undefined ? `⭐ ${item.rating}` : "Not available"}
+                      </td>
+                      <td>
+                        {item.analysis ? (
+                          (() => {
+                            const s = item.analysis.leadOpportunityScore?.score;
+                            const rawBand = item.analysis.leadOpportunityScore?.band;
+                            const band = normalizeOpportunityClassification(rawBand, s);
+                            const { color, bg, border } = getClassificationColors(band);
+                            return (
+                              <span style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                backgroundColor: bg,
+                                border: `1px solid ${border}`,
+                                color,
+                                fontSize: '0.82rem',
+                                fontWeight: '700',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
+                                <span>{band}</span>
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
+                        )}
+                      </td>
+                      <td><strong>{item.name || "Not available"}</strong></td>
+                      <td>
+                        {item.website ? (
+                          <div>
+                            <a href={item.website} target="_blank" rel="noopener noreferrer" className="table-link">{domain || item.website}</a>
+                          </div>
+                        ) : "Not available"}
+                      </td>
+                      <td>
+                        {item.phone ? (
+                          <a href={`tel:${item.phone}`} className="table-link">{item.phone}</a>
+                        ) : "Not available"}
+                      </td>
+                      <td>{item.address || "Not available"}</td>
+                      <td className="action-cell">
+                        <button 
+                          onClick={() => handleAnalyse(item)}
+                          className="analyse-btn-green" 
+                          style={{ marginRight: '8px' }}
+                        >
+                          {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
+                        </button>
+                        {isItemShortlisted ? (
+                          <button 
+                            onClick={() => handleRemoveFromOutreach(domain || item.website || item.name)}
+                            className="table-btn"
+                            style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
+                            title="Click to remove from Outreach List"
+                          >
+                            ✓ Shortlisted
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleAddToOutreach(item)}
+                            className="table-btn"
+                            style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
+                          >
+                            + Shortlist
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleExcludeDomain(item.domain || item.website || item.name)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#ef4444' }}
+                        >
+                          Exclude
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }
+              }))}
+            </tbody>
+          </table>
+        </div>
+
+        {!isAllRows && totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '2rem' }}>
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+              disabled={safeCurrentPage === 1}
+              className="table-btn"
+              style={{ padding: '0.5rem 1rem' }}
+            >
+              Previous
+            </button>
+            
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className="table-btn"
+                style={{ 
+                  padding: '0.5rem 1rem', 
+                  backgroundColor: safeCurrentPage === page ? '#3b82f6' : '#1e293b',
+                  border: '1px solid #334155',
+                  color: '#ffffff'
+                }}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+              disabled={safeCurrentPage === totalPages}
+              className="table-btn"
+              style={{ padding: '0.5rem 1rem' }}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -4248,421 +4669,9 @@ function App() {
               )}
             </div>
 
-            {Array.isArray(searchResults) && searchResults.length > 0 && (() => {
-              const allCount = searchResults.length;
-              let followUpCount = 0;
-              let averageCount = 0;
-              let optimizedCount = 0;
-              let wellOptimizedCount = 0;
-
-              searchResults.forEach(item => {
-                const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
-                const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
-                const band = normalizeOpportunityClassification(rawBand, s);
-                if (band === 'Follow-Up') followUpCount++;
-                else if (band === 'Average') averageCount++;
-                else if (band === 'Optimized') optimizedCount++;
-                else if (band === 'Well-Optimized') wellOptimizedCount++;
-              });
-
-              const sortedResults = getSortedResults();
-              const filteredResults = classificationFilter === 'All'
-                ? sortedResults
-                : sortedResults.filter(item => {
-                    const s = item.opportunityScore ?? item.analysis?.leadOpportunityScore?.score;
-                    const rawBand = item.opportunityBand || item.analysis?.leadOpportunityScore?.band;
-                    const band = normalizeOpportunityClassification(rawBand, s);
-                    return band === classificationFilter;
-                  });
-
-              const isAllRows = rowsPerPage === 'All';
-              const pageSize = isAllRows ? (filteredResults.length || 1) : Number(rowsPerPage);
-              const totalPages = isAllRows ? 1 : Math.max(1, Math.ceil(filteredResults.length / pageSize));
-              const safeCurrentPage = Math.min(currentPage, totalPages);
-              const paginatedResults = isAllRows
-                ? filteredResults
-                : filteredResults.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
-              const isOrganicResult = searchMode === 'organic';
-
-              return (
-                <>
-                <div style={{
-                  width: '100%',
-                  maxWidth: '1440px',
-                  margin: '0 auto 0.75rem auto',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '0.75rem',
-                  boxSizing: 'border-box'
-                }}>
-                  {/* Classification Filter Tabs: All | Follow-Up | Average | Optimized | Well-Optimized */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    {[
-                      { key: 'All', label: 'All', count: allCount, color: '#38bdf8' },
-                      { key: 'Follow-Up', label: 'Follow-Up', count: followUpCount, color: '#eab308' },
-                      { key: 'Average', label: 'Average', count: averageCount, color: '#94a3b8' },
-                      { key: 'Optimized', label: 'Optimized', count: optimizedCount, color: '#38bdf8' },
-                      { key: 'Well-Optimized', label: 'Well-Optimized', count: wellOptimizedCount, color: '#10b981' }
-                    ].map(tab => {
-                      const isActive = classificationFilter === tab.key;
-                      return (
-                        <button
-                          key={tab.key}
-                          type="button"
-                          onClick={() => {
-                            setClassificationFilter(tab.key);
-                            setCurrentPage(1);
-                          }}
-                          style={{
-                            padding: '0.4rem 0.85rem',
-                            borderRadius: '6px',
-                            fontSize: '0.85rem',
-                            fontWeight: isActive ? '700' : '500',
-                            cursor: 'pointer',
-                            border: isActive ? `1.5px solid ${tab.color}` : '1px solid #334155',
-                            backgroundColor: isActive ? `${tab.color}22` : '#0f172a',
-                            color: isActive ? (tab.key === 'Average' ? '#cbd5e1' : tab.color) : '#94a3b8',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          {tab.key !== 'All' && (
-                            <span style={{ fontSize: '0.65rem', color: tab.color, lineHeight: '1' }}>●</span>
-                          )}
-                          <span>{tab.label} ({tab.count})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Rows Selector: Rows: 10 | 30 | 50 | All */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
-                    <span style={{ marginRight: '0.2rem' }}>Rows:</span>
-                    {[10, 30, 50, 'All'].map(val => {
-                      const isSelected = rowsPerPage === val;
-                      return (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => {
-                            setRowsPerPage(val);
-                            setCurrentPage(1);
-                          }}
-                          style={{
-                            padding: '0.35rem 0.75rem',
-                            borderRadius: '5px',
-                            fontSize: '0.82rem',
-                            fontWeight: isSelected ? '700' : '500',
-                            cursor: 'pointer',
-                            border: isSelected ? '1px solid #3b82f6' : '1px solid #334155',
-                            backgroundColor: isSelected ? '#1e3a8a' : '#0f172a',
-                            color: isSelected ? '#ffffff' : '#94a3b8',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          {val}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="results-table-container">
-                  <table className="results-table">
-                    <thead>
-                      {isOrganicResult ? (
-                        <tr>
-                          <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Position {renderSortIndicator('position')}
-                          </th>
-                          <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
-                          <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Classification {renderSortIndicator('score')}
-                          </th>
-                          <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Domain / URL {renderSortIndicator('domain')}
-                          </th>
-                          <th>Google Snippet</th>
-                          <th className="action-cell">Action</th>
-                        </tr>
-                      ) : (
-                        <tr>
-                          <th onClick={() => handleSort('position')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Position {renderSortIndicator('position')}
-                          </th>
-                          <th style={{ width: '60px', textAlign: 'center' }}>EMAIL</th>
-                          <th onClick={() => handleSort('rating')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Rating {renderSortIndicator('rating')}
-                          </th>
-                          <th onClick={() => handleSort('score')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Classification {renderSortIndicator('score')}
-                          </th>
-                          <th>Business Name</th>
-                          <th onClick={() => handleSort('domain')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                            Website {renderSortIndicator('domain')}
-                          </th>
-                          <th>Phone</th>
-                          <th>Address</th>
-                          <th className="action-cell">Action</th>
-                        </tr>
-                      )}
-                    </thead>
-                    <tbody>
-                      {paginatedResults.length === 0 ? (
-                        <tr>
-                          <td colSpan={isOrganicResult ? 6 : 9} style={{ textAlign: 'center', padding: '2.5rem', color: '#94a3b8' }}>
-                            No prospects match the &ldquo;{classificationFilter}&rdquo; classification for this search.
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedResults.map((item, index) => {
-                        if (isOrganicResult) {
-                          const isItemShortlisted = isShortlisted(item.domain || item.url);
-                          return (
-                            <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
-                              <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
-                              <td style={{ textAlign: 'center', width: '60px' }}>
-                                {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
-                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
-                                ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
-                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
-                                )}
-                              </td>
-                              <td>
-                                {item.analysis ? (
-                                  (() => {
-                                    const s = item.analysis.leadOpportunityScore?.score;
-                                    const rawBand = item.analysis.leadOpportunityScore?.band;
-                                    const band = normalizeOpportunityClassification(rawBand, s);
-                                    const { color, bg, border } = getClassificationColors(band);
-                                    return (
-                                      <span style={{ 
-                                        display: 'inline-flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        padding: '3px 10px',
-                                        borderRadius: '12px',
-                                        backgroundColor: bg,
-                                        border: `1px solid ${border}`,
-                                        color,
-                                        fontSize: '0.82rem',
-                                        fontWeight: '700',
-                                        whiteSpace: 'nowrap'
-                                      }}>
-                                        <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
-                                        <span>{band}</span>
-                                      </span>
-                                    );
-                                  })()
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
-                                )}
-                              </td>
-                              <td className="domain-url-cell">
-                                <div>
-                                  {item.url ? (
-                                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontWeight: 'bold', fontSize: '1rem' }}>
-                                      {item.domain || item.url}
-                                    </a>
-                                  ) : "Not available"}
-                                </div>
-                                <div style={{ fontSize: '0.8rem', color: '#94a3b8', wordBreak: 'break-all', marginTop: '0.25rem' }}>
-                                  {item.url || "Not available"}
-                                </div>
-                              </td>
-                              <td className="organic-description-cell">{item.description || "Not available"}</td>
-                              <td className="action-cell">
-                                <button 
-                                  onClick={() => handleAnalyse(item)}
-                                  className="analyse-btn-green" 
-                                  style={{ marginRight: '8px' }}
-                                >
-                                  {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
-                                </button>
-                                {isItemShortlisted ? (
-                                  <button 
-                                    onClick={() => handleRemoveFromOutreach(item.domain || item.url)}
-                                    className="table-btn"
-                                    style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
-                                    title="Click to remove from Outreach List"
-                                  >
-                                    ✓ Shortlisted
-                                  </button>
-                                ) : (
-                                  <button 
-                                    onClick={() => handleAddToOutreach(item)}
-                                    className="table-btn"
-                                    style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
-                                  >
-                                    + Shortlist
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => handleExcludeDomain(item.domain || item.url)}
-                                  className="table-btn"
-                                  style={{ backgroundColor: '#ef4444' }}
-                                >
-                                  Exclude
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        } else {
-                          let domain = '';
-                          if (item.website) {
-                            try {
-                              domain = new URL(item.website).hostname.replace(/^www\./, '');
-                            } catch (e) {
-                              domain = item.website.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
-                            }
-                          }
-                          const isItemShortlisted = isShortlisted(domain || item.website || item.name);
-                          return (
-                            <tr key={index} style={isItemShortlisted ? { backgroundColor: 'rgba(37, 99, 235, 0.12)', borderLeft: '4px solid #3b82f6' } : {}}>
-                              <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank}</td>
-                              <td style={{ textAlign: 'center', width: '60px' }}>
-                                {item.contactEmail || (item.analysis && item.analysis.contactEmail) || item.emailStatus === 'Email Found' || (item.analysis && item.analysis.emailStatus === 'Email Found') ? (
-                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Verified email found">✓</span>
-                                ) : item.emailStatus === 'No Email' || item.emailStatus === 'No Email Found' || (item.analysis && (item.analysis.emailStatus === 'No Email' || item.analysis.emailStatus === 'No Email Found')) ? (
-                                  <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2rem', lineHeight: '1' }} title="Email check completed, none found">✕</span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '1.2rem', letterSpacing: '1px', lineHeight: '1' }} title="Email check still running...">…</span>
-                                )}
-                              </td>
-                              <td>
-                                {item.rating !== null && item.rating !== undefined ? `⭐ ${item.rating}` : "Not available"}
-                              </td>
-                              <td>
-                                {item.analysis ? (
-                                  (() => {
-                                    const s = item.analysis.leadOpportunityScore?.score;
-                                    const rawBand = item.analysis.leadOpportunityScore?.band;
-                                    const band = normalizeOpportunityClassification(rawBand, s);
-                                    const { color, bg, border } = getClassificationColors(band);
-                                    return (
-                                      <span style={{ 
-                                        display: 'inline-flex', 
-                                        alignItems: 'center', 
-                                        gap: '6px',
-                                        padding: '3px 10px',
-                                        borderRadius: '12px',
-                                        backgroundColor: bg,
-                                        border: `1px solid ${border}`,
-                                        color,
-                                        fontSize: '0.82rem',
-                                        fontWeight: '700',
-                                        whiteSpace: 'nowrap'
-                                      }}>
-                                        <span style={{ fontSize: '0.7rem', lineHeight: '1' }}>●</span>
-                                        <span>{band}</span>
-                                      </span>
-                                    );
-                                  })()
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>-</span>
-                                )}
-                              </td>
-                              <td><strong>{item.name || "Not available"}</strong></td>
-                              <td>
-                                {item.website ? (
-                                  <div>
-                                    <a href={item.website} target="_blank" rel="noopener noreferrer" className="table-link">{domain || item.website}</a>
-                                  </div>
-                                ) : "Not available"}
-                              </td>
-                              <td>
-                                {item.phone ? (
-                                  <a href={`tel:${item.phone}`} className="table-link">{item.phone}</a>
-                                ) : "Not available"}
-                              </td>
-                              <td>{item.address || "Not available"}</td>
-                              <td className="action-cell">
-                                <button 
-                                  onClick={() => handleAnalyse(item)}
-                                  className="analyse-btn-green" 
-                                  style={{ marginRight: '8px' }}
-                                >
-                                  {item.analysis ? (item.analysis.leadOpportunityScore?.score === null ? 'Retry' : 'View') : 'Analyse'}
-                                </button>
-                                {isItemShortlisted ? (
-                                  <button 
-                                    onClick={() => handleRemoveFromOutreach(domain || item.website || item.name)}
-                                    className="table-btn"
-                                    style={{ backgroundColor: '#059669', color: '#ffffff', marginRight: '8px' }}
-                                    title="Click to remove from Outreach List"
-                                  >
-                                    ✓ Shortlisted
-                                  </button>
-                                ) : (
-                                  <button 
-                                    onClick={() => handleAddToOutreach(item)}
-                                    className="table-btn"
-                                    style={{ backgroundColor: '#2563eb', color: '#ffffff', marginRight: '8px' }}
-                                  >
-                                    + Shortlist
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => handleExcludeDomain(item.domain || item.website || item.name)}
-                                  className="table-btn"
-                                  style={{ backgroundColor: '#ef4444' }}
-                                >
-                                  Exclude
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        }
-                      }))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {!isAllRows && totalPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '1rem', marginBottom: '2rem' }}>
-                    <button 
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
-                      disabled={safeCurrentPage === 1}
-                      className="table-btn"
-                      style={{ padding: '0.5rem 1rem' }}
-                    >
-                      Previous
-                    </button>
-                    
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className="table-btn"
-                        style={{ 
-                          padding: '0.5rem 1rem', 
-                          backgroundColor: safeCurrentPage === page ? '#3b82f6' : '#1e293b',
-                          border: '1px solid #334155',
-                          color: '#ffffff'
-                        }}
-                      >
-                        {page}
-                      </button>
-                    ))}
-
-                    <button 
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
-                      disabled={safeCurrentPage === totalPages}
-                      className="table-btn"
-                      style={{ padding: '0.5rem 1rem' }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+            {Array.isArray(searchResults) && searchResults.length > 0 && (
+              renderOriginalResultsView(searchResults)
+            )}
           </>
         )}
 
@@ -4808,86 +4817,7 @@ function App() {
 
               {/* View 1: Results View */}
               {savedWorkspaceTab === 'results' && (
-                <div className="results-table-container">
-                  <div style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.2rem' }}>Search Results</h3>
-                  </div>
-                  <table className="results-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '40px' }}>Rank</th>
-                        <th>Domain / Business</th>
-                        <th>Status</th>
-                        <th>Contact Email</th>
-                        <th>Opportunity</th>
-                        <th className="action-cell">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {searchResults.length === 0 ? (
-                        <tr>
-                          <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                            No results found for this search.
-                          </td>
-                        </tr>
-                      ) : (
-                        searchResults.map((item, idx) => {
-                          const itemDom = normalizeDomain(item.domain || item.url || item.website || '');
-                          const isShortlisted = outreachList.some(s => normalizeDomain(s.domain || s.url || '') === itemDom);
-                          const contactEmail = item.contactEmail || item.analysis?.contactEmail;
-                          const oppScore = item.analysis?.leadOpportunityScore?.score;
-                          const oppBand = normalizeOpportunityClassification(item.analysis?.leadOpportunityScore?.band, oppScore);
-                          const { color, bg, border } = getClassificationColors(oppBand);
-
-                          return (
-                            <tr key={item.id || itemDom || idx}>
-                              <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank || idx + 1}</td>
-                              <td>
-                                <div style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.name || item.businessName || itemDom}</div>
-                                {itemDom && <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{itemDom}</div>}
-                              </td>
-                              <td>
-                                <span style={{ fontSize: '0.8rem', color: item.emailStatus === 'Email Found' ? '#34d399' : '#94a3b8' }}>
-                                  {item.emailStatus || 'No Email'}
-                                </span>
-                              </td>
-                              <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#38bdf8' }}>
-                                {contactEmail || '-'}
-                              </td>
-                              <td>
-                                {oppScore !== null && oppScore !== undefined ? (
-                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '10px', backgroundColor: bg, border: `1px solid ${border}`, color, fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                    {oppBand}
-                                  </span>
-                                ) : <span style={{ color: '#64748b' }}>-</span>}
-                              </td>
-                              <td className="action-cell">
-                                <button
-                                  onClick={() => handleAnalyse(item)}
-                                  className="analyse-btn-green"
-                                  style={{ marginRight: '6px', padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
-                                >
-                                  View Analysis
-                                </button>
-                                {!isShortlisted ? (
-                                  <button
-                                    onClick={() => handleAddToOutreach(item)}
-                                    className="table-btn"
-                                    style={{ backgroundColor: '#2563eb', padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
-                                  >
-                                    + Shortlist
-                                  </button>
-                                ) : (
-                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.8rem' }}>✓ Shortlisted</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                renderOriginalResultsView(activeSavedSearch?.data || searchResults)
               )}
 
               {/* View 2: Shortlist View */}

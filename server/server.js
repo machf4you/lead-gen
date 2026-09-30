@@ -1937,13 +1937,8 @@ app.get('/api/outreach', async (req, res) => {
     if (sentDomainsList.length > 0) {
       const placeholders = sentDomainsList.map(() => '?').join(',');
       await db.run(
-        `DELETE FROM outreach_shortlist WHERE (domain IN (${placeholders}) OR sendStatus = 'Sent') AND workspace = ?`,
+        `DELETE FROM outreach_shortlist WHERE domain IN (${placeholders}) AND workspace = ?`,
         [...sentDomainsList, req.workspace]
-      );
-    } else {
-      await db.run(
-        `DELETE FROM outreach_shortlist WHERE sendStatus = 'Sent' AND workspace = ?`,
-        [req.workspace]
       );
     }
 
