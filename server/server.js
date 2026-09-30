@@ -2135,6 +2135,43 @@ app.delete('/api/outreach/:idOrDomain', async (req, res) => {
   }
 });
 
+// PUT save edited suggested email for prospect on shortlist
+app.put('/api/outreach/:idOrDomain/suggested-email', async (req, res) => {
+  try {
+    const { idOrDomain } = req.params;
+    const { suggestedFirstEmail } = req.body;
+    if (!idOrDomain) {
+      return res.status(400).json({ error: 'Prospect ID or domain is required' });
+    }
+
+    const cleanDomain = normalizeDomain(idOrDomain);
+    const db = await getDb();
+
+    const row = await db.get(
+      'SELECT * FROM outreach_shortlist WHERE (id = ? OR domain = ? OR domain = ?) AND workspace = ?',
+      [idOrDomain, idOrDomain, cleanDomain, req.workspace]
+    );
+
+    if (row) {
+      let parsedAnalysis = {};
+      if (row.analysisData) {
+        try { parsedAnalysis = JSON.parse(row.analysisData); } catch (e) {}
+      }
+      parsedAnalysis.suggestedFirstEmail = suggestedFirstEmail;
+      parsedAnalysis.customSuggestedEmail = suggestedFirstEmail;
+
+      await db.run(
+        'UPDATE outreach_shortlist SET analysisData = ? WHERE id = ? AND workspace = ?',
+        [JSON.stringify(parsedAnalysis), row.id, req.workspace]
+      );
+    }
+
+    res.json({ success: true, idOrDomain, suggestedFirstEmail });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Helper to decode Cloudflare-obfuscated emails (data-cfemail / email-protection)
 function decodeCfEmail(encodedString) {
   if (!encodedString || typeof encodedString !== 'string') return '';

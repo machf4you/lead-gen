@@ -172,16 +172,33 @@ const getKeyTalkingPoints = (item) => {
 };
 
 // Helper to generate a conversational, personalised first-contact email
-const generateFirstEmail = (item, senderSettings = null) => {
-  const keyword = item?.searchKeyword || item?.trade || item?.businessType || item?.searchPhrase || 'your services';
-  const location = item?.location || '';
-  const phrase = location ? `${keyword} in ${location}` : keyword;
+const generateFirstEmail = (item, senderSettings = null, activeWorkspace = 'tse') => {
+  let rawQuery = (
+    item?.searchPhrase || 
+    item?.rawSearchPhrase || 
+    item?.businessType || 
+    item?.searchKeyword || 
+    item?.analysisData?.searchPhrase || 
+    item?.analysisData?.rawSearchPhrase || 
+    item?.analysisData?.businessType || 
+    item?.analysisData?.searchKeyword || 
+    ''
+  ).trim();
+
+  if (!rawQuery) {
+    rawQuery = 'your services';
+  }
+
   const domain = item?.domain || 'your website';
   const gbp = item?.gbp || { status: item?.gbpStatus };
   const health = item?.seoHealth || item?.analysisData?.seoHealth;
 
-  const senderName = senderSettings?.sender_name || 'Mac McCarthy';
-  const companyName = senderSettings?.company_name || 'The Search Equation';
+  const isSmokingChili = (activeWorkspace || '').toLowerCase() === 'smoking_chili' || senderSettings?.company_name?.toLowerCase().includes('smoking chili');
+  const defaultSenderName = isSmokingChili ? 'Darren Tippin' : 'Mac McCarthy';
+  const defaultCompanyName = isSmokingChili ? 'Smoking Chili Media' : 'The Search Equation';
+
+  const senderName = senderSettings?.sender_name || defaultSenderName;
+  const companyName = senderSettings?.company_name || defaultCompanyName;
 
   let issuesText = '';
   const list = [];
@@ -213,9 +230,9 @@ const generateFirstEmail = (item, senderSettings = null) => {
   
   const email = `Subject: ${subject}
 
-Hi there,
+Hello,
 
-I was looking for local businesses online and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${phrase}" in Google. 
+I was looking for local businesses online and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${rawQuery}" in Google. 
 
 You have a fantastic business, but while reviewing the listing, ${issuesText}
 
@@ -1341,9 +1358,16 @@ function App() {
 
     const updatedProspects = (currentPack.prospects || []).map(p => {
       const pKey = p.id || p.domain;
-      if (pKey === prospectKey) {
+      const domKey = normalizeDomain(p.domain || p.url || '');
+      if (pKey === prospectKey || (domKey && domKey === normalizeDomain(prospectKey))) {
         if (enable) {
-          const suggestedText = generateFirstEmail(p, senderSettings);
+          const savedCustom = p.suggestedFirstEmail || 
+                              p.customSuggestedEmail || 
+                              (domKey ? editedSuggestedEmails[domKey] : null) || 
+                              p.analysisData?.suggestedFirstEmail || 
+                              p.analysisData?.customSuggestedEmail;
+
+          const suggestedText = savedCustom || generateFirstEmail(p, senderSettings, currentUser?.workspace);
           return {
             ...p,
             customEmailBody: suggestedText,
@@ -1527,15 +1551,83 @@ function App() {
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
+  const [editedSuggestedEmails, setEditedSuggestedEmails] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tse_edited_suggested_emails');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
+  const [isEditingSuggestedEmail, setIsEditingSuggestedEmail] = useState(false);
+
   useEffect(() => {
-    setEditingCard2Email(false);
-    setCard2EmailInput('');
+    setIsEditingSuggestedEmail(false);
     if (activeAnalysisItem) {
-      setOutreachEmail(generateFirstEmail(activeAnalysisItem));
+      const domKey = normalizeDomain(activeAnalysisItem.domain || activeAnalysisItem.url || '');
+      const savedEdited = (domKey ? editedSuggestedEmails[domKey] : null) || 
+                          activeAnalysisItem.suggestedFirstEmail || 
+                          activeAnalysisItem.customSuggestedEmail || 
+                          activeAnalysisItem.analysisData?.suggestedFirstEmail || 
+                          activeAnalysisItem.analysisData?.customSuggestedEmail;
+
+      if (savedEdited) {
+        setOutreachEmail(savedEdited);
+      } else {
+        setOutreachEmail(generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace));
+      }
     } else {
       setOutreachEmail('');
     }
-  }, [activeAnalysisItem]);
+  }, [activeAnalysisItem, senderSettings, currentUser?.workspace, editedSuggestedEmails]);
+
+  const handleSaveEditedSuggestedEmail = async (newContent) => {
+    if (!activeAnalysisItem) return;
+    const contentToSave = newContent !== undefined ? newContent : outreachEmail;
+    const domKey = normalizeDomain(activeAnalysisItem.domain || activeAnalysisItem.url || '');
+    if (!domKey) return;
+
+    setEditedSuggestedEmails(prev => {
+      const updated = { ...prev, [domKey]: contentToSave };
+      try {
+        localStorage.setItem('tse_edited_suggested_emails', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    setOutreachEmail(contentToSave);
+    setIsEditingSuggestedEmail(false);
+
+    activeAnalysisItem.suggestedFirstEmail = contentToSave;
+    activeAnalysisItem.customSuggestedEmail = contentToSave;
+    if (activeAnalysisItem.analysisData) {
+      activeAnalysisItem.analysisData.suggestedFirstEmail = contentToSave;
+      activeAnalysisItem.analysisData.customSuggestedEmail = contentToSave;
+    }
+
+    setOutreachList(prev => prev.map(item => {
+      const itemDom = normalizeDomain(item.domain || item.url || '');
+      if (itemDom === domKey) {
+        const updatedAnalysisData = { ...(item.analysisData || {}), suggestedFirstEmail: contentToSave, customSuggestedEmail: contentToSave };
+        return {
+          ...item,
+          suggestedFirstEmail: contentToSave,
+          customSuggestedEmail: contentToSave,
+          analysisData: updatedAnalysisData
+        };
+      }
+      return item;
+    }));
+
+    try {
+      await fetch(`${API_BASE}/api/outreach/${encodeURIComponent(domKey)}/suggested-email`, {
+        method: 'PUT',
+        headers: getAuthHeaders(null, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ suggestedFirstEmail: contentToSave })
+      });
+    } catch (err) {
+      console.error('Error persisting edited suggested email:', err);
+    }
+  };
 
   const fetchMilestones = async () => {
     setIsMilestonesLoading(true);
@@ -8451,12 +8543,71 @@ function App() {
 
                 {/* Suggested First Email */}
                 <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested First Email</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <h4 style={{ margin: 0, color: '#10b981', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested First Email</h4>
+                    {!isEditingSuggestedEmail ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingSuggestedEmail(true)}
+                        className="table-btn"
+                        style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                          border: '1px solid #38bdf8',
+                          color: '#38bdf8',
+                          padding: '0.25rem 0.65rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}
+                        title="Edit Suggested First Email"
+                      >
+                        ✎ Edit
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEditedSuggestedEmail()}
+                          className="analyse-btn-green"
+                          style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
+                        >
+                          ✓ Save Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingSuggestedEmail(false);
+                            const domKey = normalizeDomain(activeAnalysisItem?.domain || activeAnalysisItem?.url || '');
+                            const saved = (domKey ? editedSuggestedEmails[domKey] : null) || activeAnalysisItem?.suggestedFirstEmail || generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace);
+                            setOutreachEmail(saved);
+                          }}
+                          className="table-btn"
+                          style={{ backgroundColor: '#475569', padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <textarea
                     className="analysis-notes-area"
-                    style={{ height: '280px', fontFamily: 'inherit', fontSize: '0.95rem', lineHeight: '1.5', marginTop: '0.5rem' }}
+                    style={{
+                      height: '280px',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.5',
+                      marginTop: '0.5rem',
+                      borderColor: isEditingSuggestedEmail ? '#38bdf8' : '#334155',
+                      backgroundColor: isEditingSuggestedEmail ? '#1e293b' : '#0f172a'
+                    }}
                     value={outreachEmail}
-                    onChange={(e) => setOutreachEmail(e.target.value)}
+                    onChange={(e) => {
+                      setOutreachEmail(e.target.value);
+                      if (!isEditingSuggestedEmail) setIsEditingSuggestedEmail(true);
+                    }}
                     placeholder="Generating first contact email..."
                   />
                 </div>

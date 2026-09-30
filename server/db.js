@@ -278,16 +278,18 @@ export async function initDefaultSettings(database) {
       },
       smoking_chili: {
         sender_first_name: 'Darren',
-        sender_name: 'Darren',
+        sender_name: 'Darren Tippin',
         company_name: 'Smoking Chili Media'
       }
     };
 
     for (const [ws, defaults] of Object.entries(workspaceDefaults)) {
       for (const [key, val] of Object.entries(defaults)) {
-        const existing = await database.get('SELECT key FROM app_settings WHERE workspace = ? AND key = ?', [ws, key]);
+        const existing = await database.get('SELECT value FROM app_settings WHERE workspace = ? AND key = ?', [ws, key]);
         if (!existing) {
           await database.run('INSERT INTO app_settings (workspace, key, value) VALUES (?, ?, ?)', [ws, key, val]);
+        } else if (ws === 'smoking_chili' && key === 'sender_name' && existing.value === 'Darren') {
+          await database.run('UPDATE app_settings SET value = ? WHERE workspace = ? AND key = ?', ['Darren Tippin', ws, key]);
         }
       }
     }
@@ -301,7 +303,7 @@ export async function getSenderSettings(database, workspace = 'tse') {
   const ws = String(workspace || 'tse').trim().toLowerCase();
   const defaultForWs = ws === 'smoking_chili' ? {
     sender_first_name: 'Darren',
-    sender_name: 'Darren',
+    sender_name: 'Darren Tippin',
     company_name: 'Smoking Chili Media'
   } : {
     sender_first_name: 'Mac',
