@@ -399,11 +399,47 @@ export const deriveRank = (prospect) => {
   return String(r).replace(/^#/, '').trim();
 };
 
+export const cleanSearchPhrase = (phrase, location) => {
+  if (!phrase) return '';
+  let clean = String(phrase).trim();
+  if (!location) return clean;
+
+  const locStr = (typeof location === 'string' ? location : (location?.location || '')).trim();
+  if (!locStr || locStr.toLowerCase() === 'anywhere' || locStr.toLowerCase() === 'not available' || locStr.toLowerCase() === 'your area') {
+    return clean;
+  }
+
+  const locParts = [
+    locStr,
+    locStr.split(',')[0].trim()
+  ].filter(Boolean);
+
+  for (const loc of locParts) {
+    if (loc.length < 2) continue;
+    const escapedLoc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const endRegex = new RegExp(`[\\s,\\-_]+${escapedLoc}$`, 'i');
+    if (endRegex.test(clean)) {
+      clean = clean.replace(endRegex, '').trim();
+      continue;
+    }
+
+    const startRegex = new RegExp(`^${escapedLoc}[\\s,\\-_]+`, 'i');
+    if (startRegex.test(clean)) {
+      clean = clean.replace(startRegex, '').trim();
+      continue;
+    }
+  }
+
+  return clean;
+};
+
 export const deriveSearchPhrase = (prospect) => {
   if (!prospect) return '';
   if (typeof prospect === 'string') return prospect.trim();
-  const phrase = prospect.searchPhrase || prospect.searchKeyword || prospect.analysisData?.searchPhrase || prospect.analysisData?.searchKeyword || prospect.trade || prospect.businessType || '';
-  return String(phrase).trim();
+  const rawPhrase = prospect.searchPhrase || prospect.searchKeyword || prospect.analysisData?.searchPhrase || prospect.analysisData?.searchKeyword || prospect.trade || prospect.businessType || '';
+  const loc = prospect.location || prospect.analysisData?.location || '';
+  return cleanSearchPhrase(rawPhrase, loc);
 };
 
 // Helper to render template variables for a specific prospect
@@ -3478,6 +3514,31 @@ function App() {
     }
   };
 
+  const formatDateOnly = (dateStr) => {
+    if (!dateStr || dateStr === 'Loading...') return dateStr;
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        const parts = dateStr.split(/[\s,]+/);
+        const datePart = parts[0];
+        if (datePart && datePart.includes('/')) {
+          const [d, m, y] = datePart.split('/');
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthName = months[parseInt(m, 10) - 1] || m;
+          return `${d} ${monthName} ${y}`.trim();
+        }
+        return dateStr.split(' ')[0];
+      }
+      const day = date.getDate();
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      return `${day} ${month} ${year}`;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const handleRefreshAnalysis = async () => {
     if (!activeAnalysisItem) return;
     setIsRefreshing(true);
@@ -4887,7 +4948,6 @@ function App() {
                           />
                         </th>
                         <th>Domain / Business</th>
-                        <th>Source</th>
                         <th>Contact / Email</th>
                         <th>Pack Status</th>
                         <th>Search ID</th>
@@ -4895,7 +4955,6 @@ function App() {
                         <th>Location</th>
                         <th>Rank / Rating</th>
                         <th>Classification</th>
-                        <th>Commercial Strength</th>
                         <th>Date Shortlisted</th>
                         <th className="action-cell">Actions</th>
                       </tr>
@@ -4903,13 +4962,13 @@ function App() {
                     <tbody>
                       {isOutreachLoading && activeShortlist.length === 0 ? (
                         <tr>
-                          <td colSpan="13" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                          <td colSpan="11" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                             Loading outreach shortlist...
                           </td>
                         </tr>
                       ) : activeShortlist.length === 0 ? (
                         <tr>
-                          <td colSpan="13" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                          <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
                             <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
                             <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
                           </td>
@@ -4963,19 +5022,6 @@ function App() {
                                     </div>
                                   )}
                                 </div>
-                              </td>
-                              <td>
-                                <span style={{
-                                  backgroundColor: isLocal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                                  color: isLocal ? '#34d399' : '#38bdf8',
-                                  border: isLocal ? '1px solid #10b981' : '1px solid #0284c7',
-                                  padding: '0.15rem 0.5rem',
-                                  borderRadius: '4px',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.8rem'
-                                }}>
-                                  {isLocal ? 'Local' : 'Organic'}
-                                </span>
                               </td>
                               <td>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
@@ -5080,7 +5126,7 @@ function App() {
                                 <span style={{ color: '#64748b' }}>-</span>
                               )}
                             </td>
-                            <td>{item.searchPhrase || 'Not available'}</td>
+                            <td>{cleanSearchPhrase(item.searchPhrase || item.searchKeyword || '', item.location) || 'Not available'}</td>
                             <td>{item.location || 'Anywhere'}</td>
                             <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>
                               {isLocal && item.rating !== null && item.rating !== undefined ? (
@@ -5117,18 +5163,8 @@ function App() {
                                 <span style={{ color: '#64748b' }}>-</span>
                               )}
                             </td>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.95rem' }}>
-                                  {item.commercialStrengthStars || '★★★☆☆'}
-                                </span>
-                                <span style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>
-                                  {item.commercialStrengthLabel || 'Good Lead'}
-                                </span>
-                              </div>
-                            </td>
                             <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
-                              {formatLastAnalysed(item.shortlistedAt)}
+                              {formatDateOnly(item.shortlistedAt)}
                             </td>
                             <td className="action-cell">
                               <button 

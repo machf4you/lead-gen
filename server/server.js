@@ -2559,11 +2559,47 @@ function deriveRank(prospect) {
   return String(r).replace(/^#/, '').trim();
 }
 
+function cleanSearchPhrase(phrase, location) {
+  if (!phrase) return '';
+  let clean = String(phrase).trim();
+  if (!location) return clean;
+
+  const locStr = (typeof location === 'string' ? location : (location?.location || '')).trim();
+  if (!locStr || locStr.toLowerCase() === 'anywhere' || locStr.toLowerCase() === 'not available' || locStr.toLowerCase() === 'your area') {
+    return clean;
+  }
+
+  const locParts = [
+    locStr,
+    locStr.split(',')[0].trim()
+  ].filter(Boolean);
+
+  for (const loc of locParts) {
+    if (loc.length < 2) continue;
+    const escapedLoc = loc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const endRegex = new RegExp(`[\\s,\\-_]+${escapedLoc}$`, 'i');
+    if (endRegex.test(clean)) {
+      clean = clean.replace(endRegex, '').trim();
+      continue;
+    }
+
+    const startRegex = new RegExp(`^${escapedLoc}[\\s,\\-_]+`, 'i');
+    if (startRegex.test(clean)) {
+      clean = clean.replace(startRegex, '').trim();
+      continue;
+    }
+  }
+
+  return clean;
+}
+
 function deriveSearchPhrase(prospect) {
   if (!prospect) return '';
   if (typeof prospect === 'string') return prospect.trim();
-  const phrase = prospect.searchPhrase || prospect.searchKeyword || prospect.analysisData?.searchPhrase || prospect.analysisData?.searchKeyword || prospect.trade || prospect.businessType || '';
-  return String(phrase).trim();
+  const rawPhrase = prospect.searchPhrase || prospect.searchKeyword || prospect.analysisData?.searchPhrase || prospect.analysisData?.searchKeyword || prospect.trade || prospect.businessType || '';
+  const loc = prospect.location || prospect.analysisData?.location || '';
+  return cleanSearchPhrase(rawPhrase, loc);
 }
 
 // Helper to render template variables for a specific prospect and recipient email
