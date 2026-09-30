@@ -2135,7 +2135,7 @@ app.delete('/api/outreach/:idOrDomain', async (req, res) => {
   }
 });
 
-// PUT save edited suggested email for prospect on shortlist
+// PUT save edited suggested email for prospect on shortlist or saved searches
 app.put('/api/outreach/:idOrDomain/suggested-email', async (req, res) => {
   try {
     const { idOrDomain } = req.params;
@@ -2147,6 +2147,7 @@ app.put('/api/outreach/:idOrDomain/suggested-email', async (req, res) => {
     const cleanDomain = normalizeDomain(idOrDomain);
     const db = await getDb();
 
+    // 1. Update outreach_shortlist table if shortlisted
     const row = await db.get(
       'SELECT * FROM outreach_shortlist WHERE (id = ? OR domain = ? OR domain = ?) AND workspace = ?',
       [idOrDomain, idOrDomain, cleanDomain, req.workspace]
@@ -2164,6 +2165,35 @@ app.put('/api/outreach/:idOrDomain/suggested-email', async (req, res) => {
         'UPDATE outreach_shortlist SET analysisData = ? WHERE id = ? AND workspace = ?',
         [JSON.stringify(parsedAnalysis), row.id, req.workspace]
       );
+    }
+
+    // 2. Persist edited suggested email in saved_searches.data prospect records as well
+    const allSearches = await db.all('SELECT id, data FROM saved_searches WHERE workspace = ?', [req.workspace]);
+    for (const s of allSearches) {
+      let changed = false;
+      try {
+        const sData = JSON.parse(s.data || '[]');
+        for (let i = 0; i < sData.length; i++) {
+          const item = sData[i];
+          const dom = normalizeDomain(item.domain || item.url || item.website || '');
+          if (item.id === idOrDomain || dom === cleanDomain || dom === idOrDomain) {
+            sData[i].suggestedFirstEmail = suggestedFirstEmail;
+            sData[i].customSuggestedEmail = suggestedFirstEmail;
+            if (sData[i].analysisData) {
+              sData[i].analysisData.suggestedFirstEmail = suggestedFirstEmail;
+              sData[i].analysisData.customSuggestedEmail = suggestedFirstEmail;
+            }
+            if (sData[i].analysis) {
+              sData[i].analysis.suggestedFirstEmail = suggestedFirstEmail;
+              sData[i].analysis.customSuggestedEmail = suggestedFirstEmail;
+            }
+            changed = true;
+          }
+        }
+        if (changed) {
+          await db.run('UPDATE saved_searches SET data = ? WHERE id = ? AND workspace = ?', [JSON.stringify(sData), s.id, req.workspace]);
+        }
+      } catch (e) {}
     }
 
     res.json({ success: true, idOrDomain, suggestedFirstEmail });

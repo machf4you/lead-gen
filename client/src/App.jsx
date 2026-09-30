@@ -173,21 +173,8 @@ const getKeyTalkingPoints = (item) => {
 
 // Helper to generate a conversational, personalised first-contact email
 const generateFirstEmail = (item, senderSettings = null, activeWorkspace = 'tse') => {
-  let rawQuery = (
-    item?.searchPhrase || 
-    item?.rawSearchPhrase || 
-    item?.businessType || 
-    item?.searchKeyword || 
-    item?.analysisData?.searchPhrase || 
-    item?.analysisData?.rawSearchPhrase || 
-    item?.analysisData?.businessType || 
-    item?.analysisData?.searchKeyword || 
-    ''
-  ).trim();
-
-  if (!rawQuery) {
-    rawQuery = 'your services';
-  }
+  const loc = (item?.location || item?.analysisData?.location || '').trim();
+  const searchPhrase = deriveSearchPhrase(item) || 'your services';
 
   const domain = item?.domain || 'your website';
   const gbp = item?.gbp || { status: item?.gbpStatus };
@@ -227,18 +214,19 @@ const generateFirstEmail = (item, senderSettings = null, activeWorkspace = 'tse'
   }
 
   const subject = `Quick question about visibility for ${domain}`;
+  const locText = loc && loc.toLowerCase() !== 'anywhere' ? `in ${loc}` : 'online';
   
   const email = `Subject: ${subject}
 
 Hello,
 
-I was looking for local businesses online and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${rawQuery}" in Google. 
+I was looking for local businesses ${locText} and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${searchPhrase}" in Google.
 
-You have a fantastic business, but while reviewing the listing, ${issuesText}
+You clearly have an established business, but there are a few straightforward opportunities to improve your visibility online. ${issuesText}
 
 Resolving these search gaps will make it much easier for new clients to find you and click through to your site instead of your competitors.
 
-I've put together a brief, 2-minute checklist detailing the exact steps to optimize this. Would it be alright to send it over?
+Is improving your visibility in Google something you're currently looking at?
 
 Kind regards,
 
@@ -1363,7 +1351,6 @@ function App() {
         if (enable) {
           const savedCustom = p.suggestedFirstEmail || 
                               p.customSuggestedEmail || 
-                              (domKey ? editedSuggestedEmails[domKey] : null) || 
                               p.analysisData?.suggestedFirstEmail || 
                               p.analysisData?.customSuggestedEmail;
 
@@ -1551,21 +1538,12 @@ function App() {
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
-  const [editedSuggestedEmails, setEditedSuggestedEmails] = useState(() => {
-    try {
-      const saved = localStorage.getItem('tse_edited_suggested_emails');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return {};
-  });
   const [isEditingSuggestedEmail, setIsEditingSuggestedEmail] = useState(false);
 
   useEffect(() => {
     setIsEditingSuggestedEmail(false);
     if (activeAnalysisItem) {
-      const domKey = normalizeDomain(activeAnalysisItem.domain || activeAnalysisItem.url || '');
-      const savedEdited = (domKey ? editedSuggestedEmails[domKey] : null) || 
-                          activeAnalysisItem.suggestedFirstEmail || 
+      const savedEdited = activeAnalysisItem.suggestedFirstEmail || 
                           activeAnalysisItem.customSuggestedEmail || 
                           activeAnalysisItem.analysisData?.suggestedFirstEmail || 
                           activeAnalysisItem.analysisData?.customSuggestedEmail;
@@ -1578,21 +1556,13 @@ function App() {
     } else {
       setOutreachEmail('');
     }
-  }, [activeAnalysisItem, senderSettings, currentUser?.workspace, editedSuggestedEmails]);
+  }, [activeAnalysisItem, senderSettings, currentUser?.workspace]);
 
   const handleSaveEditedSuggestedEmail = async (newContent) => {
     if (!activeAnalysisItem) return;
     const contentToSave = newContent !== undefined ? newContent : outreachEmail;
     const domKey = normalizeDomain(activeAnalysisItem.domain || activeAnalysisItem.url || '');
     if (!domKey) return;
-
-    setEditedSuggestedEmails(prev => {
-      const updated = { ...prev, [domKey]: contentToSave };
-      try {
-        localStorage.setItem('tse_edited_suggested_emails', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
 
     setOutreachEmail(contentToSave);
     setIsEditingSuggestedEmail(false);
@@ -1616,6 +1586,25 @@ function App() {
         };
       }
       return item;
+    }));
+
+    setSavedSearches(prevSearches => prevSearches.map(search => {
+      if (!Array.isArray(search.data)) return search;
+      let updated = false;
+      const newData = search.data.map(p => {
+        const pDom = normalizeDomain(p.domain || p.url || p.website || '');
+        if (pDom === domKey || p.id === activeAnalysisItem.id) {
+          updated = true;
+          return {
+            ...p,
+            suggestedFirstEmail: contentToSave,
+            customSuggestedEmail: contentToSave,
+            analysisData: { ...(p.analysisData || {}), suggestedFirstEmail: contentToSave, customSuggestedEmail: contentToSave }
+          };
+        }
+        return p;
+      });
+      return updated ? { ...search, data: newData } : search;
     }));
 
     try {
@@ -3973,13 +3962,23 @@ function App() {
                 onClick={() => {
                   navigate('/outreach-shortlist');
                 }} 
-                className={`sidebar-item ${currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active-parent' : ''}`}
+                className={`sidebar-item ${currentView === 'saved' || (currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail')) ? 'active-parent' : ''}`}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
               >
                 <span>Outreach</span>
               </button>
               
               <div className="sidebar-sub-menu">
+                <button 
+                  onClick={() => {
+                    navigate('/saved-searches');
+                  }} 
+                  className={`sidebar-item sidebar-sub-item ${currentView === 'saved' ? 'active' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <span>Saved Searches ({savedSearches.length})</span>
+                </button>
+
                 <button 
                   onClick={() => {
                     navigate('/outreach-shortlist');
@@ -8581,7 +8580,7 @@ function App() {
                           onClick={() => {
                             setIsEditingSuggestedEmail(false);
                             const domKey = normalizeDomain(activeAnalysisItem?.domain || activeAnalysisItem?.url || '');
-                            const saved = (domKey ? editedSuggestedEmails[domKey] : null) || activeAnalysisItem?.suggestedFirstEmail || generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace);
+                            const saved = activeAnalysisItem?.suggestedFirstEmail || activeAnalysisItem?.customSuggestedEmail || activeAnalysisItem?.analysisData?.suggestedFirstEmail || activeAnalysisItem?.analysisData?.customSuggestedEmail || generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace);
                             setOutreachEmail(saved);
                           }}
                           className="table-btn"
