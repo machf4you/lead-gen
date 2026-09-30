@@ -1389,7 +1389,7 @@ function App() {
   };
 
   const handleOpenCreatePackModal = () => {
-    const selectedProspects = outreachList.filter(item => {
+    const selectedProspects = activeShortlist.filter(item => {
       const itemKey = item.id || item.domain;
       const domKey = item.domain ? normalizeDomain(item.domain) : null;
       return selectedShortlistIds.has(itemKey) ||
@@ -1598,7 +1598,7 @@ function App() {
     if (!urlOrDomain) return false;
     const target = normalizeDomain(urlOrDomain);
     if (!target) return false;
-    return outreachList.some(item => {
+    return activeShortlist.some(item => {
       const itemDom = normalizeDomain(item.domain || item.url || '');
       return itemDom === target;
     });
@@ -1768,6 +1768,21 @@ function App() {
     return sentEmails.filter(se => normalizeDomain(se.domain) === norm);
   };
 
+  const hasProspectBeenSent = (item) => {
+    if (!item) return false;
+    if (item.sendStatus === 'Sent') return true;
+    const domain = normalizeDomain(item.domain || item.url || '');
+    if (domain && sentEmails.some(se => normalizeDomain(se.domain) === domain)) return true;
+    if (domain && contactHistory.some(ch => normalizeDomain(ch.domain) === domain && ch.status === 'Sent')) return true;
+    if (outreachPacks.some(pack => pack.prospects && Array.isArray(pack.prospects) && pack.prospects.some(p => {
+      const pDom = normalizeDomain(p.domain || p.url || '');
+      return (p.id === item.id || (pDom && pDom === domain)) && p.sendStatus === 'Sent';
+    }))) return true;
+    return false;
+  };
+
+  const activeShortlist = outreachList.filter(item => !hasProspectBeenSent(item));
+
   const getContactHistoryWarning = (domain, currentPackId = null) => {
     if (!domain || !contactHistory.length) return null;
     const norm = normalizeDomain(domain);
@@ -1815,7 +1830,7 @@ function App() {
   };
 
   const handleCreatePackSubmit = async (customName, customSubject, customBody) => {
-    const selectedProspects = outreachList.filter(item => {
+    const selectedProspects = activeShortlist.filter(item => {
       const itemKey = item.id || item.domain;
       const domKey = item.domain ? normalizeDomain(item.domain) : null;
       return selectedShortlistIds.has(itemKey) ||
@@ -4689,7 +4704,7 @@ function App() {
                       fontSize: '0.9rem'
                     }}
                   >
-                    Shortlist ({outreachList.length})
+                    Shortlist ({activeShortlist.length})
                   </button>
                   <button
                     onClick={() => {
@@ -4809,9 +4824,9 @@ function App() {
 
             {/* Sub-view 1: Shortlisted Prospects */}
             {outreachSubView === 'shortlist' && (() => {
-              const unassignedProspects = outreachList.filter(item => !getProspectAssignedPack(item));
+              const unassignedProspects = activeShortlist.filter(item => !getProspectAssignedPack(item));
               const unassignedCount = unassignedProspects.length;
-              const assignedCount = outreachList.length - unassignedCount;
+              const assignedCount = activeShortlist.length - unassignedCount;
 
               return (
                 <div className="results-table-container">
@@ -4849,7 +4864,7 @@ function App() {
                         </button>
                       )}
                       <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                        {outreachList.length} shortlisted ({unassignedCount} unassigned, {assignedCount} in packs)
+                        {activeShortlist.length} shortlisted ({unassignedCount} unassigned, {assignedCount} in packs)
                       </span>
                     </div>
                   </div>
@@ -4860,10 +4875,10 @@ function App() {
                         <th style={{ width: '40px', textAlign: 'center' }}>
                           <input
                             type="checkbox"
-                            checked={outreachList.length > 0 && selectedShortlistIds.size === outreachList.length}
+                            checked={activeShortlist.length > 0 && selectedShortlistIds.size === activeShortlist.length}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedShortlistIds(new Set(outreachList.map(item => item.id || item.domain)));
+                                setSelectedShortlistIds(new Set(activeShortlist.map(item => item.id || item.domain)));
                               } else {
                                 setSelectedShortlistIds(new Set());
                               }
@@ -4886,13 +4901,13 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {isOutreachLoading && outreachList.length === 0 ? (
+                      {isOutreachLoading && activeShortlist.length === 0 ? (
                         <tr>
                           <td colSpan="13" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
                             Loading outreach shortlist...
                           </td>
                         </tr>
-                      ) : outreachList.length === 0 ? (
+                      ) : activeShortlist.length === 0 ? (
                         <tr>
                           <td colSpan="13" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
                             <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
@@ -4900,7 +4915,7 @@ function App() {
                           </td>
                         </tr>
                       ) : (
-                        outreachList.map((item, idx) => {
+                        activeShortlist.map((item, idx) => {
                           const score = item.opportunityScore;
                           const itemKey = item.id || item.domain;
                           const isSelected = selectedShortlistIds.has(itemKey);

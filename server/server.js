@@ -1907,27 +1907,61 @@ app.get('/api/outreach', async (req, res) => {
   try {
     const db = await getDb();
     const rows = await db.all('SELECT * FROM outreach_shortlist WHERE workspace = ? ORDER BY shortlistedAt DESC', [req.workspace]);
-    const items = rows.map(r => {
-      let parsedAnalysis = null;
-      let parsedEmails = [];
-      if (r.analysisData) {
+
+    // Gather all sent domains for this workspace to exclude from shortlist view
+    const sentHistoryRows = await db.all('SELECT DISTINCT domain FROM sent_email_history WHERE workspace = ?', [req.workspace]);
+    const contactSentRows = await db.all('SELECT DISTINCT domain FROM outreach_contact_history WHERE workspace = ? AND status = ?', [req.workspace, 'Sent']);
+
+    const sentDomainsSet = new Set([
+      ...sentHistoryRows.map(r => normalizeDomain(r.domain)).filter(Boolean),
+      ...contactSentRows.map(r => normalizeDomain(r.domain)).filter(Boolean)
+    ]);
+
+    // Also check sent status inside outreach_packs JSON prospects
+    const packRows = await db.all('SELECT prospects FROM outreach_packs WHERE workspace = ?', [req.workspace]);
+    for (const pr of packRows) {
+      if (pr.prospects) {
         try {
-          parsedAnalysis = JSON.parse(r.analysisData);
+          const list = JSON.parse(pr.prospects);
+          for (const p of list) {
+            if (p.sendStatus === 'Sent' && p.domain) {
+              const dom = normalizeDomain(p.domain);
+              if (dom) sentDomainsSet.add(dom);
+            }
+          }
         } catch (e) {}
       }
-      if (r.allFoundEmails) {
-        try {
-          parsedEmails = JSON.parse(r.allFoundEmails);
-        } catch (e) {
-          parsedEmails = r.contactEmail ? [r.contactEmail] : [];
+    }
+
+    const items = rows
+      .filter(r => {
+        if (r.sendStatus === 'Sent') return false;
+        const dom = normalizeDomain(r.domain || r.url || '');
+        if (dom && sentDomainsSet.has(dom)) return false;
+        return true;
+      })
+      .map(r => {
+        let parsedAnalysis = null;
+        let parsedEmails = [];
+        if (r.analysisData) {
+          try {
+            parsedAnalysis = JSON.parse(r.analysisData);
+          } catch (e) {}
         }
-      }
-      return {
-        ...r,
-        allFoundEmails: parsedEmails,
-        analysisData: parsedAnalysis
-      };
-    });
+        if (r.allFoundEmails) {
+          try {
+            parsedEmails = JSON.parse(r.allFoundEmails);
+          } catch (e) {
+            parsedEmails = r.contactEmail ? [r.contactEmail] : [];
+          }
+        }
+        return {
+          ...r,
+          allFoundEmails: parsedEmails,
+          analysisData: parsedAnalysis
+        };
+      });
+
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
