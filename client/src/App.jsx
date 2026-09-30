@@ -619,13 +619,23 @@ export const getTemplateClassification = (t) => {
   return 'master';
 };
 
+export const getTemplateDisplayTitle = (tpl, index) => {
+  if (!tpl) return '';
+  const cleanName = (tpl.name || '').replace(/^\(?\d+\)?[-.\s]*/, '');
+  const nameToUse = cleanName || tpl.name || '';
+  if (index !== undefined && index !== null) {
+    return `${index + 1}. ${nameToUse}`;
+  }
+  return nameToUse;
+};
+
 const renderTemplateOptions = (templates, placeholder = '-- Select Template --') => {
   const sorted = sortTemplatesNumbered(templates);
   return (
     <>
       {placeholder && <option value="" disabled>{placeholder}</option>}
-      {sorted.map(t => (
-        <option key={t.id} value={t.id}>{t.name}</option>
+      {sorted.map((t, idx) => (
+        <option key={t.id} value={t.id}>{getTemplateDisplayTitle(t, idx)}</option>
       ))}
     </>
   );
@@ -5397,8 +5407,7 @@ function App() {
                         {displayedTemplates.map((tpl, idx) => {
                           const isTplLocal = tpl.templateType === 'local';
                           const isTplOrganic = tpl.templateType === 'organic';
-                          const cleanName = (tpl.name || '').replace(/^\(?\d+\)?[-.\s]*/, '');
-                          const displayTitle = `${idx + 1}. ${cleanName || tpl.name}`;
+                          const displayTitle = getTemplateDisplayTitle(tpl, idx);
 
                           return (
                             <div
