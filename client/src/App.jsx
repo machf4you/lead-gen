@@ -1547,11 +1547,11 @@ function App() {
     if (!activeSearchId) return null;
     return savedSearches.find(s => s.searchId === activeSearchId || s.id === activeSearchId) || {
       searchId: activeSearchId,
-      businessType: businessType || searchKeyword || 'Saved Search',
+      businessType: businessType || 'Saved Search',
       location: location || 'Anywhere',
       data: searchResults
     };
-  }, [savedSearches, activeSearchId, businessType, searchKeyword, location, searchResults]);
+  }, [savedSearches, activeSearchId, businessType, location, searchResults]);
 
   const scopedShortlist = useMemo(() => {
     if (!activeSavedSearch) return outreachList;
