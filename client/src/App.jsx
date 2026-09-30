@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import './App.css'
 import GlobalDeploymentIndicator from './components/GlobalDeploymentIndicator'
 import { broadcastLeadGenEvent, REALTIME_EVENTS, useLeadGenRealtime } from './services/supabaseRealtime.js'
@@ -1538,7 +1538,58 @@ function App() {
   const [milestoneCreateError, setMilestoneCreateError] = useState(null)
   const [milestoneCreateSuccess, setMilestoneCreateSuccess] = useState(false)
 
+  const [savedWorkspaceTab, setSavedWorkspaceTab] = useState('results'); // 'results', 'shortlist', 'packs'
   const [isEditingSuggestedEmail, setIsEditingSuggestedEmail] = useState(false);
+
+  const activeSavedSearch = useMemo(() => {
+    if (!activeSearchId) return null;
+    return savedSearches.find(s => s.searchId === activeSearchId || s.id === activeSearchId) || {
+      searchId: activeSearchId,
+      businessType: businessType || searchKeyword || 'Saved Search',
+      location: location || 'Anywhere',
+      data: searchResults
+    };
+  }, [savedSearches, activeSearchId, businessType, searchKeyword, location, searchResults]);
+
+  const scopedShortlist = useMemo(() => {
+    if (!activeSavedSearch) return outreachList;
+    return outreachList.filter(item => {
+      if (item.searchId && (item.searchId === activeSavedSearch.searchId || item.searchId === activeSavedSearch.id)) {
+        return true;
+      }
+      const itemPhrase = cleanSearchPhrase(item.searchPhrase || item.trade || item.businessType || '', item.location).toLowerCase();
+      const searchPhrase = cleanSearchPhrase(activeSavedSearch.businessType || activeSavedSearch.searchPhrase || '', activeSavedSearch.location).toLowerCase();
+      const itemLoc = (item.location || '').toLowerCase().trim();
+      const searchLoc = (activeSavedSearch.location || '').toLowerCase().trim();
+
+      if (itemPhrase && searchPhrase && itemPhrase === searchPhrase) {
+        if (!itemLoc || !searchLoc || itemLoc === searchLoc || itemLoc === 'anywhere' || searchLoc === 'anywhere') {
+          return true;
+        }
+      }
+      return false;
+    });
+  }, [outreachList, activeSavedSearch]);
+
+  const scopedPacks = useMemo(() => {
+    if (!activeSavedSearch) return outreachPacks;
+    return outreachPacks.filter(pack => {
+      if (pack.searchId && (pack.searchId === activeSavedSearch.searchId || pack.searchId === activeSavedSearch.id)) {
+        return true;
+      }
+      if (Array.isArray(pack.prospects)) {
+        return pack.prospects.some(p => {
+          if (p.searchId && (p.searchId === activeSavedSearch.searchId || p.searchId === activeSavedSearch.id)) return true;
+          const pPhrase = cleanSearchPhrase(p.searchPhrase || p.trade || p.businessType || '', p.location).toLowerCase();
+          const searchPhrase = cleanSearchPhrase(activeSavedSearch.businessType || activeSavedSearch.searchPhrase || '', activeSavedSearch.location).toLowerCase();
+          const pLoc = (p.location || '').toLowerCase().trim();
+          const searchLoc = (activeSavedSearch.location || '').toLowerCase().trim();
+          return pPhrase && searchPhrase && pPhrase === searchPhrase && (!pLoc || !searchLoc || pLoc === searchLoc || pLoc === 'anywhere' || searchLoc === 'anywhere');
+        });
+      }
+      return false;
+    });
+  }, [outreachPacks, activeSavedSearch]);
 
   useEffect(() => {
     setIsEditingSuggestedEmail(false);
@@ -1956,6 +2007,7 @@ function App() {
           name: customName || undefined,
           templateSubject: customSubject || undefined,
           templateBody: customBody || undefined,
+          searchId: activeSearchId || undefined,
           prospects: selectedProspects
         })
       });
@@ -2827,6 +2879,8 @@ function App() {
     setLocation(saved.location === 'Anywhere' ? '' : saved.location);
     setSearchMode(saved.searchMode || 'local');
     setActiveSearchId(saved.searchId || null);
+    setSavedWorkspaceTab('results');
+    setCurrentView('saved');
     
     let currentExclusions = excludedDomains;
     try {
@@ -2894,7 +2948,6 @@ function App() {
     setCurrentPage(1);
     setSortColumn(null);
     setSortDirection('asc');
-    setCurrentView('search');
 
     // If any items are unscored or have stale/defective analysis, automatically resume bulk scoring in the background
     const unscored = enriched.filter(i => 
@@ -3938,123 +3991,102 @@ function App() {
               <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
             </div>
           )}
-          <div className="sidebar-menu">
-            <button 
-              onClick={() => {
-                handleNewSearchNav();
-                navigate('/');
-              }} 
-              className={`sidebar-item ${currentView === 'search' && !activeSearchId ? 'active' : ''}`}
-            >
-              Home
-            </button>
-            <button 
-              onClick={() => {
-                navigate('/saved-searches');
-              }} 
-              className={`sidebar-item ${currentView === 'saved' ? 'active' : ''}`}
-            >
-              Saved Searches ({savedSearches.length})
-            </button>
-            {/* Outreach Section */}
-            <div className="sidebar-group">
+          <div className="sidebar-menu" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 140px)' }}>
+            <div>
               <button 
                 onClick={() => {
-                  navigate('/outreach-shortlist');
+                  handleNewSearchNav();
+                  navigate('/');
                 }} 
-                className={`sidebar-item ${currentView === 'saved' || (currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail')) ? 'active-parent' : ''}`}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
+                className={`sidebar-item ${currentView === 'search' && !activeSearchId ? 'active' : ''}`}
               >
-                <span>Outreach</span>
+                Home
               </button>
-              
-              <div className="sidebar-sub-menu">
+
+              {/* Outreach Section */}
+              <div className="sidebar-group">
                 <button 
                   onClick={() => {
+                    setActiveSearchId(null);
                     navigate('/saved-searches');
                   }} 
-                  className={`sidebar-item sidebar-sub-item ${currentView === 'saved' ? 'active' : ''}`}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  className={`sidebar-item ${currentView === 'saved' || (currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail')) ? 'active-parent' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
                 >
-                  <span>Saved Searches ({savedSearches.length})</span>
+                  <span>Outreach</span>
                 </button>
-
-                <button 
-                  onClick={() => {
-                    navigate('/outreach-shortlist');
-                  }} 
-                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'shortlist' ? 'active' : ''}`}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <span>Shortlist ({outreachList.length})</span>
-                </button>
-
-                <button 
-                  onClick={() => {
-                    navigate('/outreach-packs');
-                  }} 
-                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && (outreachSubView === 'packs' || outreachSubView === 'pack-detail') ? 'active' : ''}`}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <span>Outreach Packs ({outreachPacks.length})</span>
-                </button>
+                
+                <div className="sidebar-sub-menu">
+                  <button 
+                    onClick={() => {
+                      setActiveSearchId(null);
+                      navigate('/saved-searches');
+                    }} 
+                    className={`sidebar-item sidebar-sub-item ${currentView === 'saved' ? 'active' : ''}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    <span>Saved Searches ({savedSearches.length})</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Clear Visual Gap */}
-            <div style={{ marginTop: '1.5rem', marginBottom: '0.5rem' }}>
-              <button 
-                onClick={() => {
-                  navigate('/settings');
-                }} 
-                className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
-              >
-                Settings
-              </button>
-              <button 
-                onClick={() => {
-                  navigate('/domain-exclusions');
-                }} 
-                className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
-              >
-                Manage Exclusions ({excludedDomains.length})
-              </button>
-            </div>
-
-            {/* Records Section */}
-            <div className="sidebar-group" style={{ marginTop: '1.25rem' }}>
-              <span style={{ 
-                fontSize: '0.8rem', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.05em', 
-                color: '#94a3b8', 
-                display: 'block', 
-                marginBottom: '0.4rem', 
-                paddingLeft: '0.75rem', 
-                fontWeight: 'bold' 
-              }}>
-                Records
-              </span>
-              <div className="sidebar-sub-menu">
+            {/* Bottom Admin & Reference Navigation */}
+            <div style={{ marginTop: 'auto', paddingTop: '2rem' }}>
+              <div style={{ marginBottom: '0.5rem' }}>
                 <button 
                   onClick={() => {
-                    navigate('/outreach-email-templates');
+                    navigate('/settings');
                   }} 
-                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'templates' ? 'active' : ''}`}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
                 >
-                  <span>Email Templates ({masterTemplates.length})</span>
+                  Settings
                 </button>
-
                 <button 
                   onClick={() => {
-                    navigate('/sent-emails');
+                    navigate('/domain-exclusions');
                   }} 
-                  className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'sent-history' ? 'active' : ''}`}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
                 >
-                  <span>Sent Emails ({sentEmails.length})</span>
+                  Manage Exclusions ({excludedDomains.length})
                 </button>
+              </div>
+
+              {/* Records Section */}
+              <div className="sidebar-group" style={{ marginTop: '1.25rem' }}>
+                <span style={{ 
+                  fontSize: '0.8rem', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.05em', 
+                  color: '#94a3b8', 
+                  display: 'block', 
+                  marginBottom: '0.4rem', 
+                  paddingLeft: '0.75rem', 
+                  fontWeight: 'bold' 
+                }}>
+                  Records
+                </span>
+                <div className="sidebar-sub-menu">
+                  <button 
+                    onClick={() => {
+                      navigate('/outreach-email-templates');
+                    }} 
+                    className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'templates' ? 'active' : ''}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    <span>Email Templates ({masterTemplates.length})</span>
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      navigate('/sent-emails');
+                    }} 
+                    className={`sidebar-item sidebar-sub-item ${currentView === 'outreach' && outreachSubView === 'sent-history' ? 'active' : ''}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    <span>Sent Emails ({sentEmails.length})</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -4624,92 +4656,473 @@ function App() {
         )}
 
         {currentView === 'saved' && (
-          <div className="results-table-container">
-            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div>
-                <h2 style={{ margin: 0, color: '#ffffff' }}>Saved Searches</h2>
+          !activeSearchId ? (
+            <div className="results-table-container">
+              <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, color: '#ffffff' }}>Saved Searches</h2>
+                </div>
               </div>
-              {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
-                <button
-                  onClick={handleBackToResults}
-                  className="table-btn"
-                  style={{
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #3b82f6',
-                    color: '#60a5fa',
-                    fontWeight: 'bold',
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    cursor: 'pointer'
-                  }}
-                  title="Return to the active search results without re-querying or consuming API credits"
-                >
-                  <span>&larr; Back to Search Results</span>
-                  {activeSearchId && activeSearchId !== 'Not available' && (
-                    <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
-                  )}
-                </button>
-              )}
-            </div>
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Search Type</th>
-                  <th>Business Type</th>
-                  <th>Location</th>
-                  <th>Saved Date/Time</th>
-                  <th>Results Count</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {savedSearches.length === 0 ? (
+              <table className="results-table">
+                <thead>
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                      No saved searches found. Every successful search will be automatically saved here.
-                    </td>
+                    <th>ID</th>
+                    <th>Search Type</th>
+                    <th>Business Type</th>
+                    <th>Location</th>
+                    <th>Saved Date/Time</th>
+                    <th>Results Count</th>
+                    <th>Action</th>
                   </tr>
-                ) : (
-                  savedSearches.map((saved) => (
-                    <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
-                      <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
-                      <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
-                      <td>{saved.businessType}</td>
-                      <td>{saved.location}</td>
-                      <td>{saved.dateTime}</td>
-                      <td>{saved.count}</td>
-                      <td>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleLoadSavedSearch(saved);
-                          }} 
-                          className="table-btn"
-                          style={{ marginRight: '0.5rem' }}
-                        >
-                          View Results
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSavedSearch(saved.id);
-                          }} 
-                          className="table-btn"
-                          style={{ backgroundColor: '#ef4444' }}
-                        >
-                          Delete
-                        </button>
+                </thead>
+                <tbody>
+                  {savedSearches.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                        No saved searches found. Every successful search will be automatically saved here.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    savedSearches.map((saved) => (
+                      <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
+                        <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
+                        <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
+                        <td>{saved.businessType}</td>
+                        <td>{saved.location}</td>
+                        <td>{saved.dateTime}</td>
+                        <td>{saved.count}</td>
+                        <td>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLoadSavedSearch(saved);
+                            }} 
+                            className="table-btn"
+                            style={{ marginRight: '0.5rem', backgroundColor: '#2563eb', color: '#ffffff' }}
+                          >
+                            Open Workspace
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSavedSearch(saved.id);
+                            }} 
+                            className="table-btn"
+                            style={{ backgroundColor: '#ef4444' }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
+              {/* Workspace Top Header Bar */}
+              <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <button 
+                      onClick={() => { setActiveSearchId(null); setSavedWorkspaceTab('results'); }}
+                      className="table-btn"
+                      style={{ backgroundColor: '#0f172a', border: '1px solid #475569', color: '#94a3b8', fontSize: '0.85rem' }}
+                    >
+                      ← All Saved Searches
+                    </button>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#38bdf8', fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span>{(activeSavedSearch?.businessType || activeSavedSearch?.searchPhrase || businessType || 'Saved Search')}</span>
+                        <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>—</span>
+                        <span style={{ color: '#ffffff' }}>{(activeSavedSearch?.location || location || 'Anywhere')}</span>
+                      </h2>
+                    </div>
+                  </div>
+                  <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.2rem 0.65rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                    Workspace ID: {activeSavedSearch?.searchId || activeSearchId}
+                  </span>
+                </div>
+
+                {/* Sub-Navigation Tabs Bar */}
+                <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid #334155', paddingBottom: '0.5rem' }}>
+                  <button
+                    onClick={() => setSavedWorkspaceTab('results')}
+                    style={{
+                      padding: '0.55rem 1.25rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontWeight: 'bold',
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      backgroundColor: savedWorkspaceTab === 'results' ? '#2563eb' : '#0f172a',
+                      color: savedWorkspaceTab === 'results' ? '#ffffff' : '#94a3b8'
+                    }}
+                  >
+                    Results ({(activeSavedSearch?.data || searchResults).length})
+                  </button>
+                  <button
+                    onClick={() => setSavedWorkspaceTab('shortlist')}
+                    style={{
+                      padding: '0.55rem 1.25rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontWeight: 'bold',
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      backgroundColor: savedWorkspaceTab === 'shortlist' ? '#2563eb' : '#0f172a',
+                      color: savedWorkspaceTab === 'shortlist' ? '#ffffff' : '#94a3b8'
+                    }}
+                  >
+                    Shortlist ({scopedShortlist.length})
+                  </button>
+                  <button
+                    onClick={() => setSavedWorkspaceTab('packs')}
+                    style={{
+                      padding: '0.55rem 1.25rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontWeight: 'bold',
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      backgroundColor: savedWorkspaceTab === 'packs' ? '#2563eb' : '#0f172a',
+                      color: savedWorkspaceTab === 'packs' ? '#ffffff' : '#94a3b8'
+                    }}
+                  >
+                    Outreach Packs ({scopedPacks.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* View 1: Results View */}
+              {savedWorkspaceTab === 'results' && (
+                <div className="results-table-container">
+                  <div style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.2rem' }}>Search Results</h3>
+                  </div>
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px' }}>Rank</th>
+                        <th>Domain / Business</th>
+                        <th>Status</th>
+                        <th>Contact Email</th>
+                        <th>Opportunity</th>
+                        <th className="action-cell">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {searchResults.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                            No results found for this search.
+                          </td>
+                        </tr>
+                      ) : (
+                        searchResults.map((item, idx) => {
+                          const itemDom = normalizeDomain(item.domain || item.url || item.website || '');
+                          const isShortlisted = outreachList.some(s => normalizeDomain(s.domain || s.url || '') === itemDom);
+                          const contactEmail = item.contactEmail || item.analysis?.contactEmail;
+                          const oppScore = item.analysis?.leadOpportunityScore?.score;
+                          const oppBand = normalizeOpportunityClassification(item.analysis?.leadOpportunityScore?.band, oppScore);
+                          const { color, bg, border } = getClassificationColors(oppBand);
+
+                          return (
+                            <tr key={item.id || itemDom || idx}>
+                              <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank || idx + 1}</td>
+                              <td>
+                                <div style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.name || item.businessName || itemDom}</div>
+                                {itemDom && <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{itemDom}</div>}
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '0.8rem', color: item.emailStatus === 'Email Found' ? '#34d399' : '#94a3b8' }}>
+                                  {item.emailStatus || 'No Email'}
+                                </span>
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: '#38bdf8' }}>
+                                {contactEmail || '-'}
+                              </td>
+                              <td>
+                                {oppScore !== null && oppScore !== undefined ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '10px', backgroundColor: bg, border: `1px solid ${border}`, color, fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                    {oppBand}
+                                  </span>
+                                ) : <span style={{ color: '#64748b' }}>-</span>}
+                              </td>
+                              <td className="action-cell">
+                                <button
+                                  onClick={() => handleAnalyse(item)}
+                                  className="analyse-btn-green"
+                                  style={{ marginRight: '6px', padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
+                                >
+                                  View Analysis
+                                </button>
+                                {!isShortlisted ? (
+                                  <button
+                                    onClick={() => handleAddToOutreach(item)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#2563eb', padding: '0.3rem 0.65rem', fontSize: '0.8rem' }}
+                                  >
+                                    + Shortlist
+                                  </button>
+                                ) : (
+                                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.8rem' }}>✓ Shortlisted</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* View 2: Shortlist View */}
+              {savedWorkspaceTab === 'shortlist' && (() => {
+                const unassignedProspects = scopedShortlist.filter(item => !getProspectAssignedPack(item));
+                const unassignedCount = unassignedProspects.length;
+
+                return (
+                  <div className="results-table-container">
+                    <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                      <div>
+                        <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.3rem' }}>Workspace Shortlist</h2>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                          Shortlisted prospects belonging to this Saved Search workspace.
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {unassignedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedShortlistIds(new Set(unassignedProspects.map(item => item.id || item.domain)));
+                            }}
+                            className="table-btn"
+                            style={{ backgroundColor: '#1e293b', border: '1px solid #10b981', color: '#34d399', padding: '0.35rem 0.75rem', fontSize: '0.85rem', fontWeight: 'bold', cursor: 'pointer' }}
+                          >
+                            Select Unassigned ({unassignedCount})
+                          </button>
+                        )}
+                        {selectedShortlistIds.size > 0 && (
+                          <button
+                            onClick={() => setSelectedShortlistIds(new Set())}
+                            style={{ background: 'none', border: 'none', color: '#94a3b8', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}
+                          >
+                            Deselect All
+                          </button>
+                        )}
+                        <button
+                          onClick={handleOpenCreatePackModal}
+                          disabled={selectedShortlistIds.size === 0}
+                          className="analyse-btn-green"
+                          style={{ padding: '0.5rem 1.1rem', fontSize: '0.9rem', opacity: selectedShortlistIds.size === 0 ? 0.5 : 1, cursor: selectedShortlistIds.size === 0 ? 'not-allowed' : 'pointer' }}
+                        >
+                          + Create Outreach Pack ({selectedShortlistIds.size} Selected)
+                        </button>
+                      </div>
+                    </div>
+
+                    <table className="results-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '40px', textAlign: 'center' }}>
+                            <input 
+                              type="checkbox"
+                              checked={scopedShortlist.length > 0 && selectedShortlistIds.size === scopedShortlist.length}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedShortlistIds(new Set(scopedShortlist.map(item => item.id || item.domain)));
+                                } else {
+                                  setSelectedShortlistIds(new Set());
+                                }
+                              }}
+                              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                            />
+                          </th>
+                          <th>Domain / Business</th>
+                          <th>Pack Assignment</th>
+                          <th>Rank</th>
+                          <th>Opportunity</th>
+                          <th>Shortlisted Date</th>
+                          <th className="action-cell">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scopedShortlist.length === 0 ? (
+                          <tr>
+                            <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                              <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects shortlisted for this Saved Search yet.</p>
+                              <p style={{ fontSize: '0.9rem', margin: 0 }}>Click "Results" tab above and click "+ Shortlist" on any prospect to add them here.</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          scopedShortlist.map((item) => {
+                            const itemKey = item.id || item.domain;
+                            const isSelected = selectedShortlistIds.has(itemKey) || (item.id && selectedShortlistIds.has(item.id)) || (item.domain && selectedShortlistIds.has(item.domain));
+                            const assignedPack = getProspectAssignedPack(item);
+                            const score = item.opportunityScore;
+
+                            return (
+                              <tr key={itemKey} style={{ backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.08)' : 'transparent' }}>
+                                <td style={{ textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      toggleShortlistSelection(itemKey);
+                                    }}
+                                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                  />
+                                </td>
+                                <td>
+                                  <div style={{ fontWeight: 'bold', color: '#ffffff' }}>{item.businessName || item.domain}</div>
+                                  <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{item.domain}</div>
+                                </td>
+                                <td>
+                                  {assignedPack ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenPack(assignedPack)}
+                                      className="table-btn"
+                                      style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid #0284c7', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.85rem' }}
+                                    >
+                                      {assignedPack.packId}
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: '#f59e0b', fontWeight: '600', fontSize: '0.875rem' }}>Waiting</span>
+                                  )}
+                                </td>
+                                <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>#{item.rank || '-'}</td>
+                                <td>
+                                  {score !== null && score !== undefined ? (
+                                    (() => {
+                                      const band = normalizeOpportunityClassification(item.opportunityBand, score);
+                                      const { color, bg, border } = getClassificationColors(band);
+                                      return (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '10px', backgroundColor: bg, border: `1px solid ${border}`, color, fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                          {band}
+                                        </span>
+                                      );
+                                    })()
+                                  ) : <span style={{ color: '#64748b' }}>-</span>}
+                                </td>
+                                <td style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                                  {formatDateOnly(item.shortlistedAt)}
+                                </td>
+                                <td className="action-cell">
+                                  <button 
+                                    onClick={() => handleAnalyse(item.analysisData || item)}
+                                    className="analyse-btn-green"
+                                    style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                                  >
+                                    View Analysis
+                                  </button>
+                                  <button 
+                                    onClick={() => handleRemoveFromOutreach(item.id || item.domain)}
+                                    className="table-btn"
+                                    style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* View 3: Outreach Packs View */}
+              {savedWorkspaceTab === 'packs' && (
+                <div className="results-table-container">
+                  <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.3rem' }}>Workspace Outreach Packs</h2>
+                      <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                        Outreach Packs created for this Saved Search workspace.
+                      </p>
+                    </div>
+                    <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
+                      {scopedPacks.length} {scopedPacks.length === 1 ? 'pack' : 'packs'} created
+                    </span>
+                  </div>
+
+                  <table className="results-table">
+                    <thead>
+                      <tr>
+                        <th>Pack ID</th>
+                        <th>Pack Name</th>
+                        <th>Created Date</th>
+                        <th>Prospects</th>
+                        <th>Pack Status</th>
+                        <th>Sent Date / Time</th>
+                        <th className="action-cell">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scopedPacks.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                            <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No Outreach Packs created for this Saved Search yet.</p>
+                            <p style={{ fontSize: '0.9rem', margin: 0 }}>Shortlist prospects from this workspace and click "Create Outreach Pack" to generate your first pack.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        scopedPacks.map((pack) => {
+                          const statusColors = {
+                            'Draft': { bg: 'rgba(100, 116, 139, 0.2)', text: '#94a3b8' },
+                            'Ready': { bg: 'rgba(59, 130, 246, 0.2)', text: '#60a5fa' },
+                            'Sent': { bg: 'rgba(16, 185, 129, 0.2)', text: '#10b981' },
+                            'Partially Sent': { bg: 'rgba(168, 85, 247, 0.2)', text: '#c084fc' },
+                            'Failed': { bg: 'rgba(239, 68, 68, 0.2)', text: '#ef4444' }
+                          };
+                          const badge = statusColors[pack.status] || statusColors['Draft'];
+
+                          return (
+                            <tr key={pack.id || pack.packId}>
+                              <td>
+                                <button
+                                  onClick={() => handleOpenPack(pack)}
+                                  style={{ background: 'none', border: 'none', color: '#38bdf8', fontWeight: 'bold', fontFamily: 'monospace', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                                >
+                                  {pack.packId}
+                                </button>
+                              </td>
+                              <td style={{ fontWeight: 'bold', color: '#ffffff' }}>{pack.name}</td>
+                              <td>{formatLastAnalysed(pack.createdAt)}</td>
+                              <td>{pack.prospectsCount || (pack.prospects ? pack.prospects.length : 0)} prospects</td>
+                              <td>
+                                <span style={{ backgroundColor: badge.bg, color: badge.text, padding: '0.15rem 0.55rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                                  {pack.status}
+                                </span>
+                              </td>
+                              <td>{pack.sentAt ? formatLastAnalysed(pack.sentAt) : '-'}</td>
+                              <td className="action-cell">
+                                <button
+                                  onClick={() => handleOpenPack(pack)}
+                                  className="analyse-btn-green"
+                                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                                >
+                                  View Pack
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
         )}
         {currentView === 'exclusions' && (
           <div className="results-table-container">

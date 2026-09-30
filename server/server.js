@@ -3307,9 +3307,11 @@ app.post('/api/outreach-packs', async (req, res) => {
     const finalTemplateSubject = templateSubject || defaultTemplate.subject;
     const finalTemplateBody = stripLeadingGreeting(templateBody || defaultTemplate.body);
 
+    const packSearchId = req.body.searchId || processedProspects[0]?.searchId || '';
+
     await db.run(
-      `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects, searchType, workspace)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO outreach_packs (id, packId, name, templateSubject, templateBody, createdAt, sentAt, status, prospectsCount, prospects, searchType, workspace, searchId)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         nextPackId,
@@ -3322,7 +3324,8 @@ app.post('/api/outreach-packs', async (req, res) => {
         processedProspects.length,
         JSON.stringify(processedProspects),
         isLocalPack ? 'local' : 'organic',
-        req.workspace
+        req.workspace,
+        packSearchId
       ]
     );
 

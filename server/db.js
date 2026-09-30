@@ -127,6 +127,9 @@ export async function getDb() {
     await db.exec(`ALTER TABLE outreach_packs ADD COLUMN searchType TEXT;`);
   } catch (e) {}
   try {
+    await db.exec(`ALTER TABLE outreach_packs ADD COLUMN searchId TEXT;`);
+  } catch (e) {}
+  try {
     await db.exec(`ALTER TABLE outreach_shortlist ADD COLUMN phone TEXT;`);
   } catch (e) {}
   try {
