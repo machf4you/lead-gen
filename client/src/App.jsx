@@ -393,6 +393,19 @@ const deriveTrade = (prospect) => {
   return rawTrade || 'services';
 };
 
+export const deriveRank = (prospect) => {
+  if (!prospect || typeof prospect === 'string') return '';
+  const r = prospect.rank !== undefined && prospect.rank !== null ? prospect.rank : (prospect.rankNum !== undefined && prospect.rankNum !== null ? prospect.rankNum : (prospect.position !== undefined && prospect.position !== null ? prospect.position : (prospect.analysisData?.rank !== undefined && prospect.analysisData?.rank !== null ? prospect.analysisData.rank : '')));
+  return String(r).replace(/^#/, '').trim();
+};
+
+export const deriveSearchPhrase = (prospect) => {
+  if (!prospect) return '';
+  if (typeof prospect === 'string') return prospect.trim();
+  const phrase = prospect.searchPhrase || prospect.searchKeyword || prospect.analysisData?.searchPhrase || prospect.analysisData?.searchKeyword || prospect.trade || prospect.businessType || '';
+  return String(phrase).trim();
+};
+
 // Helper to render template variables for a specific prospect
 const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSettings = null) => {
   if (!templateStr) return '';
@@ -403,6 +416,8 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
   const domain = prospect?.domain || '';
   const location = deriveLocation(prospect);
   const trade = deriveTrade(prospect);
+  const rank = deriveRank(prospect);
+  const searchPhrase = deriveSearchPhrase(prospect);
 
   const senderFirstName = senderSettings?.sender_first_name || 'Mac';
   const senderName = senderSettings?.sender_name || 'Mac McCarthy';
@@ -422,8 +437,9 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*trade\s*\}\}/gi, trade)
     .replace(/\{\{\s*businessType\s*\}\}/gi, trade)
-    .replace(/\{\{\s*searchPhrase\s*\}\}/gi, trade)
-    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, trade)
+    .replace(/\{\{\s*rank\s*\}\}/gi, rank)
+    .replace(/\{\{\s*searchPhrase\s*\}\}/gi, searchPhrase)
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, searchPhrase || trade)
     .replace(/\{\{\s*phone\s*\}\}/gi, phone)
     .replace(/\{\{\s*rating\s*\}\}/gi, String(rating))
     .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
@@ -454,19 +470,24 @@ const renderTemplateDemoPreview = (text, workspace = 'tse') => {
   const firstName = 'John';
   const phone = '020 7946 0123';
   const rating = '4.9';
+  const rank = '47';
+  const searchPhrase = 'window shutters london';
 
   return text
     .replace(/\{\{\s*(?:sender_first_name|senderFirstName)\s*\}\}/gi, senderFirstName)
     .replace(/\{\{\s*(?:sender_name|senderName)\s*\}\}/gi, senderName)
     .replace(/\{\{\s*(?:company_name|companyName|company)\s*\}\}/gi, companyName)
-    .replace(/\{\{\s*(?:trade|businessType|searchPhrase|searchKeyword)\s*\}\}/gi, trade)
+    .replace(/\{\{\s*(?:trade|businessType)\s*\}\}/gi, trade)
     .replace(/\{\{\s*location\s*\}\}/gi, location)
     .replace(/\{\{\s*domain\s*\}\}/gi, domain)
     .replace(/\{\{\s*(?:businessName|business_name)\s*\}\}/gi, businessName)
     .replace(/\{\{\s*(?:firstName|first_name)\s*\}\}/gi, firstName)
     .replace(/\{\{\s*greeting\s*\}\}/gi, `Hi ${firstName}`)
     .replace(/\{\{\s*phone\s*\}\}/gi, phone)
-    .replace(/\{\{\s*rating\s*\}\}/gi, rating);
+    .replace(/\{\{\s*rating\s*\}\}/gi, rating)
+    .replace(/\{\{\s*rank\s*\}\}/gi, rank)
+    .replace(/\{\{\s*searchPhrase\s*\}\}/gi, searchPhrase)
+    .replace(/\{\{\s*searchKeyword\s*\}\}/gi, searchPhrase);
 };
 
 // Helper to sort templates by their numbered prefix
@@ -7732,13 +7753,23 @@ function App() {
                       <tbody>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{trade}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search trade / business type — Keyword service category (Aliases: <code style={{ color: '#94a3b8' }}>{"{{businessType}}"}</code>, <code style={{ color: '#94a3b8' }}>{"{{searchPhrase}}"}</code>, <code style={{ color: '#94a3b8' }}>{"{{searchKeyword}}"}</code>)</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Bathroom Showrooms</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search trade / business type — Keyword service category (Alias: <code style={{ color: '#94a3b8' }}>{"{{businessType}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Window Shutters</td>
                         </tr>
                         <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                           <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{location}}"}</td>
                           <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search location — Target city or geographical search area</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Kent</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rank}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Organic ranking position — Google organic search position for prospect from saved search</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>47</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{searchPhrase}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search phrase / query — Exact search phrase used for saved search (Alias: <code style={{ color: '#94a3b8' }}>{"{{searchKeyword}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>window shutters london</td>
                         </tr>
                       </tbody>
                     </table>
