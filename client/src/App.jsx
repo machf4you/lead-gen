@@ -6580,6 +6580,1089 @@ function App() {
               </div>
             )}
 
+          </div>
+        )}
+        {currentView === 'settings' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', paddingBottom: '3rem' }}>
+            <div className="search-header-container" style={{ marginBottom: 0 }}>
+              <h1 className="header-title">Settings</h1>
+              <p className="header-subtitle">Configure application settings and track project release history.</p>
+            </div>
+
+            {/* Outreach Sender Details Section */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Outreach Sender Details</h2>
+                  <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                    Configure sender identity and company values resolved in master outreach templates (<code style={{ color: '#38bdf8' }}>{"{{sender_first_name}}"}</code>, <code style={{ color: '#38bdf8' }}>{"{{sender_name}}"}</code>, and <code style={{ color: '#38bdf8' }}>{"{{company_name}}"}</code>).
+                  </p>
+                  {currentUser && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.85rem' }}>
+                      <span style={{ color: '#94a3b8' }}>Active Workspace:</span>
+                      <strong style={{ color: '#38bdf8' }}>{currentUser.workspaceLabel || (currentUser.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</strong>
+                      <span style={{ color: '#64748b' }}>({currentUser.email || currentUser.username})</span>
+                    </div>
+                  )}
+                </div>
+                {senderSettingsSavedMsg && (
+                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #10b981' }}>
+                    ✓ Settings saved successfully
+                  </span>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveSenderSettings} data-lpignore="true" data-form-type="other" autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Sender First Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_first_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.sender_first_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_first_name: e.target.value }))}
+                      placeholder="e.g. Mac"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Sender Full Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.sender_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_name: e.target.value }))}
+                      placeholder="e.g. Mac McCarthy"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      required
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
+                      Company Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{company_name}}"}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={senderSettings.company_name}
+                      onChange={(e) => setSenderSettings(prev => ({ ...prev, company_name: e.target.value }))}
+                      placeholder="e.g. The Search Equation"
+                      className="search-input"
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+                  <button
+                    type="submit"
+                    className="analyse-btn-green"
+                    disabled={isSavingSenderSettings}
+                    style={{ padding: '0.55rem 1.5rem', fontWeight: 'bold' }}
+                  >
+                    {isSavingSenderSettings ? 'Saving...' : 'Save Sender Details'}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Email Template Variables Section */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Email Template Variables</h2>
+                <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
+                  Reference guide for all supported <code style={{ color: '#38bdf8' }}>{"{{variables}}"}</code> available for outreach email templates and drafts.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {/* Group 1: Sender Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Sender Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_first_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender first name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_first_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren' : 'Mac')}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender full name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren Tipping' : 'Mac McCarthy')}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{company_name}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender company / agency name — Settings → Outreach Sender Details</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.company_name || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 2: Prospect / Business Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Prospect / Business Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{businessName}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect business name — Scraped website header or map listing</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London Shutters Ltd</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{domain}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect website domain — Clean hostname from search result</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>londonshutters.co.uk</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{phone}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect phone number — Scraped contact phone or Google Business Profile</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>020 7946 0123</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rating}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Google Business rating — Review rating from Google Business Profile</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>4.9</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 3: Search / Campaign Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Search / Campaign Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{trade}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search trade / business type — Keyword service category (Alias: <code style={{ color: '#94a3b8' }}>{"{{businessType}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Window Shutters</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{location}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search location — Target city or geographical search area</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rank}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Organic ranking position — Google organic search position for prospect from saved search</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>47</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{searchPhrase}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search phrase / query — Exact search phrase used for saved search (Alias: <code style={{ color: '#94a3b8' }}>{"{{searchKeyword}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>window shutters london</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Group 4: Contact Details */}
+                <div>
+                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                    Contact Details
+                  </h3>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
+                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{firstName}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Recipient first name — Derived from recipient email address (Fallback: <code style={{ color: '#94a3b8' }}>there</code>) (Alias: <code style={{ color: '#94a3b8' }}>{"{{first_name}}"}</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>John</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{greeting}}"}</td>
+                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Automatic greeting line — Derived greeting (e.g. <code style={{ color: '#94a3b8' }}>Hi John</code> or <code style={{ color: '#94a3b8' }}>Hi Team</code>)</td>
+                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Hi John</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Version History & Milestone Manager */}
+            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Version History & Milestone Manager</h2>
+              
+              {/* Current Version Panel */}
+              {(() => {
+                const currentMilestone = milestones[milestones.length - 1];
+                return (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                    border: '1px dashed #3b82f6',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    color: '#f8fafc'
+                  }}>
+                    <h3 style={{ margin: '0 0 0.75rem 0', color: '#60a5fa', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ display: 'inline-block', width: '8px', height: '8px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                      Current Active Release
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', fontSize: '0.9rem' }}>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Current Version</span>
+                        <strong>{currentMilestone?.version || 'N/A'}</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Git Tag</span>
+                        <code style={{ color: '#38bdf8' }}>{currentMilestone?.gitTag || 'N/A'}</code>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Commit Hash</span>
+                        <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }} title={currentMilestone?.commitHash}>
+                          {currentMilestone?.commitHash ? currentMilestone.commitHash.substring(0, 8) : 'N/A'}
+                        </code>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Date</span>
+                        <span>{currentMilestone ? formatLastAnalysed(currentMilestone.date) : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Status</span>
+                        <span style={{ 
+                          color: '#10b981',
+                          fontWeight: 'bold', 
+                          display: 'inline-block', 
+                          backgroundColor: 'rgba(16, 185, 129, 0.1)', 
+                          padding: '0.1rem 0.5rem', 
+                          borderRadius: '4px',
+                          fontSize: '0.8rem'
+                        }}>
+                          {currentMilestone?.status || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Milestones History Table */}
+              <div>
+                <h3 style={{ margin: '1rem 0 0.75rem 0', color: '#f1f5f9', fontSize: '1.1rem' }}>Historical Milestones</h3>
+                <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: '6px' }}>
+                  <table className="results-table" style={{ border: 'none', margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '40px' }}></th>
+                        <th>Version</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Git Tag</th>
+                        <th>Commit Hash</th>
+                        <th>Summary</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isMilestonesLoading && milestones.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                            Loading version history...
+                          </td>
+                        </tr>
+                      ) : milestonesError ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
+                            Error loading milestones: {milestonesError}
+                          </td>
+                        </tr>
+                      ) : (
+                        milestones.map((m) => {
+                          const isExpanded = !!expandedMilestones[m.version];
+                          return (
+                            <React.Fragment key={m.version}>
+                              <tr 
+                                onClick={() => toggleMilestoneExpanded(m.version)}
+                                style={{ cursor: 'pointer', transition: 'background-color 0.2s' }}
+                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
+                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                <td style={{ textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </td>
+                                <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>{m.version}</td>
+                                <td>{formatLastAnalysed(m.date)}</td>
+                                <td>
+                                  <span style={{ 
+                                    color: '#34d399', 
+                                    backgroundColor: 'rgba(52, 211, 153, 0.1)', 
+                                    padding: '0.1rem 0.5rem', 
+                                    borderRadius: '4px',
+                                    fontSize: '0.85rem'
+                                  }}>
+                                    {m.status}
+                                  </span>
+                                </td>
+                                <td><code style={{ color: '#cbd5e1' }}>{m.gitTag}</code></td>
+                                <td>
+                                  <code style={{ color: '#94a3b8', fontSize: '0.8rem' }} title={m.commitHash}>
+                                    {m.commitHash ? m.commitHash.substring(0, 8) : 'PENDING'}
+                                  </code>
+                                </td>
+                                <td style={{ color: '#e2e8f0' }}>{m.summary}</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan="7" style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderBottom: '1px solid #334155' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#38bdf8', fontSize: '0.95rem' }}>Features Completed</h4>
+                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                            {m.features.map((f, i) => (
+                                              <li key={i}>{f}</li>
+                                            ))}
+                                            {m.features.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
+                                          </ul>
+                                        </div>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f43f5e', fontSize: '0.95rem' }}>Bug Fixes</h4>
+                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                            {m.bugfixes.map((b, i) => (
+                                              <li key={i}>{b}</li>
+                                            ))}
+                                            {m.bugfixes.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
+                                          </ul>
+                                        </div>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2e8f0', fontSize: '0.95rem' }}>Developer Notes</h4>
+                                          <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-line' }}>
+                                            {m.notes || 'No developer notes provided.'}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem' }}>Rollback Information</h4>
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Git Tag:</span>
+                                              <code style={{ color: '#38bdf8' }}>{m.gitTag}</code>
+                                            </div>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Commit Hash:</span>
+                                              <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }}>{m.commitHash}</code>
+                                            </div>
+                                            <div>
+                                              <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.25rem' }}>Rollback Command:</span>
+                                              <div style={{
+                                                backgroundColor: '#1e293b',
+                                                padding: '0.5rem 0.75rem',
+                                                borderRadius: '4px',
+                                                border: '1px solid #334155',
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.8rem',
+                                                color: '#f8fafc',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                              }}>
+                                                <code>git checkout {m.gitTag}</code>
+                                                <button 
+                                                  type="button"
+                                                  onClick={() => {
+                                                    navigator.clipboard.writeText(`git checkout ${m.gitTag}`);
+                                                    alert('Rollback command copied!');
+                                                  }}
+                                                  style={{
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    color: '#38bdf8',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.75rem',
+                                                    textDecoration: 'underline'
+                                                  }}
+                                                >
+                                                  Copy
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {currentView === 'analyse' && activeAnalysisItem && (
+          <div className="analysis-container">
+            <div className="analysis-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.75rem', color: '#ffffff' }}>Lead Opportunity Dashboard</h1>
+                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8' }}>{activeAnalysisItem.domain || activeAnalysisItem.url}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={handleRefreshAnalysis}
+                  className="analyse-btn-green"
+                  disabled={isRefreshing}
+                >
+                  {isRefreshing ? 'Refreshing...' : 'Refresh Analysis'}
+                </button>
+                {isShortlisted(activeAnalysisItem.domain || activeAnalysisItem.url) ? (
+                  <button 
+                    onClick={() => handleRemoveFromOutreach(activeAnalysisItem.domain || activeAnalysisItem.url)}
+                    className="table-btn"
+                    style={{ backgroundColor: '#059669', color: '#ffffff', fontWeight: '600' }}
+                    title="Click to remove from Outreach List"
+                  >
+                    ✓ Shortlisted
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleAddToOutreach(activeAnalysisItem)}
+                    className="table-btn"
+                    style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '600' }}
+                  >
+                    + Add to Outreach List
+                  </button>
+                )}
+                <button 
+                  onClick={handleBackToResults} 
+                  className="table-btn"
+                  style={{ backgroundColor: '#475569' }}
+                >
+                  &larr; Back to Results
+                </button>
+              </div>
+            </div>
+
+            {/* Executive Summary Card */}
+            <div className="analysis-section" style={{ marginBottom: '1.5rem', width: '100%', boxSizing: 'border-box' }}>
+              <h3 style={{ borderBottom: '1px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>Executive Summary</h3>
+              
+              {/* Metrics Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                {/* 1. Search Information (Spans 2 columns if space allows) */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gridColumn: 'span 2' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Search Information</span>
+                  <div style={{ fontSize: '0.85rem', color: '#cbd5e1', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
+                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>Phrase:</span>
+                      <span style={{ fontWeight: 'bold', color: '#60a5fa', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {getSearchPhrase(activeAnalysisItem.searchKeyword, activeAnalysisItem.location)}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
+                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>URL:</span>
+                      <span style={{ wordBreak: 'break-all', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {activeAnalysisItem.url ? (
+                          <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontSize: '0.85rem' }}>
+                            {activeAnalysisItem.url}
+                          </a>
+                        ) : 'Not available'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
+                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>Analysed:</span>
+                      <span style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                        {formatLastAnalysed(activeAnalysisItem.lastAnalysed)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. EMAIL */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>EMAIL</span>
+                  {editingCard2Email ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
+                      <input
+                        type="email"
+                        value={card2EmailInput}
+                        onChange={(e) => setCard2EmailInput(e.target.value)}
+                        placeholder="e.g. hello@domain.co.uk"
+                        autoComplete="off"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        style={{
+                          backgroundColor: '#1e293b',
+                          color: '#ffffff',
+                          border: '1px solid #3b82f6',
+                          borderRadius: '4px',
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.85rem',
+                          width: '100%',
+                          textAlign: 'center',
+                          boxSizing: 'border-box'
+                        }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveCard2Email();
+                          if (e.key === 'Escape') setEditingCard2Email(false);
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.3rem' }}>
+                        <button
+                          onClick={handleSaveCard2Email}
+                          disabled={isSavingCard2Email}
+                          className="table-btn"
+                          style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
+                          title="Save Email"
+                        >
+                          {isSavingCard2Email ? '...' : '✓ Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingCard2Email(false)}
+                          className="table-btn"
+                          style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                      {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || (activeAnalysisItem.allFoundEmails && activeAnalysisItem.allFoundEmails[0]) ? (
+                        <>
+                          <span style={{ fontSize: '0.95rem', color: '#38bdf8', fontWeight: 'bold', wordBreak: 'break-all', lineHeight: '1.2' }}>
+                            {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails[0]}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setCard2EmailInput(activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails?.[0] || '');
+                              setEditingCard2Email(true);
+                            }}
+                            className="table-btn"
+                            style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
+                          >
+                            Edit
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '0.95rem', color: '#94a3b8', fontStyle: 'italic', lineHeight: '1.2' }}>Not Found</span>
+                          <button
+                            onClick={() => {
+                              setCard2EmailInput('');
+                              setEditingCard2Email(true);
+                            }}
+                            className="table-btn"
+                            style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
+                          >
+                            Add Email
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. OPPORTUNITY CLASSIFICATION */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>OPPORTUNITY CLASSIFICATION</span>
+                  {(() => {
+                    const s = activeAnalysisItem.leadOpportunityScore?.score;
+                    const rawBand = activeAnalysisItem.leadOpportunityScore?.band;
+                    const band = normalizeOpportunityClassification(rawBand, s);
+                    const colors = getClassificationColors(band);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: colors.color, lineHeight: '1.2' }}>
+                          {band}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>
+                          Classification
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 4. ORGANIC RANKING */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Organic Ranking</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#38bdf8', lineHeight: '1.2' }}>
+                    {activeAnalysisItem.rank ? `#${activeAnalysisItem.rank}` : 'Not available'}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>SERP Position</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="analysis-grid">
+              {/* Card 2: Google Business Profile */}
+              <div className="analysis-section">
+                <h3>
+                  Google Business Profile ({
+                    activeAnalysisItem.gbp?.status === 'Found' 
+                      ? 'Found' 
+                      : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'Not Found')
+                  })
+                </h3>
+                <div className="analysis-row">
+                  <span className="analysis-label">Business Name</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.businessName || activeAnalysisItem.gbp?.businessName === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.businessName}</span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Primary Category</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.primaryCategory || activeAnalysisItem.gbp?.primaryCategory === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.primaryCategory}</span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Rating</span>
+                  <span className="analysis-value" style={{ 
+                    fontWeight: 'bold', 
+                    color: (activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) ? '#f59e0b' : (activeAnalysisItem.gbp?.status === 'Found' ? '#94a3b8' : 'inherit') 
+                  }}>
+                    {(activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) 
+                      ? `★ ${activeAnalysisItem.gbp.rating}` 
+                      : (activeAnalysisItem.gbp?.status === 'Found' ? 'Unrated (No reviews yet)' : 'No Profile Matched')}
+                  </span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Review Count</span>
+                  <span className="analysis-value">
+                    {(activeAnalysisItem.gbp?.reviewCount !== null && activeAnalysisItem.gbp?.reviewCount !== undefined && activeAnalysisItem.gbp?.reviewCount !== 'Not Found') 
+                      ? `${activeAnalysisItem.gbp.reviewCount} reviews` 
+                      : (activeAnalysisItem.gbp?.status === 'Found' ? '0 reviews' : 'No Profile Matched')}
+                  </span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Website URL</span>
+                  <span className="analysis-value" style={{ wordBreak: 'break-all', maxWidth: '100%', display: 'inline-block' }}>
+                    {activeAnalysisItem.gbp?.websiteUrl && activeAnalysisItem.gbp?.websiteUrl !== 'Not Found' && activeAnalysisItem.gbp?.websiteUrl !== 'Multiple Matches' ? (
+                      <a href={activeAnalysisItem.gbp.websiteUrl} target="_blank" rel="noopener noreferrer" className="table-link">
+                        {activeAnalysisItem.gbp.websiteUrl}
+                      </a>
+                    ) : (activeAnalysisItem.gbp?.websiteUrl === 'Not Found' || !activeAnalysisItem.gbp?.websiteUrl ? 'No Profile Matched' : activeAnalysisItem.gbp.websiteUrl)}
+                  </span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Phone Number</span>
+                  <span className="analysis-value">{!activeAnalysisItem.gbp?.phoneNumber || activeAnalysisItem.gbp?.phoneNumber === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.phoneNumber}</span>
+                </div>
+                <div className="analysis-row">
+                  <span className="analysis-label">Address</span>
+                  <span className="analysis-value" style={{ textAlign: 'right' }}>{!activeAnalysisItem.gbp?.address || activeAnalysisItem.gbp?.address === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.address}</span>
+                </div>
+              </div>
+
+              {/* Card 3: Technical Analysis */}
+              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
+                <h3 style={{ borderBottom: '1px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>Technical Analysis</h3>
+
+                {/* Executive Overview */}
+                <div style={{ marginBottom: '1.25rem', padding: '1.25rem', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#94a3b8', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Executive Overview</h4>
+                  <p style={{ margin: 0, fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.5', fontWeight: '500' }}>
+                    {activeAnalysisItem.aiReport?.execSummary ? (
+                      activeAnalysisItem.aiReport.execSummary.split(/[.!?]/)[0] + '.'
+                    ) : (activeAnalysisItem.analysisProblem ? 'Analysis partial or crawl restricted by target host.' : 'Website analysis and opportunity assessment complete.')}
+                  </p>
+                </div>
+
+                {/* Top 5 Contributing Factors */}
+                <div style={{ marginBottom: '1.5rem', padding: '1.25rem', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#cbd5e1', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top 5 Contributing Factors</h4>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', lineHeight: '1.4' }}>
+                    {(activeAnalysisItem.leadOpportunityScore?.reasons || []).map((reason, index) => (
+                      <li key={index} style={{ color: '#cbd5e1' }}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Technical Indicators Grid */}
+                <h4 style={{ margin: '1.5rem 0 0.75rem 0', color: '#cbd5e1', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Technical Indicators</h4>
+                {(() => {
+                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTPS Secure</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.isHttps ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.isHttps ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.isHttps ? 'Pass' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Fail (HTTP)')}
+                        </span>
+                      </div>
+
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTP Response Status</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.statusCode === 200 ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.statusCode === 200 ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.statusCode === 200 ? 'Pass (200 OK)' : (isCrawlBlocked ? `⚠ Blocked (${activeAnalysisItem.seoHealth?.statusCode || 403})` : `Fail (${activeAnalysisItem.seoHealth?.statusCode || 'Error'})`)}
+                        </span>
+                      </div>
+
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Search Indexability</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.indexable ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.indexable ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.indexable ? 'Indexable' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Noindex')}
+                        </span>
+                      </div>
+
+                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Canonical Tag</span>
+                        <span style={{ 
+                          fontWeight: 'bold', 
+                          fontSize: '0.85rem',
+                          padding: '0.2rem 0.5rem', 
+                          borderRadius: '4px',
+                          color: activeAnalysisItem.seoHealth?.hasCanonical ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
+                          backgroundColor: activeAnalysisItem.seoHealth?.hasCanonical ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
+                        }}>
+                          {activeAnalysisItem.seoHealth?.hasCanonical ? 'Present' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Missing')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Metadata Details */}
+                {(() => {
+                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
+                  return (
+                    <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Title</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.pageTitle || activeAnalysisItem.pageTitle === 'Not Found' || activeAnalysisItem.pageTitle === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.pageTitle}
+                        </div>
+                      </div>
+
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Description</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.metaDescription || activeAnalysisItem.metaDescription === 'Not Found' || activeAnalysisItem.metaDescription === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.metaDescription}
+                        </div>
+                      </div>
+
+                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>H1 Heading</h4>
+                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
+                          {(!activeAnalysisItem.h1 || activeAnalysisItem.h1 === 'Not Found' || activeAnalysisItem.h1 === 'Loading...') ? (
+                            isCrawlBlocked ? (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
+                            ) : (
+                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
+                            )
+                          ) : activeAnalysisItem.h1}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Website Desktop Preview Card */}
+              <div className="analysis-section" style={{ gridColumn: '1 / -1', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #334155', paddingBottom: '0.65rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>🖥️</span>
+                    <h3 style={{ margin: 0, border: 'none', padding: 0, fontSize: '1.15rem', color: '#ffffff' }}>Website Desktop Preview</h3>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {activeAnalysisItem.url && (
+                      <a 
+                        href={activeAnalysisItem.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="table-btn"
+                        style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#38bdf8', textDecoration: 'none', fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <span>Open Live Site ↗</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mock Browser Frame */}
+                <div style={{
+                  backgroundColor: '#0f172a',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  overflow: 'hidden',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+                }}>
+                  {/* Browser Header Bar */}
+                  <div style={{
+                    backgroundColor: '#1e293b',
+                    padding: '0.5rem 0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    borderBottom: '1px solid #334155'
+                  }}>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+                    </div>
+                    <div style={{
+                      flex: 1,
+                      backgroundColor: '#090d16',
+                      borderRadius: '4px',
+                      padding: '0.25rem 0.75rem',
+                      fontSize: '0.8rem',
+                      color: '#94a3b8',
+                      fontFamily: 'monospace',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      🔒 {activeAnalysisItem.url || (`https://${activeAnalysisItem.domain}`)}
+                    </div>
+                  </div>
+
+                  {/* Screenshot Image Container */}
+                  <div style={{
+                    minHeight: '280px',
+                    maxHeight: '520px',
+                    overflowY: 'auto',
+                    backgroundColor: '#090d16',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    position: 'relative'
+                  }}>
+                    <img
+                      src={`${API_BASE}/api/screenshot?url=${encodeURIComponent(activeAnalysisItem.url || ('https://' + activeAnalysisItem.domain))}`}
+                      alt={`Website Preview for ${activeAnalysisItem.domain}`}
+                      style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        if (e.currentTarget.nextSibling) {
+                          e.currentTarget.nextSibling.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div style={{
+                      display: 'none',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '3rem 1.5rem',
+                      color: '#94a3b8',
+                      textAlign: 'center',
+                      gap: '0.5rem',
+                      width: '100%'
+                    }}>
+                      <span style={{ fontSize: '2.5rem' }}>⚠</span>
+                      <span style={{ fontWeight: 'bold', color: '#cbd5e1', fontSize: '1.05rem' }}>Preview Unavailable (Automated access restricted)</span>
+                      <span style={{ fontSize: '0.85rem', maxWidth: '420px', lineHeight: '1.4' }}>
+                        Target server returned HTTP 403 or anti-bot protection. Live page inspection can be performed directly in your browser.
+                      </span>
+                      {activeAnalysisItem.url && (
+                        <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-btn" style={{ marginTop: '0.75rem', backgroundColor: '#2563eb', color: '#ffffff' }}>
+                          Visit {activeAnalysisItem.domain} ↗
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Outreach Strategy */}
+              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #334155', paddingBottom: '0.5rem' }}>
+                  <h3 style={{ margin: 0, border: 'none', padding: 0 }}>Outreach Strategy</h3>
+                </div>
+
+                {/* Contact Strategy */}
+                <div style={{ marginBottom: '1.5rem', backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Strategy</h4>
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.6' }}>
+                    {getContactStrategySummary(activeAnalysisItem)}
+                  </p>
+                  
+                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem', fontWeight: 'bold' }}>Key Talking Points</h5>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', lineHeight: '1.4' }}>
+                    {getKeyTalkingPoints(activeAnalysisItem).map((point, index) => (
+                      <li key={index}>{point.replace(/^•\s*/, '')}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Suggested First Email */}
+                <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <h4 style={{ margin: 0, color: '#10b981', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested First Email</h4>
+                    {!isEditingSuggestedEmail ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingSuggestedEmail(true)}
+                        className="table-btn"
+                        style={{
+                          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                          border: '1px solid #38bdf8',
+                          color: '#38bdf8',
+                          padding: '0.25rem 0.65rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem'
+                        }}
+                        title="Edit Suggested First Email"
+                      >
+                        ✎ Edit
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEditedSuggestedEmail()}
+                          className="analyse-btn-green"
+                          style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
+                        >
+                          ✓ Save Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingSuggestedEmail(false);
+                            const domKey = normalizeDomain(activeAnalysisItem?.domain || activeAnalysisItem?.url || '');
+                            const saved = activeAnalysisItem?.suggestedFirstEmail || activeAnalysisItem?.customSuggestedEmail || activeAnalysisItem?.analysisData?.suggestedFirstEmail || activeAnalysisItem?.analysisData?.customSuggestedEmail || generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace);
+                            setOutreachEmail(saved);
+                          }}
+                          className="table-btn"
+                          style={{ backgroundColor: '#475569', padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <textarea
+                    className="analysis-notes-area"
+                    style={{
+                      height: '280px',
+                      fontFamily: 'inherit',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.5',
+                      marginTop: '0.5rem',
+                      borderColor: isEditingSuggestedEmail ? '#38bdf8' : '#334155',
+                      backgroundColor: isEditingSuggestedEmail ? '#1e293b' : '#0f172a'
+                    }}
+                    value={outreachEmail}
+                    onChange={(e) => {
+                      setOutreachEmail(e.target.value);
+                      if (!isEditingSuggestedEmail) setIsEditingSuggestedEmail(true);
+                    }}
+                    placeholder="Generating first contact email..."
+                  />
+                </div>
+              </div>
+
+              {/* Card 5: Notes */}
+              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
+                <h3>Notes</h3>
+                <textarea
+                  className="analysis-notes-area"
+                  value={analysisNotes[activeAnalysisItem.url || activeAnalysisItem.domain] || ''}
+                  onChange={(e) => handleNoteChange(activeAnalysisItem.url || activeAnalysisItem.domain, e.target.value)}
+                  placeholder="Enter custom notes about this business or website here..."
+                />
+              </div>
+            </div>
+          </div>
+        )}
             {/* Modal: Create Outreach Pack */}
             {isCreatingPackModalOpen && (
               <div className="modal-overlay" style={{
@@ -7927,1089 +9010,6 @@ function App() {
                 </div>
               );
             })()}
-          </div>
-        )}
-        {currentView === 'settings' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', paddingBottom: '3rem' }}>
-            <div className="search-header-container" style={{ marginBottom: 0 }}>
-              <h1 className="header-title">Settings</h1>
-              <p className="header-subtitle">Configure application settings and track project release history.</p>
-            </div>
-
-            {/* Outreach Sender Details Section */}
-            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div>
-                  <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Outreach Sender Details</h2>
-                  <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
-                    Configure sender identity and company values resolved in master outreach templates (<code style={{ color: '#38bdf8' }}>{"{{sender_first_name}}"}</code>, <code style={{ color: '#38bdf8' }}>{"{{sender_name}}"}</code>, and <code style={{ color: '#38bdf8' }}>{"{{company_name}}"}</code>).
-                  </p>
-                  {currentUser && (
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '6px', padding: '0.3rem 0.75rem', fontSize: '0.85rem' }}>
-                      <span style={{ color: '#94a3b8' }}>Active Workspace:</span>
-                      <strong style={{ color: '#38bdf8' }}>{currentUser.workspaceLabel || (currentUser.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</strong>
-                      <span style={{ color: '#64748b' }}>({currentUser.email || currentUser.username})</span>
-                    </div>
-                  )}
-                </div>
-                {senderSettingsSavedMsg && (
-                  <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '0.9rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.4rem 0.8rem', borderRadius: '6px', border: '1px solid #10b981' }}>
-                    ✓ Settings saved successfully
-                  </span>
-                )}
-              </div>
-
-              <form onSubmit={handleSaveSenderSettings} data-lpignore="true" data-form-type="other" autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
-                      Sender First Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_first_name}}"}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={senderSettings.sender_first_name}
-                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_first_name: e.target.value }))}
-                      placeholder="e.g. Mac"
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box' }}
-                      autoComplete="off"
-                      data-lpignore="true"
-                      data-1p-ignore="true"
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
-                      Sender Full Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{sender_name}}"}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={senderSettings.sender_name}
-                      onChange={(e) => setSenderSettings(prev => ({ ...prev, sender_name: e.target.value }))}
-                      placeholder="e.g. Mac McCarthy"
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box' }}
-                      autoComplete="off"
-                      data-lpignore="true"
-                      data-1p-ignore="true"
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 'bold' }}>
-                      Company Name <span style={{ color: '#60a5fa', fontFamily: 'monospace', fontWeight: 'normal' }}>{"{{company_name}}"}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={senderSettings.company_name}
-                      onChange={(e) => setSenderSettings(prev => ({ ...prev, company_name: e.target.value }))}
-                      placeholder="e.g. The Search Equation"
-                      className="search-input"
-                      style={{ width: '100%', boxSizing: 'border-box' }}
-                      autoComplete="off"
-                      data-lpignore="true"
-                      data-1p-ignore="true"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
-                  <button
-                    type="submit"
-                    className="analyse-btn-green"
-                    disabled={isSavingSenderSettings}
-                    style={{ padding: '0.55rem 1.5rem', fontWeight: 'bold' }}
-                  >
-                    {isSavingSenderSettings ? 'Saving...' : 'Save Sender Details'}
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Email Template Variables Section */}
-            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              <div>
-                <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.4rem' }}>Email Template Variables</h2>
-                <p style={{ margin: '0.35rem 0 0 0', color: '#94a3b8', fontSize: '0.9rem' }}>
-                  Reference guide for all supported <code style={{ color: '#38bdf8' }}>{"{{variables}}"}</code> available for outreach email templates and drafts.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                {/* Group 1: Sender Details */}
-                <div>
-                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
-                    Sender Details
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_first_name}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender first name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_first_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren' : 'Mac')}</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{sender_name}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender full name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.sender_name || (currentUser?.workspace === 'smoking_chili' ? 'Darren Tipping' : 'Mac McCarthy')}</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{company_name}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Sender company / agency name — Settings → Outreach Sender Details</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>{senderSettings.company_name || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Group 2: Prospect / Business Details */}
-                <div>
-                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
-                    Prospect / Business Details
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{businessName}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect business name — Scraped website header or map listing</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London Shutters Ltd</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{domain}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect website domain — Clean hostname from search result</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>londonshutters.co.uk</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{phone}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Prospect phone number — Scraped contact phone or Google Business Profile</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>020 7946 0123</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rating}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Google Business rating — Review rating from Google Business Profile</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>4.9</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Group 3: Search / Campaign Details */}
-                <div>
-                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
-                    Search / Campaign Details
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{trade}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search trade / business type — Keyword service category (Alias: <code style={{ color: '#94a3b8' }}>{"{{businessType}}"}</code>)</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Window Shutters</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{location}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search location — Target city or geographical search area</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>London</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{rank}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Organic ranking position — Google organic search position for prospect from saved search</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>47</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{searchPhrase}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Search phrase / query — Exact search phrase used for saved search (Alias: <code style={{ color: '#94a3b8' }}>{"{{searchKeyword}}"}</code>)</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>window shutters london</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Group 4: Contact Details */}
-                <div>
-                  <h3 style={{ margin: '0 0 0.75rem 0', color: '#38bdf8', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
-                    Contact Details
-                  </h3>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '25%' }}>Variable</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '45%' }}>Meaning / Value Source</th>
-                          <th style={{ padding: '0.6rem 0.75rem', width: '30%' }}>Example</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{firstName}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Recipient first name — Derived from recipient email address (Fallback: <code style={{ color: '#94a3b8' }}>there</code>) (Alias: <code style={{ color: '#94a3b8' }}>{"{{first_name}}"}</code>)</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>John</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '0.75rem', color: '#38bdf8', fontFamily: 'monospace', fontWeight: 'bold' }}>{"{{greeting}}"}</td>
-                          <td style={{ padding: '0.75rem', color: '#cbd5e1' }}>Automatic greeting line — Derived greeting (e.g. <code style={{ color: '#94a3b8' }}>Hi John</code> or <code style={{ color: '#94a3b8' }}>Hi Team</code>)</td>
-                          <td style={{ padding: '0.75rem', color: '#94a3b8', fontFamily: 'monospace' }}>Hi John</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Version History & Milestone Manager */}
-            <div className="results-table-container" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Version History & Milestone Manager</h2>
-              
-              {/* Current Version Panel */}
-              {(() => {
-                const currentMilestone = milestones[milestones.length - 1];
-                return (
-                  <div style={{
-                    background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-                    border: '1px dashed #3b82f6',
-                    borderRadius: '8px',
-                    padding: '1.25rem',
-                    color: '#f8fafc'
-                  }}>
-                    <h3 style={{ margin: '0 0 0.75rem 0', color: '#60a5fa', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ display: 'inline-block', width: '8px', height: '8px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
-                      Current Active Release
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', fontSize: '0.9rem' }}>
-                      <div>
-                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Current Version</span>
-                        <strong>{currentMilestone?.version || 'N/A'}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Git Tag</span>
-                        <code style={{ color: '#38bdf8' }}>{currentMilestone?.gitTag || 'N/A'}</code>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Commit Hash</span>
-                        <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }} title={currentMilestone?.commitHash}>
-                          {currentMilestone?.commitHash ? currentMilestone.commitHash.substring(0, 8) : 'N/A'}
-                        </code>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Date</span>
-                        <span>{currentMilestone ? formatLastAnalysed(currentMilestone.date) : 'N/A'}</span>
-                      </div>
-                      <div>
-                        <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Release Status</span>
-                        <span style={{ 
-                          color: '#10b981',
-                          fontWeight: 'bold', 
-                          display: 'inline-block', 
-                          backgroundColor: 'rgba(16, 185, 129, 0.1)', 
-                          padding: '0.1rem 0.5rem', 
-                          borderRadius: '4px',
-                          fontSize: '0.8rem'
-                        }}>
-                          {currentMilestone?.status || 'N/A'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Milestones History Table */}
-              <div>
-                <h3 style={{ margin: '1rem 0 0.75rem 0', color: '#f1f5f9', fontSize: '1.1rem' }}>Historical Milestones</h3>
-                <div style={{ overflowX: 'auto', border: '1px solid #334155', borderRadius: '6px' }}>
-                  <table className="results-table" style={{ border: 'none', margin: 0 }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '40px' }}></th>
-                        <th>Version</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                        <th>Git Tag</th>
-                        <th>Commit Hash</th>
-                        <th>Summary</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isMilestonesLoading && milestones.length === 0 ? (
-                        <tr>
-                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                            Loading version history...
-                          </td>
-                        </tr>
-                      ) : milestonesError ? (
-                        <tr>
-                          <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#ef4444' }}>
-                            Error loading milestones: {milestonesError}
-                          </td>
-                        </tr>
-                      ) : (
-                        milestones.map((m) => {
-                          const isExpanded = !!expandedMilestones[m.version];
-                          return (
-                            <React.Fragment key={m.version}>
-                              <tr 
-                                onClick={() => toggleMilestoneExpanded(m.version)}
-                                style={{ cursor: 'pointer', transition: 'background-color 0.2s' }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1e293b'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              >
-                                <td style={{ textAlign: 'center', fontSize: '0.8rem', color: '#64748b' }}>
-                                  {isExpanded ? '▼' : '▶'}
-                                </td>
-                                <td style={{ fontWeight: 'bold', color: '#60a5fa' }}>{m.version}</td>
-                                <td>{formatLastAnalysed(m.date)}</td>
-                                <td>
-                                  <span style={{ 
-                                    color: '#34d399', 
-                                    backgroundColor: 'rgba(52, 211, 153, 0.1)', 
-                                    padding: '0.1rem 0.5rem', 
-                                    borderRadius: '4px',
-                                    fontSize: '0.85rem'
-                                  }}>
-                                    {m.status}
-                                  </span>
-                                </td>
-                                <td><code style={{ color: '#cbd5e1' }}>{m.gitTag}</code></td>
-                                <td>
-                                  <code style={{ color: '#94a3b8', fontSize: '0.8rem' }} title={m.commitHash}>
-                                    {m.commitHash ? m.commitHash.substring(0, 8) : 'PENDING'}
-                                  </code>
-                                </td>
-                                <td style={{ color: '#e2e8f0' }}>{m.summary}</td>
-                              </tr>
-                              {isExpanded && (
-                                <tr>
-                                  <td colSpan="7" style={{ backgroundColor: '#0f172a', padding: '1.5rem', borderBottom: '1px solid #334155' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        <div>
-                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#38bdf8', fontSize: '0.95rem' }}>Features Completed</h4>
-                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                                            {m.features.map((f, i) => (
-                                              <li key={i}>{f}</li>
-                                            ))}
-                                            {m.features.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
-                                          </ul>
-                                        </div>
-                                        <div>
-                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f43f5e', fontSize: '0.95rem' }}>Bug Fixes</h4>
-                                          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.85rem', lineHeight: '1.5' }}>
-                                            {m.bugfixes.map((b, i) => (
-                                              <li key={i}>{b}</li>
-                                            ))}
-                                            {m.bugfixes.length === 0 && <li style={{ fontStyle: 'italic', color: '#64748b' }}>None</li>}
-                                          </ul>
-                                        </div>
-                                      </div>
-                                      
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        <div>
-                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2e8f0', fontSize: '0.95rem' }}>Developer Notes</h4>
-                                          <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-line' }}>
-                                            {m.notes || 'No developer notes provided.'}
-                                          </p>
-                                        </div>
-                                        <div>
-                                          <h4 style={{ margin: '0 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem' }}>Rollback Information</h4>
-                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem', color: '#cbd5e1' }}>
-                                            <div>
-                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Git Tag:</span>
-                                              <code style={{ color: '#38bdf8' }}>{m.gitTag}</code>
-                                            </div>
-                                            <div>
-                                              <span style={{ color: '#94a3b8', marginRight: '6px' }}>Commit Hash:</span>
-                                              <code style={{ color: '#e2e8f0', fontSize: '0.8rem' }}>{m.commitHash}</code>
-                                            </div>
-                                            <div>
-                                              <span style={{ color: '#94a3b8', display: 'block', marginBottom: '0.25rem' }}>Rollback Command:</span>
-                                              <div style={{
-                                                backgroundColor: '#1e293b',
-                                                padding: '0.5rem 0.75rem',
-                                                borderRadius: '4px',
-                                                border: '1px solid #334155',
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.8rem',
-                                                color: '#f8fafc',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center'
-                                              }}>
-                                                <code>git checkout {m.gitTag}</code>
-                                                <button 
-                                                  type="button"
-                                                  onClick={() => {
-                                                    navigator.clipboard.writeText(`git checkout ${m.gitTag}`);
-                                                    alert('Rollback command copied!');
-                                                  }}
-                                                  style={{
-                                                    backgroundColor: 'transparent',
-                                                    border: 'none',
-                                                    color: '#38bdf8',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.75rem',
-                                                    textDecoration: 'underline'
-                                                  }}
-                                                >
-                                                  Copy
-                                                </button>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
-
-        {currentView === 'analyse' && activeAnalysisItem && (
-          <div className="analysis-container">
-            <div className="analysis-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '1.75rem', color: '#ffffff' }}>Lead Opportunity Dashboard</h1>
-                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8' }}>{activeAnalysisItem.domain || activeAnalysisItem.url}</p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button 
-                  onClick={handleRefreshAnalysis}
-                  className="analyse-btn-green"
-                  disabled={isRefreshing}
-                >
-                  {isRefreshing ? 'Refreshing...' : 'Refresh Analysis'}
-                </button>
-                {isShortlisted(activeAnalysisItem.domain || activeAnalysisItem.url) ? (
-                  <button 
-                    onClick={() => handleRemoveFromOutreach(activeAnalysisItem.domain || activeAnalysisItem.url)}
-                    className="table-btn"
-                    style={{ backgroundColor: '#059669', color: '#ffffff', fontWeight: '600' }}
-                    title="Click to remove from Outreach List"
-                  >
-                    ✓ Shortlisted
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => handleAddToOutreach(activeAnalysisItem)}
-                    className="table-btn"
-                    style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '600' }}
-                  >
-                    + Add to Outreach List
-                  </button>
-                )}
-                <button 
-                  onClick={handleBackToResults} 
-                  className="table-btn"
-                  style={{ backgroundColor: '#475569' }}
-                >
-                  &larr; Back to Results
-                </button>
-              </div>
-            </div>
-
-            {/* Executive Summary Card */}
-            <div className="analysis-section" style={{ marginBottom: '1.5rem', width: '100%', boxSizing: 'border-box' }}>
-              <h3 style={{ borderBottom: '1px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>Executive Summary</h3>
-              
-              {/* Metrics Row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                {/* 1. Search Information (Spans 2 columns if space allows) */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gridColumn: 'span 2' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Search Information</span>
-                  <div style={{ fontSize: '0.85rem', color: '#cbd5e1', width: '100%', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
-                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>Phrase:</span>
-                      <span style={{ fontWeight: 'bold', color: '#60a5fa', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {getSearchPhrase(activeAnalysisItem.searchKeyword, activeAnalysisItem.location)}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
-                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>URL:</span>
-                      <span style={{ wordBreak: 'break-all', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {activeAnalysisItem.url ? (
-                          <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-link" style={{ fontSize: '0.85rem' }}>
-                            {activeAnalysisItem.url}
-                          </a>
-                        ) : 'Not available'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '0.5rem' }}>
-                      <span style={{ color: '#94a3b8', whiteSpace: 'nowrap' }}>Analysed:</span>
-                      <span style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                        {formatLastAnalysed(activeAnalysisItem.lastAnalysed)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. EMAIL */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>EMAIL</span>
-                  {editingCard2Email ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
-                      <input
-                        type="email"
-                        value={card2EmailInput}
-                        onChange={(e) => setCard2EmailInput(e.target.value)}
-                        placeholder="e.g. hello@domain.co.uk"
-                        autoComplete="off"
-                        data-lpignore="true"
-                        data-1p-ignore="true"
-                        style={{
-                          backgroundColor: '#1e293b',
-                          color: '#ffffff',
-                          border: '1px solid #3b82f6',
-                          borderRadius: '4px',
-                          padding: '0.2rem 0.5rem',
-                          fontSize: '0.85rem',
-                          width: '100%',
-                          textAlign: 'center',
-                          boxSizing: 'border-box'
-                        }}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveCard2Email();
-                          if (e.key === 'Escape') setEditingCard2Email(false);
-                        }}
-                      />
-                      <div style={{ display: 'flex', gap: '0.3rem' }}>
-                        <button
-                          onClick={handleSaveCard2Email}
-                          disabled={isSavingCard2Email}
-                          className="table-btn"
-                          style={{ backgroundColor: '#10b981', color: '#ffffff', padding: '0.2rem 0.5rem', fontSize: '0.75rem', fontWeight: 'bold' }}
-                          title="Save Email"
-                        >
-                          {isSavingCard2Email ? '...' : '✓ Save'}
-                        </button>
-                        <button
-                          onClick={() => setEditingCard2Email(false)}
-                          className="table-btn"
-                          style={{ backgroundColor: '#475569', color: '#cbd5e1', padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
-                          title="Cancel"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                      {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || (activeAnalysisItem.allFoundEmails && activeAnalysisItem.allFoundEmails[0]) ? (
-                        <>
-                          <span style={{ fontSize: '0.95rem', color: '#38bdf8', fontWeight: 'bold', wordBreak: 'break-all', lineHeight: '1.2' }}>
-                            {activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails[0]}
-                          </span>
-                          <button
-                            onClick={() => {
-                              setCard2EmailInput(activeAnalysisItem.contactEmail || activeAnalysisItem.analysis?.contactEmail || activeAnalysisItem.allFoundEmails?.[0] || '');
-                              setEditingCard2Email(true);
-                            }}
-                            className="table-btn"
-                            style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
-                          >
-                            Edit
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '0.95rem', color: '#94a3b8', fontStyle: 'italic', lineHeight: '1.2' }}>Not Found</span>
-                          <button
-                            onClick={() => {
-                              setCard2EmailInput('');
-                              setEditingCard2Email(true);
-                            }}
-                            className="table-btn"
-                            style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.15rem 0.45rem', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '0.25rem' }}
-                          >
-                            Add Email
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. OPPORTUNITY CLASSIFICATION */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>OPPORTUNITY CLASSIFICATION</span>
-                  {(() => {
-                    const s = activeAnalysisItem.leadOpportunityScore?.score;
-                    const rawBand = activeAnalysisItem.leadOpportunityScore?.band;
-                    const band = normalizeOpportunityClassification(rawBand, s);
-                    const colors = getClassificationColors(band);
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: colors.color, lineHeight: '1.2' }}>
-                          {band}
-                        </span>
-                        <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>
-                          Classification
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* 4. ORGANIC RANKING */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '600', marginBottom: '0.5rem' }}>Organic Ranking</span>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#38bdf8', lineHeight: '1.2' }}>
-                    {activeAnalysisItem.rank ? `#${activeAnalysisItem.rank}` : 'Not available'}
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.25rem' }}>SERP Position</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="analysis-grid">
-              {/* Card 2: Google Business Profile */}
-              <div className="analysis-section">
-                <h3>
-                  Google Business Profile ({
-                    activeAnalysisItem.gbp?.status === 'Found' 
-                      ? 'Found' 
-                      : (activeAnalysisItem.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'Not Found')
-                  })
-                </h3>
-                <div className="analysis-row">
-                  <span className="analysis-label">Business Name</span>
-                  <span className="analysis-value">{!activeAnalysisItem.gbp?.businessName || activeAnalysisItem.gbp?.businessName === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.businessName}</span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Primary Category</span>
-                  <span className="analysis-value">{!activeAnalysisItem.gbp?.primaryCategory || activeAnalysisItem.gbp?.primaryCategory === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.primaryCategory}</span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Rating</span>
-                  <span className="analysis-value" style={{ 
-                    fontWeight: 'bold', 
-                    color: (activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) ? '#f59e0b' : (activeAnalysisItem.gbp?.status === 'Found' ? '#94a3b8' : 'inherit') 
-                  }}>
-                    {(activeAnalysisItem.gbp?.rating !== null && activeAnalysisItem.gbp?.rating !== undefined && activeAnalysisItem.gbp?.rating !== 'Not Found' && !isNaN(Number(activeAnalysisItem.gbp.rating))) 
-                      ? `★ ${activeAnalysisItem.gbp.rating}` 
-                      : (activeAnalysisItem.gbp?.status === 'Found' ? 'Unrated (No reviews yet)' : 'No Profile Matched')}
-                  </span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Review Count</span>
-                  <span className="analysis-value">
-                    {(activeAnalysisItem.gbp?.reviewCount !== null && activeAnalysisItem.gbp?.reviewCount !== undefined && activeAnalysisItem.gbp?.reviewCount !== 'Not Found') 
-                      ? `${activeAnalysisItem.gbp.reviewCount} reviews` 
-                      : (activeAnalysisItem.gbp?.status === 'Found' ? '0 reviews' : 'No Profile Matched')}
-                  </span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Website URL</span>
-                  <span className="analysis-value" style={{ wordBreak: 'break-all', maxWidth: '100%', display: 'inline-block' }}>
-                    {activeAnalysisItem.gbp?.websiteUrl && activeAnalysisItem.gbp?.websiteUrl !== 'Not Found' && activeAnalysisItem.gbp?.websiteUrl !== 'Multiple Matches' ? (
-                      <a href={activeAnalysisItem.gbp.websiteUrl} target="_blank" rel="noopener noreferrer" className="table-link">
-                        {activeAnalysisItem.gbp.websiteUrl}
-                      </a>
-                    ) : (activeAnalysisItem.gbp?.websiteUrl === 'Not Found' || !activeAnalysisItem.gbp?.websiteUrl ? 'No Profile Matched' : activeAnalysisItem.gbp.websiteUrl)}
-                  </span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Phone Number</span>
-                  <span className="analysis-value">{!activeAnalysisItem.gbp?.phoneNumber || activeAnalysisItem.gbp?.phoneNumber === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.phoneNumber}</span>
-                </div>
-                <div className="analysis-row">
-                  <span className="analysis-label">Address</span>
-                  <span className="analysis-value" style={{ textAlign: 'right' }}>{!activeAnalysisItem.gbp?.address || activeAnalysisItem.gbp?.address === 'Not Found' ? 'No Profile Matched' : activeAnalysisItem.gbp.address}</span>
-                </div>
-              </div>
-
-              {/* Card 3: Technical Analysis */}
-              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
-                <h3 style={{ borderBottom: '1px solid #334155', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>Technical Analysis</h3>
-
-                {/* Executive Overview */}
-                <div style={{ marginBottom: '1.25rem', padding: '1.25rem', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#94a3b8', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Executive Overview</h4>
-                  <p style={{ margin: 0, fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.5', fontWeight: '500' }}>
-                    {activeAnalysisItem.aiReport?.execSummary ? (
-                      activeAnalysisItem.aiReport.execSummary.split(/[.!?]/)[0] + '.'
-                    ) : (activeAnalysisItem.analysisProblem ? 'Analysis partial or crawl restricted by target host.' : 'Website analysis and opportunity assessment complete.')}
-                  </p>
-                </div>
-
-                {/* Top 5 Contributing Factors */}
-                <div style={{ marginBottom: '1.5rem', padding: '1.25rem', backgroundColor: '#0f172a', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.75rem 0', color: '#cbd5e1', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top 5 Contributing Factors</h4>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', lineHeight: '1.4' }}>
-                    {(activeAnalysisItem.leadOpportunityScore?.reasons || []).map((reason, index) => (
-                      <li key={index} style={{ color: '#cbd5e1' }}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Technical Indicators Grid */}
-                <h4 style={{ margin: '1.5rem 0 0.75rem 0', color: '#cbd5e1', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Technical Indicators</h4>
-                {(() => {
-                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
-                  return (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem', marginBottom: '1.5rem' }}>
-                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTPS Secure</span>
-                        <span style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: '0.85rem',
-                          padding: '0.2rem 0.5rem', 
-                          borderRadius: '4px',
-                          color: activeAnalysisItem.seoHealth?.isHttps ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
-                          backgroundColor: activeAnalysisItem.seoHealth?.isHttps ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
-                        }}>
-                          {activeAnalysisItem.seoHealth?.isHttps ? 'Pass' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Fail (HTTP)')}
-                        </span>
-                      </div>
-
-                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>HTTP Response Status</span>
-                        <span style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: '0.85rem',
-                          padding: '0.2rem 0.5rem', 
-                          borderRadius: '4px',
-                          color: activeAnalysisItem.seoHealth?.statusCode === 200 ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
-                          backgroundColor: activeAnalysisItem.seoHealth?.statusCode === 200 ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
-                        }}>
-                          {activeAnalysisItem.seoHealth?.statusCode === 200 ? 'Pass (200 OK)' : (isCrawlBlocked ? `⚠ Blocked (${activeAnalysisItem.seoHealth?.statusCode || 403})` : `Fail (${activeAnalysisItem.seoHealth?.statusCode || 'Error'})`)}
-                        </span>
-                      </div>
-
-                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Search Indexability</span>
-                        <span style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: '0.85rem',
-                          padding: '0.2rem 0.5rem', 
-                          borderRadius: '4px',
-                          color: activeAnalysisItem.seoHealth?.indexable ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
-                          backgroundColor: activeAnalysisItem.seoHealth?.indexable ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
-                        }}>
-                          {activeAnalysisItem.seoHealth?.indexable ? 'Indexable' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Noindex')}
-                        </span>
-                      </div>
-
-                      <div style={{ backgroundColor: '#0f172a', padding: '1rem', borderRadius: '6px', border: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: '500' }}>Canonical Tag</span>
-                        <span style={{ 
-                          fontWeight: 'bold', 
-                          fontSize: '0.85rem',
-                          padding: '0.2rem 0.5rem', 
-                          borderRadius: '4px',
-                          color: activeAnalysisItem.seoHealth?.hasCanonical ? '#10b981' : (isCrawlBlocked ? '#f59e0b' : '#ef4444'),
-                          backgroundColor: activeAnalysisItem.seoHealth?.hasCanonical ? 'rgba(16, 185, 129, 0.1)' : (isCrawlBlocked ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)')
-                        }}>
-                          {activeAnalysisItem.seoHealth?.hasCanonical ? 'Present' : (isCrawlBlocked ? '⚠ Unable to verify' : 'Missing')}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Metadata Details */}
-                {(() => {
-                  const isCrawlBlocked = activeAnalysisItem.seoHealth?.crawlBlocked || activeAnalysisItem.seoHealth?.statusCode === 403 || activeAnalysisItem.seoHealth?.statusCode === 429 || (activeAnalysisItem.seoHealth?.statusCode >= 500 && activeAnalysisItem.seoHealth?.statusCode < 600);
-                  return (
-                    <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', borderTop: '1px solid #334155', paddingTop: '1.5rem' }}>
-                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Title</h4>
-                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                          {(!activeAnalysisItem.pageTitle || activeAnalysisItem.pageTitle === 'Not Found' || activeAnalysisItem.pageTitle === 'Loading...') ? (
-                            isCrawlBlocked ? (
-                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
-                            ) : (
-                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                            )
-                          ) : activeAnalysisItem.pageTitle}
-                        </div>
-                      </div>
-
-                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Meta Description</h4>
-                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                          {(!activeAnalysisItem.metaDescription || activeAnalysisItem.metaDescription === 'Not Found' || activeAnalysisItem.metaDescription === 'Loading...') ? (
-                            isCrawlBlocked ? (
-                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
-                            ) : (
-                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                            )
-                          ) : activeAnalysisItem.metaDescription}
-                        </div>
-                      </div>
-
-                      <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#a78bfa', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>H1 Heading</h4>
-                        <div style={{ fontSize: '0.95rem', color: '#f8fafc', wordBreak: 'break-word', lineHeight: '1.5' }}>
-                          {(!activeAnalysisItem.h1 || activeAnalysisItem.h1 === 'Not Found' || activeAnalysisItem.h1 === 'Loading...') ? (
-                            isCrawlBlocked ? (
-                              <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⚠ Unable to verify (Automated access restricted / HTTP {activeAnalysisItem.seoHealth?.statusCode || 403})</span>
-                            ) : (
-                              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Missing</span>
-                            )
-                          ) : activeAnalysisItem.h1}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Website Desktop Preview Card */}
-              <div className="analysis-section" style={{ gridColumn: '1 / -1', padding: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #334155', paddingBottom: '0.65rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <span style={{ fontSize: '1.2rem' }}>🖥️</span>
-                    <h3 style={{ margin: 0, border: 'none', padding: 0, fontSize: '1.15rem', color: '#ffffff' }}>Website Desktop Preview</h3>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    {activeAnalysisItem.url && (
-                      <a 
-                        href={activeAnalysisItem.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="table-btn"
-                        style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#38bdf8', textDecoration: 'none', fontSize: '0.8rem', padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                      >
-                        <span>Open Live Site ↗</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Mock Browser Frame */}
-                <div style={{
-                  backgroundColor: '#0f172a',
-                  borderRadius: '8px',
-                  border: '1px solid #334155',
-                  overflow: 'hidden',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
-                }}>
-                  {/* Browser Header Bar */}
-                  <div style={{
-                    backgroundColor: '#1e293b',
-                    padding: '0.5rem 0.85rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    borderBottom: '1px solid #334155'
-                  }}>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
-                      <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                    </div>
-                    <div style={{
-                      flex: 1,
-                      backgroundColor: '#090d16',
-                      borderRadius: '4px',
-                      padding: '0.25rem 0.75rem',
-                      fontSize: '0.8rem',
-                      color: '#94a3b8',
-                      fontFamily: 'monospace',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      🔒 {activeAnalysisItem.url || (`https://${activeAnalysisItem.domain}`)}
-                    </div>
-                  </div>
-
-                  {/* Screenshot Image Container */}
-                  <div style={{
-                    minHeight: '280px',
-                    maxHeight: '520px',
-                    overflowY: 'auto',
-                    backgroundColor: '#090d16',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'flex-start',
-                    position: 'relative'
-                  }}>
-                    <img
-                      src={`${API_BASE}/api/screenshot?url=${encodeURIComponent(activeAnalysisItem.url || ('https://' + activeAnalysisItem.domain))}`}
-                      alt={`Website Preview for ${activeAnalysisItem.domain}`}
-                      style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'contain' }}
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        if (e.currentTarget.nextSibling) {
-                          e.currentTarget.nextSibling.style.display = 'flex';
-                        }
-                      }}
-                    />
-                    <div style={{
-                      display: 'none',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '3rem 1.5rem',
-                      color: '#94a3b8',
-                      textAlign: 'center',
-                      gap: '0.5rem',
-                      width: '100%'
-                    }}>
-                      <span style={{ fontSize: '2.5rem' }}>⚠</span>
-                      <span style={{ fontWeight: 'bold', color: '#cbd5e1', fontSize: '1.05rem' }}>Preview Unavailable (Automated access restricted)</span>
-                      <span style={{ fontSize: '0.85rem', maxWidth: '420px', lineHeight: '1.4' }}>
-                        Target server returned HTTP 403 or anti-bot protection. Live page inspection can be performed directly in your browser.
-                      </span>
-                      {activeAnalysisItem.url && (
-                        <a href={activeAnalysisItem.url} target="_blank" rel="noopener noreferrer" className="table-btn" style={{ marginTop: '0.75rem', backgroundColor: '#2563eb', color: '#ffffff' }}>
-                          Visit {activeAnalysisItem.domain} ↗
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 4: Outreach Strategy */}
-              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #334155', paddingBottom: '0.5rem' }}>
-                  <h3 style={{ margin: 0, border: 'none', padding: 0 }}>Outreach Strategy</h3>
-                </div>
-
-                {/* Contact Strategy */}
-                <div style={{ marginBottom: '1.5rem', backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#60a5fa', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact Strategy</h4>
-                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.95rem', color: '#cbd5e1', lineHeight: '1.6' }}>
-                    {getContactStrategySummary(activeAnalysisItem)}
-                  </p>
-                  
-                  <h5 style={{ margin: '1rem 0 0.5rem 0', color: '#f59e0b', fontSize: '0.95rem', fontWeight: 'bold' }}>Key Talking Points</h5>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#cbd5e1', fontSize: '0.95rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', lineHeight: '1.4' }}>
-                    {getKeyTalkingPoints(activeAnalysisItem).map((point, index) => (
-                      <li key={index}>{point.replace(/^•\s*/, '')}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                {/* Suggested First Email */}
-                <div style={{ backgroundColor: '#0f172a', padding: '1.25rem', borderRadius: '6px', border: '1px solid #334155' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <h4 style={{ margin: 0, color: '#10b981', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested First Email</h4>
-                    {!isEditingSuggestedEmail ? (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingSuggestedEmail(true)}
-                        className="table-btn"
-                        style={{
-                          backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                          border: '1px solid #38bdf8',
-                          color: '#38bdf8',
-                          padding: '0.25rem 0.65rem',
-                          fontSize: '0.8rem',
-                          fontWeight: 'bold',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem'
-                        }}
-                        title="Edit Suggested First Email"
-                      >
-                        ✎ Edit
-                      </button>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEditedSuggestedEmail()}
-                          className="analyse-btn-green"
-                          style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
-                        >
-                          ✓ Save Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEditingSuggestedEmail(false);
-                            const domKey = normalizeDomain(activeAnalysisItem?.domain || activeAnalysisItem?.url || '');
-                            const saved = activeAnalysisItem?.suggestedFirstEmail || activeAnalysisItem?.customSuggestedEmail || activeAnalysisItem?.analysisData?.suggestedFirstEmail || activeAnalysisItem?.analysisData?.customSuggestedEmail || generateFirstEmail(activeAnalysisItem, senderSettings, currentUser?.workspace);
-                            setOutreachEmail(saved);
-                          }}
-                          className="table-btn"
-                          style={{ backgroundColor: '#475569', padding: '0.25rem 0.65rem', fontSize: '0.8rem' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <textarea
-                    className="analysis-notes-area"
-                    style={{
-                      height: '280px',
-                      fontFamily: 'inherit',
-                      fontSize: '0.95rem',
-                      lineHeight: '1.5',
-                      marginTop: '0.5rem',
-                      borderColor: isEditingSuggestedEmail ? '#38bdf8' : '#334155',
-                      backgroundColor: isEditingSuggestedEmail ? '#1e293b' : '#0f172a'
-                    }}
-                    value={outreachEmail}
-                    onChange={(e) => {
-                      setOutreachEmail(e.target.value);
-                      if (!isEditingSuggestedEmail) setIsEditingSuggestedEmail(true);
-                    }}
-                    placeholder="Generating first contact email..."
-                  />
-                </div>
-              </div>
-
-              {/* Card 5: Notes */}
-              <div className="analysis-section" style={{ gridColumn: '1 / -1' }}>
-                <h3>Notes</h3>
-                <textarea
-                  className="analysis-notes-area"
-                  value={analysisNotes[activeAnalysisItem.url || activeAnalysisItem.domain] || ''}
-                  onChange={(e) => handleNoteChange(activeAnalysisItem.url || activeAnalysisItem.domain, e.target.value)}
-                  placeholder="Enter custom notes about this business or website here..."
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
     </div>
