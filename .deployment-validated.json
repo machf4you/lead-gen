@@ -1,0 +1,10 @@
+{
+  "appName": "lead-gen",
+  "acceptedVersion": "1.54",
+  "acceptedTag": "lg-v1.54-full-disaster-recovery",
+  "acceptedCommit": "e34e636",
+  "candidateHead": "dff8c6cedb1d554b74ac9944940cb42707917c94",
+  "validatedAt": "2026-09-30T09:23:07.907Z",
+  "timestamp": 1790760187910,
+  "signature": "TSE_VALIDATED_dff8c6ce_e34e636"
+}

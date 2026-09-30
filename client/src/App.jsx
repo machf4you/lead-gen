@@ -172,31 +172,34 @@ const getKeyTalkingPoints = (item) => {
 };
 
 // Helper to generate a conversational, personalised first-contact email
-const generateFirstEmail = (item) => {
-  const keyword = item.searchKeyword || 'your services';
-  const location = item.location || '';
+const generateFirstEmail = (item, senderSettings = null) => {
+  const keyword = item?.searchKeyword || item?.trade || item?.businessType || item?.searchPhrase || 'your services';
+  const location = item?.location || '';
   const phrase = location ? `${keyword} in ${location}` : keyword;
-  const domain = item.domain || 'your website';
-  const gbp = item.gbp;
-  const health = item.seoHealth;
+  const domain = item?.domain || 'your website';
+  const gbp = item?.gbp || { status: item?.gbpStatus };
+  const health = item?.seoHealth || item?.analysisData?.seoHealth;
+
+  const senderName = senderSettings?.sender_name || 'Mac McCarthy';
+  const companyName = senderSettings?.company_name || 'The Search Equation';
 
   let issuesText = '';
   const list = [];
   if (health) {
-    if (!health.isHttps) {
+    if (health.isHttps === false) {
       list.push("your homepage currently loads as non-secure (HTTP)");
     }
-    if (!health.titlePresent) {
+    if (health.titlePresent === false || health.titlePresent === 'Missing' || health.titlePresent === 'Unknown') {
       list.push("the page title is missing");
     }
-    if (!health.descriptionPresent) {
+    if (health.descriptionPresent === false || health.descriptionPresent === 'Missing' || health.descriptionPresent === 'Unknown') {
       list.push("there is no meta description appearing in search results");
     }
-    if (!health.h1Present) {
+    if (health.h1Present === false || health.h1Present === 'Missing' || health.h1Present === 'Unknown') {
       list.push("the primary H1 heading tag is missing");
     }
   }
-  if (gbp && gbp.status === 'Not Found') {
+  if ((gbp && (gbp.status === 'Not Found' || gbp.status === 'No Profile Matched')) || item?.gbpStatus === 'No Profile Matched') {
     list.push("your business is missing its Google Business Profile listing");
   }
 
@@ -212,7 +215,7 @@ const generateFirstEmail = (item) => {
 
 Hi there,
 
-I was looking for local businesses online and came across ${domain} ranking at position #${item.rank || 'N/A'} for "${phrase}" in Google. 
+I was looking for local businesses online and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${phrase}" in Google. 
 
 You have a fantastic business, but while reviewing the listing, ${issuesText}
 
@@ -222,8 +225,8 @@ I've put together a brief, 2-minute checklist detailing the exact steps to optim
 
 Kind regards,
 
-[Your Name]
-[Your Company]`;
+${senderName}
+${companyName}`;
 
   return email;
 };
@@ -1286,6 +1289,33 @@ function App() {
     }
   }, [isTemplateModalOpen, activePack?.templateSubject, activePack?.templateBody]);
 
+  const handleToggleSuggestedEmail = async (packId, prospectKey, enable) => {
+    const currentPack = activePack && activePack.packId === packId ? activePack : outreachPacks.find(p => p.packId === packId);
+    if (!currentPack) return;
+
+    const updatedProspects = (currentPack.prospects || []).map(p => {
+      const pKey = p.id || p.domain;
+      if (pKey === prospectKey) {
+        if (enable) {
+          const suggestedText = generateFirstEmail(p, senderSettings);
+          return {
+            ...p,
+            customEmailBody: suggestedText,
+            useSuggestedEmail: true
+          };
+        } else {
+          const { customEmailBody, useSuggestedEmail, ...rest } = p;
+          return rest;
+        }
+      }
+      return p;
+    });
+
+    setActivePack(prev => prev && prev.packId === packId ? { ...prev, prospects: updatedProspects } : prev);
+    setOutreachPacks(prev => prev.map(p => p.packId === packId ? { ...p, prospects: updatedProspects } : p));
+    await handleUpdatePack(packId, { prospects: updatedProspects });
+  };
+
   const getSelectedRecipientsList = () => {
     if (!activePack) return [];
     const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
@@ -1293,25 +1323,31 @@ function App() {
     selectedProspects.forEach(p => {
       // If contactEmail is manually entered/saved, use it directly; otherwise look up matching domain email
       const email = p.contactEmail || (p.allFoundEmails?.find(em => isDomainMatch(em, p.domain))) || null;
-      if (email) {
-        recipients.push({
-          prospect: p,
-          domain: p.domain,
-          email: email,
-          subject: renderTemplate(activePack.templateSubject, p, email, senderSettings),
-          body: renderFullEmailBody(activePack.templateBody, p, email, senderSettings),
-          greeting: deriveGreeting(email, p)
-        });
-      } else {
-        recipients.push({
-          prospect: p,
-          domain: p.domain,
-          email: null,
-          subject: renderTemplate(activePack.templateSubject, p, null, senderSettings),
-          body: renderFullEmailBody(activePack.templateBody, p, null, senderSettings),
-          greeting: deriveGreeting(null, p)
-        });
+      let subject = renderTemplate(activePack.templateSubject, p, email, senderSettings);
+      let body = renderFullEmailBody(activePack.templateBody, p, email, senderSettings);
+
+      if (p.customEmailBody) {
+        let text = String(p.customEmailBody).trim();
+        if (text.startsWith('Subject:')) {
+          const lines = text.split('\n');
+          const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
+          if (subjectLine) {
+            subject = subjectLine;
+          }
+          body = lines.slice(1).join('\n').trim();
+        } else {
+          body = text;
+        }
       }
+
+      recipients.push({
+        prospect: p,
+        domain: p.domain,
+        email: email,
+        subject: subject,
+        body: body,
+        greeting: deriveGreeting(email, p)
+      });
     });
     return recipients;
   };
@@ -5989,6 +6025,21 @@ function App() {
                                     {warning.packId}
                                   </span>
                                 )}
+                                {prospect.customEmailBody && (
+                                  <div style={{ marginTop: '4px' }}>
+                                    <span style={{
+                                      fontSize: '0.72rem',
+                                      color: '#34d399',
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                      border: '1px solid rgba(16, 185, 129, 0.3)',
+                                      padding: '0.1rem 0.4rem',
+                                      borderRadius: '4px',
+                                      fontWeight: 'bold'
+                                    }}>
+                                      ✨ Suggested Email Override
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td>
@@ -6582,9 +6633,65 @@ function App() {
 
                         {/* Email Body Preview Box */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                            Personalised Email Body Preview
-                          </label>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                              Personalised Email Body Preview
+                            </label>
+
+                            {current.prospect?.customEmailBody ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <span style={{
+                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                                  color: '#34d399',
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: '4px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 'bold'
+                                }}>
+                                  ✓ Using Suggested Email
+                                </span>
+                                <button
+                                  type="button"
+                                  className="table-btn"
+                                  style={{
+                                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    color: '#fca5a5',
+                                    padding: '0.25rem 0.65rem',
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    borderRadius: '4px'
+                                  }}
+                                  onClick={() => handleToggleSuggestedEmail(activePack.packId, current.prospect.id || current.prospect.domain, false)}
+                                >
+                                  Revert to Master Template
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="table-btn"
+                                id={`btn-use-suggested-email-${current.prospect?.id || current.domain}`}
+                                style={{
+                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                                  color: '#34d399',
+                                  padding: '0.3rem 0.75rem',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  borderRadius: '6px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.4rem'
+                                }}
+                                onClick={() => handleToggleSuggestedEmail(activePack.packId, current.prospect.id || current.prospect.domain, true)}
+                              >
+                                ✨ Use Suggested Email
+                              </button>
+                            )}
+                          </div>
                           <div style={{
                             backgroundColor: '#090d16',
                             border: '1px solid #334155',

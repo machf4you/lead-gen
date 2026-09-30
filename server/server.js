@@ -3427,8 +3427,22 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
 
       for (const email of emails) {
         try {
-          const renderedSubject = renderTemplate(templateSubject, p, email, senderSettings);
-          const renderedBody = renderFullEmailBody(templateBody, p, email, senderSettings);
+          let renderedSubject = renderTemplate(templateSubject, p, email, senderSettings);
+          let renderedBody = renderFullEmailBody(templateBody, p, email, senderSettings);
+
+          if (p.customEmailBody) {
+            let text = String(p.customEmailBody).trim();
+            if (text.startsWith('Subject:')) {
+              const lines = text.split('\n');
+              const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
+              if (subjectLine) {
+                renderedSubject = subjectLine;
+              }
+              renderedBody = lines.slice(1).join('\n').trim();
+            } else {
+              renderedBody = text;
+            }
+          }
 
           const mailOptions = {
             from: config.senderMailbox,
