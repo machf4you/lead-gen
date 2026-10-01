@@ -828,6 +828,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1)
   const [classificationFilter, setClassificationFilter] = useState('All')
   const [rowsPerPage, setRowsPerPage] = useState(30)
+  const [resultsDomainSearch, setResultsDomainSearch] = useState('');
+  const [shortlistDomainSearch, setShortlistDomainSearch] = useState('');
   const [searchMode, setSearchMode] = useState('organic')
   const [excludedDomains, setExcludedDomains] = useState([]);
   const [outreachList, setOutreachList] = useState([]);
@@ -4099,13 +4101,22 @@ function App() {
           return band === classificationFilter;
         });
 
+    const domainFilteredResults = resultsDomainSearch.trim()
+      ? filteredResults.filter(item => {
+          const q = resultsDomainSearch.trim().toLowerCase();
+          const domainStr = String(item.domain || '').toLowerCase();
+          const urlStr = String(item.url || item.website || item.link || item.formattedUrl || '').toLowerCase();
+          return domainStr.includes(q) || urlStr.includes(q);
+        })
+      : filteredResults;
+
     const isAllRows = rowsPerPage === 'All';
-    const pageSize = isAllRows ? (filteredResults.length || 1) : Number(rowsPerPage);
-    const totalPages = isAllRows ? 1 : Math.max(1, Math.ceil(filteredResults.length / pageSize));
+    const pageSize = isAllRows ? (domainFilteredResults.length || 1) : Number(rowsPerPage);
+    const totalPages = isAllRows ? 1 : Math.max(1, Math.ceil(domainFilteredResults.length / pageSize));
     const safeCurrentPage = Math.min(currentPage, totalPages);
     const paginatedResults = isAllRows
-      ? filteredResults
-      : filteredResults.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+      ? domainFilteredResults
+      : domainFilteredResults.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
 
     const isOrganicResult = activeSavedSearch 
       ? (activeSavedSearch.searchMode === 'organic' || activeSavedSearch.searchType === 'Organic' || (listToRender.length > 0 && !listToRender[0].name))
@@ -4164,6 +4175,27 @@ function App() {
                 </button>
               );
             })}
+
+            <input
+              type="text"
+              placeholder="Search domain..."
+              value={resultsDomainSearch}
+              onChange={(e) => {
+                setResultsDomainSearch(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '0.4rem 0.75rem',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                border: '1px solid #334155',
+                backgroundColor: '#0f172a',
+                color: '#f8fafc',
+                outline: 'none',
+                width: '180px',
+                marginLeft: '0.25rem'
+              }}
+            />
           </div>
 
           {/* Rows Selector: Rows: 10 | 30 | 50 | All */}
@@ -5033,16 +5065,38 @@ function App() {
                 const unassignedProspects = scopedShortlist.filter(item => !getProspectAssignedPack(item));
                 const unassignedCount = unassignedProspects.length;
 
+                const displayedShortlist = shortlistDomainSearch.trim()
+                  ? scopedShortlist.filter(item => {
+                      const q = shortlistDomainSearch.trim().toLowerCase();
+                      const domainStr = String(item.domain || item.url || item.website || '').toLowerCase();
+                      const nameStr = String(item.businessName || item.name || '').toLowerCase();
+                      return domainStr.includes(q) || nameStr.includes(q);
+                    })
+                  : scopedShortlist;
+
                 return (
                   <div className="results-table-container">
                     <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                       <div>
                         <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.3rem' }}>Workspace Shortlist</h2>
-                        <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
-                          Shortlisted prospects belonging to this Saved Search workspace.
-                        </p>
                       </div>
                       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          placeholder="Search domain..."
+                          value={shortlistDomainSearch}
+                          onChange={(e) => setShortlistDomainSearch(e.target.value)}
+                          style={{
+                            padding: '0.4rem 0.75rem',
+                            borderRadius: '6px',
+                            fontSize: '0.85rem',
+                            border: '1px solid #334155',
+                            backgroundColor: '#0f172a',
+                            color: '#f8fafc',
+                            outline: 'none',
+                            width: '180px'
+                          }}
+                        />
                         {unassignedCount > 0 && (
                           <button
                             type="button"
@@ -5100,15 +5154,21 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {scopedShortlist.length === 0 ? (
+                        {displayedShortlist.length === 0 ? (
                           <tr>
                             <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                              <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects shortlisted for this Saved Search yet.</p>
-                              <p style={{ fontSize: '0.9rem', margin: 0 }}>Click "Results" tab above and click "+ Shortlist" on any prospect to add them here.</p>
+                              {shortlistDomainSearch.trim() ? (
+                                <p style={{ fontSize: '1.1rem', color: '#cbd5e1', margin: 0 }}>No shortlisted prospects match &ldquo;{shortlistDomainSearch}&rdquo;.</p>
+                              ) : (
+                                <>
+                                  <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects shortlisted for this Saved Search yet.</p>
+                                  <p style={{ fontSize: '0.9rem', margin: 0 }}>Click "Results" tab above and click "+ Shortlist" on any prospect to add them here.</p>
+                                </>
+                              )}
                             </td>
                           </tr>
                         ) : (
-                          scopedShortlist.map((item) => {
+                          displayedShortlist.map((item) => {
                             const itemKey = item.id || item.domain;
                             const isSelected = selectedShortlistIds.has(itemKey) || (item.id && selectedShortlistIds.has(item.id)) || (item.domain && selectedShortlistIds.has(item.domain));
                             const assignedPack = getProspectAssignedPack(item);
@@ -5376,6 +5436,15 @@ function App() {
               const unassignedCount = unassignedProspects.length;
               const assignedCount = outreachList.length - unassignedCount;
 
+              const displayedOutreachList = shortlistDomainSearch.trim()
+                ? outreachList.filter(item => {
+                    const q = shortlistDomainSearch.trim().toLowerCase();
+                    const domainStr = String(item.domain || item.url || item.website || '').toLowerCase();
+                    const nameStr = String(item.businessName || item.name || '').toLowerCase();
+                    return domainStr.includes(q) || nameStr.includes(q);
+                  })
+                : outreachList;
+
               return (
                 <div className="results-table-container">
                   <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -5383,6 +5452,22 @@ function App() {
                       <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Shortlist</h2>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="Search domain..."
+                        value={shortlistDomainSearch}
+                        onChange={(e) => setShortlistDomainSearch(e.target.value)}
+                        style={{
+                          padding: '0.4rem 0.75rem',
+                          borderRadius: '6px',
+                          fontSize: '0.85rem',
+                          border: '1px solid #334155',
+                          backgroundColor: '#0f172a',
+                          color: '#f8fafc',
+                          outline: 'none',
+                          width: '180px'
+                        }}
+                      />
                       {unassignedCount > 0 && (
                         <button
                           type="button"
@@ -5487,15 +5572,21 @@ function App() {
                             Loading outreach shortlist...
                           </td>
                         </tr>
-                      ) : outreachList.length === 0 ? (
+                      ) : displayedOutreachList.length === 0 ? (
                         <tr>
                           <td colSpan="11" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                            <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
-                            <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
+                            {shortlistDomainSearch.trim() ? (
+                              <p style={{ fontSize: '1.1rem', color: '#cbd5e1', margin: 0 }}>No shortlisted prospects match &ldquo;{shortlistDomainSearch}&rdquo;.</p>
+                            ) : (
+                              <>
+                                <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No prospects in your Outreach List yet.</p>
+                                <p style={{ fontSize: '0.9rem', margin: 0 }}>Add prospects from any Search Results table or Lead Opportunity Dashboard.</p>
+                              </>
+                            )}
                           </td>
                         </tr>
                       ) : (
-                        outreachList.map((item, idx) => {
+                        displayedOutreachList.map((item, idx) => {
                           const score = item.opportunityScore;
                           const itemKey = item.id || item.domain;
                           const isSelected = selectedShortlistIds.has(itemKey);
