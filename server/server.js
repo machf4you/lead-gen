@@ -3736,48 +3736,19 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
   }
 });
 
-// DELETE outreach pack and all its assigned shortlist prospects
+// DELETE outreach pack (preserves shortlist prospects)
 app.delete('/api/outreach-packs/:packId', async (req, res) => {
   try {
     const { packId } = req.params;
     const db = await getDb();
 
-    // 1. Fetch the pack to retrieve its assigned prospects
+    // 1. Fetch the pack
     const pack = await db.get('SELECT * FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
     if (pack) {
-      let prospects = [];
-      try {
-        prospects = JSON.parse(pack.prospects || '[]');
-      } catch (e) {
-        prospects = [];
-      }
-
-      // 2. Permanently delete all shortlist records belonging to this pack
-      for (const p of prospects) {
-        const cleanDom = normalizeDomain(p.domain || p.url || '');
-        const rawDom = p.domain || '';
-        const pId = p.id || '';
-
-        if (pId) {
-          await db.run('DELETE FROM outreach_shortlist WHERE id = ? AND workspace = ?', [pId, req.workspace]);
-        }
-        if (rawDom) {
-          await db.run('DELETE FROM outreach_shortlist WHERE domain = ? AND workspace = ?', [rawDom, req.workspace]);
-        }
-        if (cleanDom) {
-          await db.run('DELETE FROM outreach_shortlist WHERE (domain = ? OR domain = ? OR domain = ?) AND workspace = ?', [
-            cleanDom,
-            `www.${cleanDom}`,
-            cleanDom.replace(/^www\./, ''),
-            req.workspace
-          ]);
-        }
-      }
-
-      // 3. Delete outreach contact history associated with this pack
+      // 2. Delete outreach contact history associated with this pack
       await db.run('DELETE FROM outreach_contact_history WHERE (packId = ? OR packId = ?) AND workspace = ?', [pack.packId, pack.id, req.workspace]);
 
-      // 4. Delete the pack record itself
+      // 3. Delete the pack record itself
       await db.run('DELETE FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [pack.packId, pack.id, req.workspace]);
     } else {
       await db.run('DELETE FROM outreach_packs WHERE (packId = ? OR id = ?) AND workspace = ?', [packId, packId, req.workspace]);
@@ -3785,7 +3756,7 @@ app.delete('/api/outreach-packs/:packId', async (req, res) => {
 
     res.json({ success: true, deletedPackId: packId });
   } catch (error) {
-    console.error('Error deleting outreach pack and assigned shortlist prospects:', error);
+    console.error('Error deleting outreach pack:', error);
     res.status(500).json({ error: error.message });
   }
 });

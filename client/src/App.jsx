@@ -2230,13 +2230,53 @@ function App() {
         broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId });
         broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
         broadcastLeadGenEvent(REALTIME_EVENTS.CONTACT_HISTORY_CHANGED, { workspace: currentUser?.workspace || 'tse' });
-        if (activePack?.packId === packId) {
+        if (activePack?.packId === packId || activePack?.id === packId) {
           setActivePack(null);
-          setOutreachSubView('packs');
+          setSavedWorkspaceTab('packs');
         }
       }
     } catch (e) {
       console.error("Error deleting pack:", e);
+    }
+  };
+
+  const handleRemoveProspectFromPack = async (packId, prospectKey) => {
+    if (!activePack) return;
+    const newProspects = (activePack.prospects || []).filter(p => (p.id || p.domain) !== prospectKey);
+    const updatedPack = {
+      ...activePack,
+      prospectsCount: newProspects.length,
+      prospects: newProspects
+    };
+
+    setActivePack(updatedPack);
+    setOutreachPacks(prev => prev.map(p => (p.packId === packId || p.id === packId) ? updatedPack : p));
+
+    if (selectedProspectIdsInPack.has(prospectKey)) {
+      const next = new Set(selectedProspectIdsInPack);
+      next.delete(prospectKey);
+      setSelectedProspectIdsInPack(next);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(packId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prospects: newProspects
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.pack) {
+          setActivePack(data.pack);
+          setOutreachPacks(prev => prev.map(p => (p.packId === packId || p.id === packId) ? data.pack : p));
+        }
+        await fetchOutreachList();
+        broadcastLeadGenEvent(REALTIME_EVENTS.PACKS_CHANGED, { workspace: currentUser?.workspace || 'tse', packId });
+      }
+    } catch (e) {
+      console.error("Error removing prospect from pack:", e);
     }
   };
 
@@ -5214,13 +5254,30 @@ function App() {
                               </td>
                               <td>{pack.sentAt ? formatLastAnalysed(pack.sentAt) : '-'}</td>
                               <td className="action-cell">
-                                <button
-                                  onClick={() => handleOpenPack(pack)}
-                                  className="analyse-btn-green"
-                                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
-                                >
-                                  View Pack
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => handleOpenPack(pack)}
+                                    className="analyse-btn-green"
+                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+                                  >
+                                    View Pack
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeletePack(pack.packId || pack.id)}
+                                    style={{
+                                      padding: '0.35rem 0.75rem',
+                                      fontSize: '0.85rem',
+                                      backgroundColor: '#dc2626',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      fontWeight: 'bold',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Delete Pack
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -6342,6 +6399,7 @@ function App() {
                         <th>Rank & Classification</th>
                         <th>Contact Email</th>
                         <th>Status</th>
+                        <th style={{ width: '90px', textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -6573,7 +6631,25 @@ function App() {
                                 {displayStatus}
                               </span>
                             </td>
-                          </tr>
+                            <td style={{ textAlign: 'center' }}>
+                                <button
+                                  onClick={() => handleRemoveProspectFromPack(activePack.packId, prospectKey)}
+                                  style={{
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid #ef4444',
+                                    color: '#ef4444',
+                                    padding: '0.2rem 0.65rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="Remove prospect from this pack"
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
                         );
                       })}
                     </tbody>
