@@ -3020,7 +3020,7 @@ function App() {
     }
 
     try {
-      window.history.pushState(null, '', `/?searchId=${encodeURIComponent(saved.searchId)}`);
+      window.history.pushState(null, '', `/saved-searches?searchId=${encodeURIComponent(saved.searchId || targetId)}`);
     } catch (e) {}
   };
 
