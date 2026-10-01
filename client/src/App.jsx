@@ -4461,7 +4461,7 @@ function App() {
               <span>{currentUser?.workspaceLabel || (currentUser?.workspace === 'smoking_chili' ? 'Smoking Chili Media' : 'The Search Equation')}</span>
             </div>
           )}
-          <div className="sidebar-menu" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="sidebar-menu" style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
             <div>
               <button 
                 onClick={() => {
@@ -4474,10 +4474,11 @@ function App() {
               </button>
 
               {/* Outreach Section */}
-              <div className="sidebar-group">
+              <div className="sidebar-group" style={{ marginTop: '0.75rem' }}>
                 <button 
                   onClick={() => {
                     setActiveSearchId(null);
+                    setCurrentView('saved');
                     navigate('/saved-searches');
                   }} 
                   className={`sidebar-item ${currentView === 'saved' || (currentView === 'outreach' && (outreachSubView === 'shortlist' || outreachSubView === 'packs' || outreachSubView === 'pack-detail')) ? 'active-parent' : ''}`}
@@ -4490,53 +4491,71 @@ function App() {
                   <button 
                     onClick={() => {
                       setActiveSearchId(null);
+                      setCurrentView('saved');
                       navigate('/saved-searches');
                     }} 
-                    className={`sidebar-item sidebar-sub-item ${currentView === 'saved' ? 'active' : ''}`}
+                    className={`sidebar-item sidebar-sub-item ${currentView === 'saved' && !activeSearchId ? 'active' : ''}`}
                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   >
-                    <span>Saved Searches ({savedSearches.length})</span>
+                    <span>Saved Searches — All ({savedSearches.length})</span>
                   </button>
+
+                  {/* Top 5 Recent Saved Search Shortcuts */}
+                  {savedSearches.slice(0, 5).map((saved) => {
+                    const phrase = saved.businessType || saved.searchPhrase || '';
+                    const loc = (saved.location && saved.location !== 'Anywhere' && saved.location !== 'Any') ? saved.location : '';
+                    const shortcutLabel = phrase && loc ? `${phrase} — ${loc}` : (phrase || loc || saved.searchId);
+                    const isShortcutActive = (currentView === 'saved' || currentView === 'outreach') && activeSearchId && (String(activeSearchId) === String(saved.id) || String(activeSearchId) === String(saved.searchId));
+
+                    return (
+                      <button
+                        key={saved.id || saved.searchId}
+                        onClick={() => handleLoadSavedSearch(saved)}
+                        className={`sidebar-item sidebar-sub-item ${isShortcutActive ? 'active' : ''}`}
+                        title={shortcutLabel}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          paddingLeft: '1.25rem',
+                          fontSize: '0.82rem',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {shortcutLabel}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            {/* Bottom Admin & Reference Navigation */}
-            <div style={{ marginTop: '1.75rem' }}>
-              <div style={{ marginBottom: '0.5rem' }}>
+            {/* Bottom Settings Navigation (Visually Secondary) */}
+            <div style={{ marginTop: '2.5rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="sidebar-group">
                 <button 
                   onClick={() => {
                     navigate('/settings');
                   }} 
-                  className={`sidebar-item ${currentView === 'settings' ? 'active' : ''}`}
+                  className={`sidebar-item ${currentView === 'settings' ? 'active-parent' : ''}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 'bold' }}
                 >
-                  Settings
+                  <span>Settings</span>
                 </button>
-                <button 
-                  onClick={() => {
-                    navigate('/domain-exclusions');
-                  }} 
-                  className={`sidebar-item ${currentView === 'exclusions' ? 'active' : ''}`}
-                >
-                  Manage Exclusions ({excludedDomains.length})
-                </button>
-              </div>
-
-              {/* Records Section */}
-              <div className="sidebar-group" style={{ marginTop: '1.25rem' }}>
-                <span style={{ 
-                  fontSize: '0.8rem', 
-                  textTransform: 'uppercase', 
-                  letterSpacing: '0.05em', 
-                  color: '#94a3b8', 
-                  display: 'block', 
-                  marginBottom: '0.4rem', 
-                  paddingLeft: '0.75rem', 
-                  fontWeight: 'bold' 
-                }}>
-                  Records
-                </span>
                 <div className="sidebar-sub-menu">
+                  <button 
+                    onClick={() => {
+                      navigate('/domain-exclusions');
+                    }} 
+                    className={`sidebar-item sidebar-sub-item ${currentView === 'exclusions' ? 'active' : ''}`}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  >
+                    <span>Manage Exclusions ({excludedDomains.length})</span>
+                  </button>
+
                   <button 
                     onClick={() => {
                       navigate('/outreach-email-templates');
@@ -4680,18 +4699,10 @@ function App() {
                   </div>
                   {searchResults.length > 0 && (
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                      {isBulkAnalysing ? (
+                      {isBulkAnalysing && (
                         <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
                           Analysing {bulkProgress.current} of {bulkProgress.total}...
                         </span>
-                      ) : (
-                        <button 
-                          onClick={handleAnalyseAll}
-                          className="analyse-btn-green"
-                          style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
-                        >
-                          Re-analyse All Prospects
-                        </button>
                       )}
                       <button 
                         onClick={handleSearch} 
@@ -4801,26 +4812,29 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
               {/* Workspace Top Header Bar */}
               <div style={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+                  {/* Left: Dominant Search Phrase — Location Title */}
+                  <div>
+                    <h2 style={{ margin: 0, color: '#38bdf8', fontSize: '1.5rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span>{(activeSavedSearch?.businessType || activeSavedSearch?.searchPhrase || businessType || 'Saved Search')}</span>
+                      <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>—</span>
+                      <span style={{ color: '#ffffff' }}>{(activeSavedSearch?.location || location || 'Anywhere')}</span>
+                    </h2>
+                  </div>
+
+                  {/* Right: Workspace ID and Back to All Saved Searches secondary control */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.5rem' }}>
+                    <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.2rem 0.65rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      Workspace ID: {activeSavedSearch?.searchId || activeSearchId}
+                    </span>
                     <button 
                       onClick={() => { setActiveSearchId(null); setSavedWorkspaceTab('results'); }}
                       className="table-btn"
-                      style={{ backgroundColor: '#0f172a', border: '1px solid #475569', color: '#94a3b8', fontSize: '0.85rem' }}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid #475569', color: '#94a3b8', fontSize: '0.8rem', padding: '0.3rem 0.75rem' }}
                     >
                       ← All Saved Searches
                     </button>
-                    <div>
-                      <h2 style={{ margin: 0, color: '#38bdf8', fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <span>{(activeSavedSearch?.businessType || activeSavedSearch?.searchPhrase || businessType || 'Saved Search')}</span>
-                        <span style={{ color: '#94a3b8', fontWeight: 'normal' }}>—</span>
-                        <span style={{ color: '#ffffff' }}>{(activeSavedSearch?.location || location || 'Anywhere')}</span>
-                      </h2>
-                    </div>
                   </div>
-                  <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '0.2rem 0.65rem', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                    Workspace ID: {activeSavedSearch?.searchId || activeSearchId}
-                  </span>
                 </div>
 
                 {/* Sub-Navigation Tabs Bar */}
