@@ -2542,29 +2542,40 @@ function isDomainMatch(email, prospectDomain) {
   return false;
 }
 
-function deriveFirstName(email) {
-  if (!email) return null;
-  const atIndex = email.indexOf('@');
-  if (atIndex === -1) return null;
-  const localPart = email.substring(0, atIndex).toLowerCase().trim();
+function getGenuineFirstName(prospect) {
+  if (!prospect) return null;
+  const p = typeof prospect === 'object' ? prospect : {};
 
-  if (GENERIC_LOCAL_PARTS.has(localPart)) return null;
-
-  const parts = localPart.split(/[._-]/).filter(Boolean);
-  const candidate = parts[0];
-
-  if (/^[a-z]{2,20}$/i.test(candidate) && !GENERIC_LOCAL_PARTS.has(candidate.toLowerCase())) {
-    return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+  const rawFirstName = p.firstName || p.first_name || p.contactFirstName || p.contact_first_name ||
+                       p.analysisData?.firstName || p.analysisData?.first_name || p.analysisData?.contactFirstName;
+  if (rawFirstName && typeof rawFirstName === 'string' && rawFirstName.trim()) {
+    const clean = rawFirstName.trim();
+    if (!GENERIC_LOCAL_PARTS.has(clean.toLowerCase()) && /^[a-zA-Z'’-]{2,20}$/.test(clean)) {
+      return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+    }
   }
+
+  const rawContactName = p.contactName || p.contact_name || p.contactPerson || p.contact_person ||
+                         p.analysisData?.contactName || p.analysisData?.contact_name || p.analysisData?.contactPerson;
+  if (rawContactName && typeof rawContactName === 'string' && rawContactName.trim()) {
+    const parts = rawContactName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length > 0) {
+      const first = parts[0];
+      if (!GENERIC_LOCAL_PARTS.has(first.toLowerCase()) && /^[a-zA-Z'’-]{2,20}$/.test(first)) {
+        return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+      }
+    }
+  }
+
   return null;
 }
 
 function deriveGreeting(email, prospect) {
-  const firstName = deriveFirstName(email);
+  const firstName = getGenuineFirstName(prospect);
   if (firstName) {
     return `Hi ${firstName},`;
   }
-  return 'Hi there,';
+  return 'Hi,';
 }
 
 function stripLeadingGreeting(body) {
@@ -2679,7 +2690,7 @@ function renderTemplate(templateStr, prospect, recipientEmail = null, senderSett
   if (!templateStr) return '';
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
-  const firstName = deriveFirstName(email) || 'there';
+  const firstName = getGenuineFirstName(prospect) || '';
   const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
   const domain = prospect?.domain || '';
   const location = deriveLocation(prospect);

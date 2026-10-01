@@ -315,29 +315,40 @@ const isDomainMatch = (email, prospectDomain) => {
   return false;
 };
 
-const deriveFirstName = (email) => {
-  if (!email) return null;
-  const atIndex = email.indexOf('@');
-  if (atIndex === -1) return null;
-  const localPart = email.substring(0, atIndex).toLowerCase().trim();
+const getGenuineFirstName = (prospect) => {
+  if (!prospect) return null;
+  const p = typeof prospect === 'object' ? prospect : {};
 
-  if (GENERIC_LOCAL_PARTS.has(localPart)) return null;
-
-  const parts = localPart.split(/[._-]/).filter(Boolean);
-  const candidate = parts[0];
-
-  if (/^[a-z]{2,20}$/i.test(candidate) && !GENERIC_LOCAL_PARTS.has(candidate.toLowerCase())) {
-    return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
+  const rawFirstName = p.firstName || p.first_name || p.contactFirstName || p.contact_first_name ||
+                       p.analysisData?.firstName || p.analysisData?.first_name || p.analysisData?.contactFirstName;
+  if (rawFirstName && typeof rawFirstName === 'string' && rawFirstName.trim()) {
+    const clean = rawFirstName.trim();
+    if (!GENERIC_LOCAL_PARTS.has(clean.toLowerCase()) && /^[a-zA-Z'’-]{2,20}$/.test(clean)) {
+      return clean.charAt(0).toUpperCase() + clean.slice(1).toLowerCase();
+    }
   }
+
+  const rawContactName = p.contactName || p.contact_name || p.contactPerson || p.contact_person ||
+                         p.analysisData?.contactName || p.analysisData?.contact_name || p.analysisData?.contactPerson;
+  if (rawContactName && typeof rawContactName === 'string' && rawContactName.trim()) {
+    const parts = rawContactName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length > 0) {
+      const first = parts[0];
+      if (!GENERIC_LOCAL_PARTS.has(first.toLowerCase()) && /^[a-zA-Z'’-]{2,20}$/.test(first)) {
+        return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+      }
+    }
+  }
+
   return null;
 };
 
 const deriveGreeting = (email, prospect) => {
-  const firstName = deriveFirstName(email);
+  const firstName = getGenuineFirstName(prospect);
   if (firstName) {
     return `Hi ${firstName},`;
   }
-  return 'Hi there,';
+  return 'Hi,';
 };
 
 const stripLeadingGreeting = (body) => {
@@ -452,7 +463,7 @@ const renderTemplate = (templateStr, prospect, recipientEmail = null, senderSett
   if (!templateStr) return '';
   const email = recipientEmail || prospect?.contactEmail || (prospect?.allFoundEmails?.[0]) || '';
   const greeting = deriveGreeting(email, prospect);
-  const firstName = deriveFirstName(email) || 'there';
+  const firstName = getGenuineFirstName(prospect) || '';
   const businessName = prospect?.businessName || prospect?.name || prospect?.domain || '';
   const domain = prospect?.domain || '';
   const location = deriveLocation(prospect);
@@ -7799,7 +7810,7 @@ function App() {
                     fontSize: '0.85rem'
                   }}>
                     <span style={{ color: '#38bdf8', fontSize: '1.1rem' }}>ℹ️</span>
-                    <span><strong>Greeting is added automatically for each recipient.</strong> (e.g. <em>Hi Mark,</em> or <em>Hi there,</em>). Email body begins directly after the greeting.</span>
+                    <span><strong>Greeting is added automatically for each recipient.</strong> (e.g. <em>Hi Mark,</em> or <em>Hi,</em>). Email body begins directly after the greeting.</span>
                   </div>
 
                   {/* Load from Master Template */}
@@ -8076,7 +8087,7 @@ function App() {
 
                           <div>
                             <div style={{ color: '#94a3b8', fontWeight: 'bold', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                              Greeting Derivation
+                              Greeting
                             </div>
                             <div style={{ color: '#a7f3d0', fontWeight: '600' }}>
                               {current.greeting}
