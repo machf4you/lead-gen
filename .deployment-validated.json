@@ -3,8 +3,8 @@
   "acceptedVersion": "1.54",
   "acceptedTag": "lg-v1.54-full-disaster-recovery",
   "acceptedCommit": "e34e636",
-  "candidateHead": "efaf36afb107c604b912fe8cf194ee92c15822bd",
-  "validatedAt": "2026-10-01T06:06:35.325Z",
-  "timestamp": 1790834795327,
-  "signature": "TSE_VALIDATED_efaf36af_e34e636"
+  "candidateHead": "ca0158fbbb1501db45700f9ee7325dde4d3e263b",
+  "validatedAt": "2026-10-01T06:22:08.138Z",
+  "timestamp": 1790835728141,
+  "signature": "TSE_VALIDATED_ca0158fb_e34e636"
 }

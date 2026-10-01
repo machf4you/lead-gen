@@ -803,7 +803,7 @@ const getInitialRouteState = () => {
     return { view: 'outreach', subView: 'shortlist', templateTab: 'master' };
   }
   if (pathname === '/outreach-packs' || (pathname === '/outreach' && tabParam === 'packs') || viewParam === 'packs' || (viewParam === 'outreach' && tabParam === 'packs')) {
-    return { view: 'outreach', subView: 'packs', templateTab: 'master' };
+    return { view: 'saved', subView: 'shortlist', templateTab: 'master' };
   }
   if (pathname === '/outreach-email-templates' || (pathname === '/outreach' && tabParam === 'templates') || viewParam === 'templates' || (viewParam === 'outreach' && tabParam === 'templates')) {
     return { view: 'outreach', subView: 'templates', templateTab: 'master' };
@@ -1014,11 +1014,8 @@ function App() {
       return;
     }
     if (pathname === '/outreach-packs' || (pathname === '/outreach' && tabParam === 'packs') || viewParam === 'packs' || (viewParam === 'outreach' && tabParam === 'packs')) {
-      setCurrentView('outreach');
-      if (!packParam) {
-        setOutreachSubView('packs');
-        setActivePack(null);
-      }
+      setCurrentView('saved');
+      setSavedWorkspaceTab('packs');
       setActiveAnalysisItem(null);
       return;
     }
@@ -2084,6 +2081,24 @@ function App() {
     } catch (err) {
       console.error("Error loading full pack details:", err);
     }
+  };
+
+  const handleBackToWorkspacePacks = () => {
+    const targetSearchId = activePack?.searchId || activeSearchId || activeSavedSearch?.searchId || activeSavedSearch?.id;
+    if (targetSearchId) {
+      setActiveSearchId(targetSearchId);
+      const matchingSearch = savedSearches.find(s => String(s.id) === String(targetSearchId) || String(s.searchId) === String(targetSearchId));
+      if (matchingSearch) {
+        setBusinessType(matchingSearch.businessType === 'Any' ? '' : matchingSearch.businessType);
+        setLocation(matchingSearch.location === 'Anywhere' ? '' : matchingSearch.location);
+      }
+      navigate(`/saved-searches?searchId=${encodeURIComponent(targetSearchId)}`);
+    } else {
+      navigate('/saved-searches');
+    }
+    setCurrentView('saved');
+    setSavedWorkspaceTab('packs');
+    setSelectedProspectIdsInPack(new Set());
   };
 
   const handleUpdatePack = async (packId, updates) => {
@@ -5546,121 +5561,11 @@ function App() {
           })()}
 
             {/* Sub-view 2: Outreach Packs / History Table */}
-            {outreachSubView === 'packs' && (
-              <div className="results-table-container">
-                <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem' }}>Outreach Packs History</h2>
-                    <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-                      Permanent server-backed campaign batches. Click any Pack ID to view prospect emails, drafts and statuses.
-                    </p>
-                  </div>
-                  <span style={{ fontSize: '0.9rem', color: '#60a5fa', fontWeight: 'bold' }}>
-                    {outreachPacks.length} {outreachPacks.length === 1 ? 'pack' : 'packs'} created
-                  </span>
-                </div>
-
-                <table className="results-table">
-                  <thead>
-                    <tr>
-                      <th>Pack ID</th>
-                      <th>Pack Name</th>
-                      <th>Created Date</th>
-                      <th>Prospects</th>
-                      <th>Pack Status</th>
-                      <th>Sent Date / Time</th>
-                      <th className="action-cell">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isPacksLoading && outreachPacks.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                          Loading outreach packs...
-                        </td>
-                      </tr>
-                    ) : outreachPacks.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-                          <p style={{ fontSize: '1.1rem', color: '#cbd5e1', marginBottom: '0.5rem' }}>No Outreach Packs created yet.</p>
-                          <p style={{ fontSize: '0.9rem', margin: 0 }}>Select prospects from your Shortlist and click "Create Outreach Pack" to get started.</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      outreachPacks.map((pack) => {
-                        const statusColors = {
-                          'Draft': { bg: 'rgba(100, 116, 139, 0.2)', text: '#94a3b8' },
-                          'Ready': { bg: 'rgba(59, 130, 246, 0.2)', text: '#60a5fa' },
-                          'Sent': { bg: 'rgba(16, 185, 129, 0.2)', text: '#10b981' },
-                          'Partially Sent': { bg: 'rgba(168, 85, 247, 0.2)', text: '#c084fc' },
-                          'Failed': { bg: 'rgba(239, 68, 68, 0.2)', text: '#ef4444' }
-                        };
-                        const sc = statusColors[pack.status] || statusColors['Draft'];
-
-                        const isLocal = isPackLocal(pack);
-                        return (
-                          <tr key={pack.packId || pack.id}>
-                            <td>
-                              <button
-                                onClick={() => handleOpenPack(pack)}
-                                className="table-btn"
-                                style={{
-                                  backgroundColor: isLocal ? 'rgba(16, 185, 129, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                                  border: isLocal ? '1px solid #10b981' : '1px solid #0284c7',
-                                  color: isLocal ? '#34d399' : '#38bdf8',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.95rem'
-                                }}
-                              >
-                                {pack.packId}
-                              </button>
-                            </td>
-                            <td>
-                              <span style={{ fontWeight: '600', color: '#f8fafc' }}>{pack.name}</span>
-                            </td>
-                            <td>{formatLastAnalysed(pack.createdAt)}</td>
-                            <td style={{ fontWeight: 'bold', color: isLocal ? '#34d399' : '#60a5fa' }}>
-                              {pack.prospectsCount || pack.prospects?.length || 0} Prospects
-                            </td>
-                            <td>
-                              <span style={{
-                                backgroundColor: sc.bg,
-                                color: sc.text,
-                                padding: '0.2rem 0.6rem',
-                                borderRadius: '4px',
-                                fontWeight: 'bold',
-                                fontSize: '0.85rem'
-                              }}>
-                                {pack.status || 'Draft'}
-                              </span>
-                            </td>
-                            <td style={{ color: pack.sentAt ? '#10b981' : '#64748b', fontSize: '0.85rem' }}>
-                              {pack.sentAt ? formatLastAnalysed(pack.sentAt) : '-'}
-                            </td>
-                            <td className="action-cell">
-                              <button
-                                onClick={() => handleOpenPack(pack)}
-                                className="analyse-btn-green"
-                                style={{ marginRight: '8px', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
-                              >
-                                Open Pack
-                              </button>
-                              <button
-                                onClick={() => handleDeletePack(pack.packId)}
-                                className="table-btn"
-                                style={{ backgroundColor: '#ef4444', padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {outreachSubView === 'packs' && (() => {
+              setCurrentView('saved');
+              setSavedWorkspaceTab('packs');
+              return null;
+            })()}
 
             {/* Sub-view 3: Master Email Templates Management */}
             {outreachSubView === 'templates' && (() => {
@@ -6133,11 +6038,7 @@ function App() {
                   {/* Row 1: Back + Pack Badge + Pack Name */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                     <button
-                      onClick={() => {
-                        setOutreachSubView('packs');
-                        setSelectedProspectIdsInPack(new Set());
-                        navigate('/outreach-packs');
-                      }}
+                      onClick={handleBackToWorkspacePacks}
                       className="table-btn"
                       style={{
                         backgroundColor: '#1e293b',
