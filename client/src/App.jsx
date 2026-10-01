@@ -1298,6 +1298,99 @@ function App() {
     }
   };
 
+  const getActiveEmailOptionKey = () => {
+    if (!activePack) return 'partnership';
+
+    if (activePack.emailOption === 'system') return 'system';
+    if (activePack.emailOption === 'partnership') return 'partnership';
+    if (activePack.emailOption === 'seo') return 'seo';
+    if (activePack.emailOption === 'honest') return 'honest';
+    if (activePack.emailOption === 'general') return 'general';
+
+    if (activePack.prospects?.length > 0 && activePack.prospects.every(p => p.useSuggestedEmail || p.customEmailBody)) {
+      return 'system';
+    }
+
+    const subj = (activePack.templateSubject || '').toLowerCase();
+    if (subj.includes('visibility') || subj.includes('seo')) return 'seo';
+    if (subj.includes('honest') || subj.includes('opportunity')) return 'honest';
+    if (subj.includes('clients') || subj.includes('general')) return 'general';
+    
+    return 'partnership';
+  };
+
+  const handleSelectEmailOption = async (optionKey) => {
+    if (!activePack) return;
+
+    if (optionKey === 'system') {
+      const updatedProspects = (activePack.prospects || []).map(p => {
+        const suggestedText = p.suggestedFirstEmail || 
+                              p.customSuggestedEmail || 
+                              p.analysisData?.suggestedFirstEmail || 
+                              p.analysisData?.customSuggestedEmail ||
+                              generateFirstEmail(p, senderSettings, currentUser?.workspace);
+        return {
+          ...p,
+          customEmailBody: suggestedText,
+          useSuggestedEmail: true
+        };
+      });
+
+      const updatedPack = {
+        ...activePack,
+        emailOption: 'system',
+        prospects: updatedProspects
+      };
+
+      setActivePack(updatedPack);
+      setOutreachPacks(prev => prev.map(p => p.packId === activePack.packId ? updatedPack : p));
+      await handleUpdatePack(activePack.packId, { emailOption: 'system', prospects: updatedProspects });
+    } else {
+      let matchingTemplate = null;
+      if (optionKey === 'partnership') {
+        matchingTemplate = masterTemplates.find(t => t.id === 'tpl_1789277829032' || t.name.toLowerCase().includes('partnership'));
+      } else if (optionKey === 'seo') {
+        matchingTemplate = masterTemplates.find(t => t.id === 'tpl_standard_seo' || t.name.toLowerCase().includes('seo'));
+      } else if (optionKey === 'honest') {
+        matchingTemplate = masterTemplates.find(t => t.id === 'tpl_1789641564257' || t.name.toLowerCase().includes('honest'));
+      } else if (optionKey === 'general') {
+        matchingTemplate = masterTemplates.find(t => t.id === 'tpl_1790329323277' || t.name.toLowerCase().includes('general'));
+      }
+
+      if (!matchingTemplate) {
+        const idx = { partnership: 0, seo: 1, honest: 2, general: 3 }[optionKey] || 0;
+        matchingTemplate = masterTemplates[idx] || masterTemplates[0];
+      }
+
+      if (matchingTemplate) {
+        const updatedProspects = (activePack.prospects || []).map(p => {
+          const { customEmailBody, useSuggestedEmail, ...rest } = p;
+          return rest;
+        });
+
+        const updatedPack = {
+          ...activePack,
+          templateSubject: matchingTemplate.subject,
+          templateBody: matchingTemplate.body,
+          templateId: matchingTemplate.id,
+          emailOption: optionKey,
+          prospects: updatedProspects
+        };
+
+        setSelectedMasterTemplateIdForPack(matchingTemplate.id);
+        setActivePack(updatedPack);
+        setOutreachPacks(prev => prev.map(p => p.packId === activePack.packId ? updatedPack : p));
+        await handleUpdatePack(activePack.packId, {
+          templateSubject: matchingTemplate.subject,
+          templateBody: matchingTemplate.body,
+          templateId: matchingTemplate.id,
+          emailOption: optionKey,
+          prospects: updatedProspects
+        });
+      }
+    }
+  };
+
   const handleApplyMasterTemplateToPack = async (templateId) => {
     const tpl = masterTemplates.find(t => t.id === templateId);
     if (!tpl || !activePack) return;
@@ -1388,14 +1481,17 @@ function App() {
     if (!activePack) return [];
     const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
     const recipients = [];
+    const currentOptionKey = getActiveEmailOptionKey();
+
     selectedProspects.forEach(p => {
       // If contactEmail is manually entered/saved, use it directly; otherwise look up matching domain email
       const email = p.contactEmail || (p.allFoundEmails?.find(em => isDomainMatch(em, p.domain))) || null;
       let subject = renderTemplate(activePack.templateSubject, p, email, senderSettings);
       let body = renderFullEmailBody(activePack.templateBody, p, email, senderSettings);
 
-      if (p.customEmailBody) {
-        let text = String(p.customEmailBody).trim();
+      if (currentOptionKey === 'system' || p.useSuggestedEmail || p.customEmailBody) {
+        let text = p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || generateFirstEmail(p, senderSettings, currentUser?.workspace);
+        text = String(text).trim();
         if (text.startsWith('Subject:')) {
           const lines = text.split('\n');
           const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
@@ -6049,8 +6145,13 @@ function App() {
                   flexDirection: 'column',
                   gap: '1rem'
                 }}>
-                  {/* Row 1: Back + Pack Badge + Pack Name */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                  {/* Row 1: Left Pack Name (Dominant), Right Back to Packs */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                        {activePack.name}
+                      </h2>
+                    </div>
                     <button
                       onClick={handleBackToWorkspacePacks}
                       className="table-btn"
@@ -6058,56 +6159,20 @@ function App() {
                         backgroundColor: '#1e293b',
                         border: '1px solid #475569',
                         color: '#cbd5e1',
-                        padding: '0.5rem 1rem',
+                        padding: '0.5rem 1.1rem',
                         fontSize: '0.9rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.4rem'
+                        gap: '0.4rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
                       }}
                     >
                       &larr; Back to Packs
                     </button>
-                    {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
-                      <button
-                        onClick={handleBackToResults}
-                        className="table-btn"
-                        style={{
-                          backgroundColor: '#0f172a',
-                          border: '1px solid #3b82f6',
-                          color: '#60a5fa',
-                          fontWeight: 'bold',
-                          padding: '0.5rem 1rem',
-                          fontSize: '0.85rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem',
-                          cursor: 'pointer'
-                        }}
-                        title="Return to the active search results without re-querying or consuming API credits"
-                      >
-                        <span>&larr; Back to Search Results</span>
-                        {activeSearchId && activeSearchId !== 'Not available' && (
-                          <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
-                        )}
-                      </button>
-                    )}
-                    <span style={{
-                      backgroundColor: isPackLocal(activePack) ? 'rgba(16, 185, 129, 0.18)' : 'rgba(59, 130, 246, 0.25)',
-                      color: isPackLocal(activePack) ? '#34d399' : '#60a5fa',
-                      border: isPackLocal(activePack) ? '1px solid #10b981' : '1px solid #3b82f6',
-                      padding: '0.4rem 0.9rem',
-                      borderRadius: '6px',
-                      fontWeight: 'bold',
-                      fontSize: '1rem'
-                    }}>
-                      Pack {activePack.packId} ({activePack.prospectsCount || activePack.prospects?.length || 0})
-                    </span>
-                    <h2 style={{ margin: 0, color: '#ffffff', fontSize: '1.35rem', fontWeight: 'bold' }}>
-                      {activePack.name}
-                    </h2>
                   </div>
 
-                  {/* Row 2: Metadata */}
+                  {/* Metadata Row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', color: '#94a3b8', fontSize: '0.875rem', flexWrap: 'wrap' }}>
                     <div>
                       Created: <span style={{ color: '#cbd5e1' }}>{formatLastAnalysed(activePack.createdAt)}</span>
@@ -6116,64 +6181,74 @@ function App() {
                       Prospects: <span style={{ color: '#cbd5e1', fontWeight: 'bold' }}>{activePack.prospectsCount || activePack.prospects?.length || 0}</span>
                     </div>
                     <div>
-                      Sent Date: <span style={{ color: activePack.sentAt ? '#10b981' : '#cbd5e1' }}>{activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not Sent'}</span>
+                      Sent Status: <span style={{ color: activePack.sentAt ? '#10b981' : '#cbd5e1', fontWeight: activePack.sentAt ? 'bold' : 'normal' }}>{activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not Sent'}</span>
                     </div>
                   </div>
 
-                  {/* Pack Email Template Selection & Customization */}
+                  {/* Select Email Section */}
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '0.75rem',
                     backgroundColor: '#1e293b',
-                    padding: '1rem 1.25rem',
-                    borderRadius: '6px',
+                    padding: '1.25rem',
+                    borderRadius: '8px',
                     border: '1px solid #334155'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <label style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                          Select Email Template:
-                        </label>
-                        <select
-                          value={selectedMasterTemplateIdForPack || ''}
-                          onChange={(e) => handleApplyMasterTemplateToPack(e.target.value)}
-                          className="search-input"
-                          style={{
-                            backgroundColor: '#0f172a',
-                            borderColor: '#3b82f6',
-                            color: '#ffffff',
-                            fontWeight: '600',
-                            padding: '0.45rem 0.85rem',
-                            fontSize: '0.9rem',
-                            minWidth: '300px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {renderTemplateOptions(masterTemplates, '-- Select Reusable Master Template --')}
-                        </select>
-                      </div>
-
-                      <button
-                        onClick={openTemplateModal}
-                        className="table-btn"
-                        style={{
-                          backgroundColor: '#2563eb',
-                          color: '#ffffff',
-                          fontWeight: 'bold',
-                          padding: '0.45rem 1rem',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Edit Template for this Pack
-                      </button>
+                    <div style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Select Email:
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#cbd5e1', fontSize: '0.875rem' }}>
-                      <span style={{ color: '#60a5fa', fontWeight: 'bold' }}>Active Pack Subject:</span>
-                      <span style={{ color: '#ffffff' }}>
-                        {activePack.templateSubject || 'Partnership enquiry: {{trade}} in {{location}} — The Search Equation'}
-                      </span>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                      gap: '0.75rem'
+                    }}>
+                      {[
+                        { key: 'partnership', label: 'Partnership', desc: 'Master Template' },
+                        { key: 'seo', label: 'SEO', desc: 'Master Template' },
+                        { key: 'honest', label: 'Short and Honest', desc: 'Master Template' },
+                        { key: 'general', label: 'General', desc: 'Master Template' },
+                        { key: 'system', label: 'System Email', desc: 'Personalised per prospect' }
+                      ].map(option => {
+                        const selectedEmailOptionKey = getActiveEmailOptionKey();
+                        const isSelected = selectedEmailOptionKey === option.key;
+
+                        return (
+                          <div
+                            key={option.key}
+                            onClick={() => handleSelectEmailOption(option.key)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '0.65rem',
+                              padding: '0.75rem 0.9rem',
+                              borderRadius: '6px',
+                              border: isSelected ? '1px solid #38bdf8' : '1px solid #334155',
+                              backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.15)' : '#0f172a',
+                              color: isSelected ? '#ffffff' : '#cbd5e1',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease'
+                            }}
+                          >
+                            <input
+                              type="radio"
+                              name="emailSelectionOption"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              style={{ marginTop: '0.2rem', accentColor: '#38bdf8', cursor: 'pointer' }}
+                            />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                              <span style={{ fontWeight: isSelected ? 'bold' : '600', fontSize: '0.88rem', color: isSelected ? '#38bdf8' : '#f8fafc' }}>
+                                {option.label}
+                              </span>
+                              <span style={{ fontSize: '0.73rem', color: '#94a3b8' }}>
+                                {option.desc}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
