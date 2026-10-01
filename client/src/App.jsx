@@ -2056,6 +2056,7 @@ function App() {
 
   const handleOpenPack = async (pack) => {
     setActivePack(pack);
+    setCurrentView('outreach');
     setOutreachSubView('pack-detail');
     try {
       const res = await fetch(`${API_BASE}/api/outreach-packs/${encodeURIComponent(pack.packId || pack.id)}`);
