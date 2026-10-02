@@ -4710,36 +4710,6 @@ function App() {
                   >
                     <span>Saved Searches — All ({savedSearches.length})</span>
                   </button>
-
-                  {/* Top 5 Recent Saved Search Shortcuts */}
-                  {savedSearches.slice(0, 5).map((saved) => {
-                    const phrase = saved.businessType || saved.searchPhrase || '';
-                    const loc = (saved.location && saved.location !== 'Anywhere' && saved.location !== 'Any') ? saved.location : '';
-                    const shortcutLabel = phrase && loc ? `${phrase} — ${loc}` : (phrase || loc || saved.searchId);
-                    const isShortcutActive = (currentView === 'saved' || currentView === 'outreach') && activeSearchId && (String(activeSearchId) === String(saved.id) || String(activeSearchId) === String(saved.searchId));
-
-                    return (
-                      <button
-                        key={saved.id || saved.searchId}
-                        onClick={() => handleLoadSavedSearch(saved)}
-                        className={`sidebar-item sidebar-sub-item ${isShortcutActive ? 'active' : ''}`}
-                        title={shortcutLabel}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          paddingLeft: '1.25rem',
-                          fontSize: '0.82rem',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis'
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {shortcutLabel}
-                        </span>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
             </div>

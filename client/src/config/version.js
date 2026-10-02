@@ -1,5 +1,5 @@
 // Automatically generated during build - DO NOT EDIT MANUALLY
 export const CURRENT_BUILD_VERSION = '1.56';
 export const CURRENT_BUILD_LABEL = 'V1.56 | SENT EMAIL HISTORY';
-export const CURRENT_BUILD_HASH = 'ff0efa5e19fb112127da3e93fe8c2bd2fac45821';
-export const CURRENT_BUILD_TIMESTAMP = 1790932613373;
+export const CURRENT_BUILD_HASH = '80a02e1992b130cd74defe36a34e46f10075aa77';
+export const CURRENT_BUILD_TIMESTAMP = 1790934907702;
