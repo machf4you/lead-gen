@@ -1888,14 +1888,17 @@ function App() {
 
   const handleAddToOutreach = async (item) => {
     const isOrganic = !item.name;
-    const domain = normalizeDomain(item.domain || item.url || item.website || '');
+    const rawDomain = item.domain || item.url || item.website || item.name || '';
+    const domain = normalizeDomain(rawDomain);
+    if (!domain) return;
+
     const url = item.url || item.website || (domain ? `https://${domain}` : '');
     const businessName = item.name || item.analysis?.gbp?.businessName || item.analysis?.pageTitle || domain;
     const searchId = activeSavedSearch?.searchId || activeSavedSearch?.id || activeSearchId || item.searchId || 'Not available';
-    const rawTrade = businessType || item.searchKeyword || item.businessType || item.trade || '';
-    const loc = location || item.location || 'Anywhere';
+    const rawTrade = businessType || item.searchKeyword || item.businessType || item.trade || activeSavedSearch?.businessType || activeSavedSearch?.searchPhrase || '';
+    const loc = (location && location !== 'Anywhere') ? location : (item.location || activeSavedSearch?.location || 'Anywhere');
     const searchPhrase = getSearchPhrase(rawTrade, loc);
-    const searchType = searchMode === 'organic' || item.searchType === 'Organic' ? 'Organic' : 'GMB';
+    const searchType = searchMode === 'organic' || item.searchType === 'Organic' || activeSavedSearch?.searchType === 'Organic' || activeSavedSearch?.searchMode === 'organic' ? 'Organic' : 'GMB';
     const rank = item.rank || item.analysis?.rank || 0;
     const phone = item.phone || item.analysis?.phone || null;
     const address = item.address || item.analysis?.address || null;
@@ -1911,11 +1914,46 @@ function App() {
     const strengthPoints = item.analysis?.leadPriority?.points || 0;
     const gbpStatus = item.analysis?.gbp?.status === 'Found' ? 'Found' : (item.analysis?.gbp?.status === 'Multiple Matches' ? 'Multiple Matches' : 'No Profile Matched');
 
+    const tempId = `shortlist_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const optimisticItem = {
+      id: tempId,
+      domain,
+      url,
+      businessName,
+      searchId,
+      searchPhrase,
+      trade: rawTrade,
+      businessType: rawTrade,
+      searchKeyword: rawTrade,
+      location: loc,
+      searchType,
+      rank,
+      phone,
+      address,
+      rating,
+      reviewsCount,
+      contactEmail,
+      allFoundEmails,
+      emailStatus,
+      opportunityScore: oppScore,
+      opportunityBand: oppBand,
+      commercialStrengthStars: strengthStars,
+      commercialStrengthLabel: strengthLabel,
+      commercialStrengthPoints: strengthPoints,
+      gbpStatus,
+      analysisData: item.analysis || item,
+      shortlistedAt: new Date().toISOString(),
+      workspace: currentUser?.workspace || 'tse'
+    };
+
+    setOutreachList(prev => [optimisticItem, ...prev.filter(i => normalizeDomain(i.domain || i.url) !== domain)]);
+
     try {
       const res = await fetch(`${API_BASE}/api/outreach`, {
         method: 'POST',
         headers: getAuthHeaders(null, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
+          id: tempId,
           domain,
           url,
           businessName,
@@ -1944,7 +1982,12 @@ function App() {
         })
       });
       if (res.ok) {
-        await fetchOutreachList();
+        const data = await res.json();
+        if (data.item) {
+          setOutreachList(prev => [data.item, ...prev.filter(i => normalizeDomain(i.domain || i.url) !== domain)]);
+        } else {
+          await fetchOutreachList();
+        }
         broadcastLeadGenEvent(REALTIME_EVENTS.SHORTLIST_CHANGED, { workspace: currentUser?.workspace || 'tse' });
       }
     } catch (e) {
