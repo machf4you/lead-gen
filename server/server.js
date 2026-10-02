@@ -3607,8 +3607,10 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
           let renderedSubject = renderTemplate(templateSubject, p, email, senderSettings);
           let renderedBody = renderFullEmailBody(templateBody, p, email, senderSettings);
 
-          if (p.customEmailBody) {
-            let text = String(p.customEmailBody).trim();
+          const isSystemEmail = packRow.emailOption === 'system' || p.useSuggestedEmail || p.customEmailBody;
+
+          if (isSystemEmail) {
+            let text = (p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || '').trim();
             if (text.startsWith('Subject:')) {
               const lines = text.split('\n');
               const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
@@ -3616,8 +3618,21 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
                 renderedSubject = subjectLine;
               }
               renderedBody = lines.slice(1).join('\n').trim();
-            } else {
+            } else if (text) {
               renderedBody = text;
+              if (packRow.emailOption === 'system') {
+                renderedSubject = `Quick question about visibility for ${p.domain || 'your website'}`;
+              }
+            } else if (packRow.emailOption === 'system') {
+              const genText = generateFirstEmail(p, senderSettings, req.workspace);
+              if (genText.startsWith('Subject:')) {
+                const lines = genText.split('\n');
+                const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
+                if (subjectLine) {
+                  renderedSubject = subjectLine;
+                }
+                renderedBody = lines.slice(1).join('\n').trim();
+              }
             }
           }
 

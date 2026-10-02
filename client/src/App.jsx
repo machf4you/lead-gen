@@ -6576,21 +6576,7 @@ function App() {
                                     {warning.packId}
                                   </span>
                                 )}
-                                {prospect.customEmailBody && (
-                                  <div style={{ marginTop: '4px' }}>
-                                    <span style={{
-                                      fontSize: '0.72rem',
-                                      color: '#34d399',
-                                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                      border: '1px solid rgba(16, 185, 129, 0.3)',
-                                      padding: '0.1rem 0.4rem',
-                                      borderRadius: '4px',
-                                      fontWeight: 'bold'
-                                    }}>
-                                      ✨ Suggested Email Override
-                                    </span>
-                                  </div>
-                                )}
+
                               </div>
                             </td>
                             <td>
@@ -8289,60 +8275,6 @@ function App() {
                             <label style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold', textTransform: 'uppercase' }}>
                               Personalised Email Body Preview
                             </label>
-
-                            {current.prospect?.customEmailBody ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                                <span style={{
-                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                  border: '1px solid rgba(16, 185, 129, 0.4)',
-                                  color: '#34d399',
-                                  padding: '0.2rem 0.6rem',
-                                  borderRadius: '4px',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 'bold'
-                                }}>
-                                  ✓ Using Suggested Email
-                                </span>
-                                <button
-                                  type="button"
-                                  className="table-btn"
-                                  style={{
-                                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                                    color: '#fca5a5',
-                                    padding: '0.25rem 0.65rem',
-                                    fontSize: '0.78rem',
-                                    cursor: 'pointer',
-                                    borderRadius: '4px'
-                                  }}
-                                  onClick={() => handleToggleSuggestedEmail(activePack.packId, current.prospect.id || current.prospect.domain, false)}
-                                >
-                                  Revert to Master Template
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                className="table-btn"
-                                id={`btn-use-suggested-email-${current.prospect?.id || current.domain}`}
-                                style={{
-                                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                                  border: '1px solid rgba(16, 185, 129, 0.4)',
-                                  color: '#34d399',
-                                  padding: '0.3rem 0.75rem',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '600',
-                                  cursor: 'pointer',
-                                  borderRadius: '6px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.4rem'
-                                }}
-                                onClick={() => handleToggleSuggestedEmail(activePack.packId, current.prospect.id || current.prospect.domain, true)}
-                              >
-                                ✨ Use Suggested Email
-                              </button>
-                            )}
                           </div>
                           <div style={{
                             backgroundColor: '#090d16',
@@ -8496,7 +8428,13 @@ function App() {
 
                       <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Subject Line:</div>
                       <div style={{ color: '#ffffff', wordBreak: 'break-word' }}>
-                        {activePack.templateSubject || 'Partnership enquiry — The Search Equation'}
+                        {(() => {
+                          const recipients = getSelectedRecipientsList();
+                          if (getActiveEmailOptionKey() === 'system' && recipients.length > 0) {
+                            return recipients[0].subject;
+                          }
+                          return activePack.templateSubject || 'Partnership enquiry — The Search Equation';
+                        })()}
                       </div>
 
                       <div style={{ color: '#94a3b8', fontWeight: 'bold' }}>Sender Mailbox:</div>
