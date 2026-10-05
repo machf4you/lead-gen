@@ -830,6 +830,7 @@ function App() {
   const [rowsPerPage, setRowsPerPage] = useState(30)
   const [resultsDomainSearch, setResultsDomainSearch] = useState('');
   const [shortlistDomainSearch, setShortlistDomainSearch] = useState('');
+  const [domainExclusionSearch, setDomainExclusionSearch] = useState('');
   const [searchMode, setSearchMode] = useState('organic')
   const [excludedDomains, setExcludedDomains] = useState([]);
   const [outreachList, setOutreachList] = useState([]);
@@ -1301,7 +1302,7 @@ function App() {
   };
 
   const getActiveEmailOptionKey = () => {
-    if (!activePack) return 'partnership';
+    if (!activePack) return 'system';
 
     if (activePack.emailOption === 'system') return 'system';
     if (activePack.emailOption === 'partnership') return 'partnership';
@@ -1309,16 +1310,7 @@ function App() {
     if (activePack.emailOption === 'honest') return 'honest';
     if (activePack.emailOption === 'general') return 'general';
 
-    if (activePack.prospects?.length > 0 && activePack.prospects.every(p => p.useSuggestedEmail || p.customEmailBody)) {
-      return 'system';
-    }
-
-    const subj = (activePack.templateSubject || '').toLowerCase();
-    if (subj.includes('visibility') || subj.includes('seo')) return 'seo';
-    if (subj.includes('honest') || subj.includes('opportunity')) return 'honest';
-    if (subj.includes('clients') || subj.includes('general')) return 'general';
-    
-    return 'partnership';
+    return 'system';
   };
 
   const handleSelectEmailOption = async (optionKey) => {
@@ -5363,82 +5355,128 @@ function App() {
             </div>
           )
         )}
-        {currentView === 'exclusions' && (
-          <div className="results-table-container">
-            <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-              <div>
-                <h2 style={{ margin: 0, color: '#ffffff' }}>Excluded Domains</h2>
-                <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
-                  These domains are filtered out of all GMB and Organic search results.
-                </p>
-              </div>
-              {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
-                <button
-                  onClick={handleBackToResults}
-                  className="table-btn"
-                  style={{
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #3b82f6',
-                    color: '#60a5fa',
-                    fontWeight: 'bold',
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    cursor: 'pointer'
-                  }}
-                  title="Return to the active search results without re-querying or consuming API credits"
-                >
-                  <span>&larr; Back to Search Results</span>
-                  {activeSearchId && activeSearchId !== 'Not available' && (
-                    <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+        {currentView === 'exclusions' && (() => {
+          const query = domainExclusionSearch.trim().toLowerCase();
+
+          const showGovUk = !query || '.gov.uk'.includes(query) || 'system exclusion'.includes(query) || 'system'.includes(query) || 'gov'.includes(query);
+          const showGov = !query || '.gov'.includes(query) || 'system exclusion'.includes(query) || 'system'.includes(query) || 'gov'.includes(query);
+
+          const sortedUserExclusions = [...excludedDomains]
+            .filter(d => d !== '.gov.uk' && d !== '.gov')
+            .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base', numeric: true }));
+
+          const filteredUserExclusions = query
+            ? sortedUserExclusions.filter(d => String(d).toLowerCase().includes(query))
+            : sortedUserExclusions;
+
+          const hasAnyMatch = showGovUk || showGov || filteredUserExclusions.length > 0;
+
+          return (
+            <div className="results-table-container">
+              <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ margin: 0, color: '#ffffff' }}>Excluded Domains</h2>
+                  <p style={{ margin: '0.25rem 0 0 0', color: '#94a3b8', fontSize: '0.95rem' }}>
+                    These domains are filtered out of all GMB and Organic search results.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Search Excluded Domains..."
+                    value={domainExclusionSearch}
+                    onChange={(e) => setDomainExclusionSearch(e.target.value)}
+                    style={{
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      border: '1px solid #334155',
+                      backgroundColor: '#0f172a',
+                      color: '#f8fafc',
+                      outline: 'none',
+                      width: '220px'
+                    }}
+                  />
+                  {(searchResults.length > 0 || (activeSearchId && activeSearchId !== 'Not available')) && (
+                    <button
+                      onClick={handleBackToResults}
+                      className="table-btn"
+                      style={{
+                        backgroundColor: '#0f172a',
+                        border: '1px solid #3b82f6',
+                        color: '#60a5fa',
+                        fontWeight: 'bold',
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.85rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        cursor: 'pointer'
+                      }}
+                      title="Return to the active search results without re-querying or consuming API credits"
+                    >
+                      <span>&larr; Back to Search Results</span>
+                      {activeSearchId && activeSearchId !== 'Not available' && (
+                        <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>({activeSearchId})</span>
+                      )}
+                    </button>
                   )}
-                </button>
-              )}
-            </div>
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>Domain Name</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
-                    .gov.uk <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
-                  </td>
-                  <td>
-                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
-                    .gov <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
-                  </td>
-                  <td>
-                    <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
-                  </td>
-                </tr>
-                {excludedDomains.map((domain, index) => (
-                  <tr key={index}>
-                    <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>{domain}</td>
-                    <td>
-                      <button 
-                        onClick={() => handleRemoveExclusion(domain)} 
-                        className="table-btn"
-                        style={{ backgroundColor: '#ef4444' }}
-                      >
-                        Remove Exclusion
-                      </button>
-                    </td>
+                </div>
+              </div>
+              <table className="results-table">
+                <thead>
+                  <tr>
+                    <th>Domain Name</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {showGovUk && (
+                    <tr>
+                      <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
+                        .gov.uk <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
+                      </td>
+                      <td>
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
+                      </td>
+                    </tr>
+                  )}
+                  {showGov && (
+                    <tr>
+                      <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>
+                        .gov <span style={{ marginLeft: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #0284c7' }}>System Exclusion</span>
+                      </td>
+                      <td>
+                        <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>Locked (Global System Exclusion)</span>
+                      </td>
+                    </tr>
+                  )}
+                  {filteredUserExclusions.map((domain, index) => (
+                    <tr key={domain || index}>
+                      <td style={{ fontWeight: 'bold', color: '#f8fafc' }}>{domain}</td>
+                      <td>
+                        <button 
+                          onClick={() => handleRemoveExclusion(domain)} 
+                          className="table-btn"
+                          style={{ backgroundColor: '#ef4444' }}
+                        >
+                          Remove Exclusion
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!hasAnyMatch && (
+                    <tr>
+                      <td colSpan={2} style={{ textAlign: 'center', color: '#94a3b8', padding: '1.5rem' }}>
+                        No excluded domains found matching "{domainExclusionSearch}"
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
         {currentView === 'outreach' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
 
@@ -6366,11 +6404,11 @@ function App() {
                       gap: '0.75rem'
                     }}>
                       {[
+                        { key: 'system', label: 'System Email', desc: 'Personalised per prospect' },
                         { key: 'partnership', label: 'Partnership', desc: 'Master Template' },
                         { key: 'seo', label: 'SEO', desc: 'Master Template' },
                         { key: 'honest', label: 'Short and Honest', desc: 'Master Template' },
-                        { key: 'general', label: 'General', desc: 'Master Template' },
-                        { key: 'system', label: 'System Email', desc: 'Personalised per prospect' }
+                        { key: 'general', label: 'General', desc: 'Master Template' }
                       ].map(option => {
                         const selectedEmailOptionKey = getActiveEmailOptionKey();
                         const isSelected = selectedEmailOptionKey === option.key;
