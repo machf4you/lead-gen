@@ -4147,7 +4147,8 @@ function App() {
 
   const renderOriginalResultsView = (itemsToRender = searchResults) => {
     const rawResults = Array.isArray(itemsToRender) ? itemsToRender : [];
-    const baseList = resultsViewTab === 'selected' ? scopedShortlist : rawResults;
+    const isNewSearchScreen = currentView === 'search';
+    const baseList = (isNewSearchScreen && resultsViewTab === 'selected') ? scopedShortlist : rawResults;
     const listToRender = Array.isArray(baseList) ? baseList : [];
     let allCount = listToRender.length;
     let followUpCount = 0;
@@ -4198,56 +4199,58 @@ function App() {
 
     return (
       <>
-        {/* Results / Selected Main Navigation Tabs */}
-        <div style={{
-          width: '100%',
-          maxWidth: '1440px',
-          margin: '0 auto 1rem auto',
-          display: 'flex',
-          gap: '0.5rem',
-          borderBottom: '1px solid #334155',
-          paddingBottom: '0.5rem',
-          boxSizing: 'border-box'
-        }}>
-          <button
-            type="button"
-            onClick={() => {
-              setResultsViewTab('results');
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '0.55rem 1.25rem',
-              borderRadius: '6px',
-              border: 'none',
-              fontWeight: 'bold',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              backgroundColor: resultsViewTab === 'results' ? '#2563eb' : '#0f172a',
-              color: resultsViewTab === 'results' ? '#ffffff' : '#94a3b8'
-            }}
-          >
-            Results ({rawResults.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setResultsViewTab('selected');
-              setCurrentPage(1);
-            }}
-            style={{
-              padding: '0.55rem 1.25rem',
-              borderRadius: '6px',
-              border: 'none',
-              fontWeight: 'bold',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              backgroundColor: resultsViewTab === 'selected' ? '#2563eb' : '#0f172a',
-              color: resultsViewTab === 'selected' ? '#ffffff' : '#94a3b8'
-            }}
-          >
-            Selected ({scopedShortlist.length})
-          </button>
-        </div>
+        {/* Results / Selected Main Navigation Tabs — ONLY shown on initial New Search results screen */}
+        {isNewSearchScreen && (
+          <div style={{
+            width: '100%',
+            maxWidth: '1440px',
+            margin: '0 auto 1rem auto',
+            display: 'flex',
+            gap: '0.5rem',
+            borderBottom: '1px solid #334155',
+            paddingBottom: '0.5rem',
+            boxSizing: 'border-box'
+          }}>
+            <button
+              type="button"
+              onClick={() => {
+                setResultsViewTab('results');
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '0.55rem 1.25rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: 'bold',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                backgroundColor: resultsViewTab === 'results' ? '#2563eb' : '#0f172a',
+                color: resultsViewTab === 'results' ? '#ffffff' : '#94a3b8'
+              }}
+            >
+              Results ({rawResults.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setResultsViewTab('selected');
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '0.55rem 1.25rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: 'bold',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                backgroundColor: resultsViewTab === 'selected' ? '#2563eb' : '#0f172a',
+                color: resultsViewTab === 'selected' ? '#ffffff' : '#94a3b8'
+              }}
+            >
+              Selected ({scopedShortlist.length})
+            </button>
+          </div>
+        )}
         <div style={{
           width: '100%',
           maxWidth: '1440px',
