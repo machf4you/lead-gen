@@ -3895,6 +3895,72 @@ function App() {
     }
   };
 
+  const derivePackStatusAndSentAt = (pack) => {
+    if (!pack) {
+      return {
+        statusText: 'Not Sent (0/0)',
+        bg: 'rgba(100, 116, 139, 0.2)',
+        color: '#94a3b8',
+        formattedSentAt: '-'
+      };
+    }
+
+    const prospects = Array.isArray(pack.prospects) ? pack.prospects : [];
+    const totalCount = pack.prospectsCount || prospects.length || 0;
+
+    let sentCount = 0;
+    let latestSentAt = null;
+
+    prospects.forEach(p => {
+      const isSent = p.sendStatus === 'Sent' || Boolean(p.sentAt) || (Array.isArray(p.sendHistory) && p.sendHistory.some(h => h.status === 'Sent'));
+      if (isSent) {
+        sentCount++;
+        if (p.sentAt) {
+          if (!latestSentAt || new Date(p.sentAt) > new Date(latestSentAt)) {
+            latestSentAt = p.sentAt;
+          }
+        }
+        if (Array.isArray(p.sendHistory)) {
+          p.sendHistory.forEach(h => {
+            if (h.sentAt && h.status === 'Sent') {
+              if (!latestSentAt || new Date(h.sentAt) > new Date(latestSentAt)) {
+                latestSentAt = h.sentAt;
+              }
+            }
+          });
+        }
+      }
+    });
+
+    if (!latestSentAt && pack.sentAt && sentCount > 0) {
+      latestSentAt = pack.sentAt;
+    }
+
+    let statusText = `Not Sent (0/${totalCount})`;
+    let bg = 'rgba(100, 116, 139, 0.2)';
+    let color = '#94a3b8';
+
+    if (sentCount > 0 && sentCount < totalCount) {
+      statusText = `Partial (${sentCount}/${totalCount})`;
+      bg = 'rgba(168, 85, 247, 0.2)';
+      color = '#c084fc';
+    } else if (sentCount > 0 && sentCount >= totalCount) {
+      statusText = `Completed (${sentCount}/${totalCount})`;
+      bg = 'rgba(16, 185, 129, 0.2)';
+      color = '#10b981';
+    }
+
+    const formattedSentAt = (sentCount > 0 && latestSentAt) ? formatLastAnalysed(latestSentAt) : '-';
+
+    return {
+      statusText,
+      bg,
+      color,
+      formattedSentAt
+    };
+  };
+
+
   const formatDateOnly = (dateStr) => {
     if (!dateStr || dateStr === 'Loading...') return dateStr;
     try {
@@ -5409,14 +5475,7 @@ function App() {
                         </tr>
                       ) : (
                         scopedPacks.map((pack) => {
-                          const statusColors = {
-                            'Draft': { bg: 'rgba(100, 116, 139, 0.2)', text: '#94a3b8' },
-                            'Ready': { bg: 'rgba(59, 130, 246, 0.2)', text: '#60a5fa' },
-                            'Sent': { bg: 'rgba(16, 185, 129, 0.2)', text: '#10b981' },
-                            'Partially Sent': { bg: 'rgba(168, 85, 247, 0.2)', text: '#c084fc' },
-                            'Failed': { bg: 'rgba(239, 68, 68, 0.2)', text: '#ef4444' }
-                          };
-                          const badge = statusColors[pack.status] || statusColors['Draft'];
+                          const { statusText, bg, color, formattedSentAt } = derivePackStatusAndSentAt(pack);
 
                           return (
                             <tr key={pack.id || pack.packId}>
@@ -5432,11 +5491,11 @@ function App() {
                               <td>{formatLastAnalysed(pack.createdAt)}</td>
                               <td>{pack.prospectsCount || (pack.prospects ? pack.prospects.length : 0)} prospects</td>
                               <td>
-                                <span style={{ backgroundColor: badge.bg, color: badge.text, padding: '0.15rem 0.55rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                                  {pack.status}
+                                <span style={{ backgroundColor: bg, color: color, padding: '0.15rem 0.55rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                                  {statusText}
                                 </span>
                               </td>
-                              <td>{pack.sentAt ? formatLastAnalysed(pack.sentAt) : '-'}</td>
+                              <td>{formattedSentAt}</td>
                               <td className="action-cell">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}>
                                   <button
