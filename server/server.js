@@ -328,7 +328,8 @@ app.post('/api/search', async (req, res) => {
             keyword: searchPhrase,
             language_name: "English",
             location_name: "United Kingdom",
-            depth: 100
+            depth: 100,
+            search_param: "num=100"
           }
         ])
       });
