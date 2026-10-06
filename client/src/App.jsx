@@ -1677,6 +1677,7 @@ function App() {
 
   const [savedSearches, setSavedSearches] = useState([]);
   const [savedWorkspaceTab, setSavedWorkspaceTab] = useState('results'); // 'results', 'shortlist', 'packs'
+  const [resultsViewTab, setResultsViewTab] = useState('results'); // 'results' | 'selected'
   const [isEditingSuggestedEmail, setIsEditingSuggestedEmail] = useState(false);
 
 
@@ -2977,6 +2978,7 @@ function App() {
         });
 
         setSearchResults(enrichedData);
+        setResultsViewTab('results');
         setCurrentPage(1);
         setSortColumn(null);
         setSortDirection('asc');
@@ -3111,6 +3113,7 @@ function App() {
     setLocation('');
     setSearchMode('organic');
     setSearchResults([]);
+    setResultsViewTab('results');
     setCurrentPage(1);
     setSortColumn(null);
     setSortDirection('asc');
@@ -3129,6 +3132,7 @@ function App() {
     const targetId = saved.id || saved.searchId || null;
     setActiveSearchId(targetId);
     setSavedWorkspaceTab('results');
+    setResultsViewTab('results');
     setCurrentView('saved');
     if (targetId) {
       try {
@@ -4142,7 +4146,9 @@ function App() {
   };
 
   const renderOriginalResultsView = (itemsToRender = searchResults) => {
-    const listToRender = Array.isArray(itemsToRender) ? itemsToRender : [];
+    const rawResults = Array.isArray(itemsToRender) ? itemsToRender : [];
+    const baseList = resultsViewTab === 'selected' ? scopedShortlist : rawResults;
+    const listToRender = Array.isArray(baseList) ? baseList : [];
     let allCount = listToRender.length;
     let followUpCount = 0;
     let averageCount = 0;
@@ -4192,6 +4198,56 @@ function App() {
 
     return (
       <>
+        {/* Results / Selected Main Navigation Tabs */}
+        <div style={{
+          width: '100%',
+          maxWidth: '1440px',
+          margin: '0 auto 1rem auto',
+          display: 'flex',
+          gap: '0.5rem',
+          borderBottom: '1px solid #334155',
+          paddingBottom: '0.5rem',
+          boxSizing: 'border-box'
+        }}>
+          <button
+            type="button"
+            onClick={() => {
+              setResultsViewTab('results');
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '0.55rem 1.25rem',
+              borderRadius: '6px',
+              border: 'none',
+              fontWeight: 'bold',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              backgroundColor: resultsViewTab === 'results' ? '#2563eb' : '#0f172a',
+              color: resultsViewTab === 'results' ? '#ffffff' : '#94a3b8'
+            }}
+          >
+            Results ({rawResults.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setResultsViewTab('selected');
+              setCurrentPage(1);
+            }}
+            style={{
+              padding: '0.55rem 1.25rem',
+              borderRadius: '6px',
+              border: 'none',
+              fontWeight: 'bold',
+              fontSize: '0.9rem',
+              cursor: 'pointer',
+              backgroundColor: resultsViewTab === 'selected' ? '#2563eb' : '#0f172a',
+              color: resultsViewTab === 'selected' ? '#ffffff' : '#94a3b8'
+            }}
+          >
+            Selected ({scopedShortlist.length})
+          </button>
+        </div>
         <div style={{
           width: '100%',
           maxWidth: '1440px',
