@@ -2710,6 +2710,71 @@ function cleanSearchPhrase(phrase, location) {
   return clean;
 }
 
+function generateFirstEmail(item, senderSettings = null, activeWorkspace = 'tse') {
+  if (!item) return '';
+  const loc = (item?.location || item?.analysisData?.location || '').trim();
+  const searchPhrase = deriveSearchPhrase(item) || 'your services';
+
+  const domain = item?.domain || 'your website';
+  const gbp = item?.gbp || { status: item?.gbpStatus };
+  const health = item?.seoHealth || item?.analysisData?.seoHealth;
+
+  const isSmokingChili = (activeWorkspace || '').toLowerCase() === 'smoking_chili' || senderSettings?.company_name?.toLowerCase().includes('smoking chili');
+  const defaultSenderName = isSmokingChili ? 'Darren Tippin' : 'Mac McCarthy';
+  const defaultCompanyName = isSmokingChili ? 'Smoking Chili Media' : 'The Search Equation';
+
+  const senderName = senderSettings?.sender_name || defaultSenderName;
+  const companyName = senderSettings?.company_name || defaultCompanyName;
+
+  let issuesText = '';
+  const list = [];
+  if (health) {
+    if (health.isHttps === false) {
+      list.push("your homepage currently loads as non-secure (HTTP)");
+    }
+    if (health.titlePresent === false || health.titlePresent === 'Missing' || health.titlePresent === 'Unknown') {
+      list.push("the page title is missing");
+    }
+    if (health.descriptionPresent === false || health.descriptionPresent === 'Missing' || health.descriptionPresent === 'Unknown') {
+      list.push("there is no meta description appearing in search results");
+    }
+    if (health.h1Present === false || health.h1Present === 'Missing' || health.h1Present === 'Unknown') {
+      list.push("the primary H1 heading tag is missing");
+    }
+  }
+  if ((gbp && (gbp.status === 'Not Found' || gbp.status === 'No Profile Matched')) || item?.gbpStatus === 'No Profile Matched') {
+    list.push("your business is missing its Google Business Profile listing");
+  }
+
+  if (list.length > 0) {
+    issuesText = `I noticed ${list.slice(0, 2).join(' and ')}. These elements are quite important for search engine rankings, but luckily they are straightforward to resolve.`;
+  } else {
+    issuesText = `I noticed a few easy wins to capture more local customers, like setting up dedicated landing pages and local search schemas.`;
+  }
+
+  const subject = `Quick question about visibility for ${domain}`;
+  const locText = loc && loc.toLowerCase() !== 'anywhere' ? `in ${loc}` : 'online';
+  
+  const email = `Subject: ${subject}
+
+Hello,
+
+I was looking for local businesses ${locText} and came across ${domain} ranking at position #${item?.rank || 'N/A'} for "${searchPhrase}" in Google.
+
+You clearly have an established business, but there are a few straightforward opportunities to improve your visibility online. ${issuesText}
+
+Resolving these search gaps will make it much easier for new clients to find you and click through to your site instead of your competitors.
+
+Is improving your visibility in Google something you're currently looking at?
+
+Kind regards,
+
+${senderName}
+${companyName}`;
+
+  return email;
+}
+
 function deriveSearchPhrase(prospect) {
   if (!prospect) return '';
   if (typeof prospect === 'string') return prospect.trim();
