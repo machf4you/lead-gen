@@ -4591,6 +4591,112 @@ function App() {
     );
   };
 
+  const renderSavedSearchesTable = () => {
+    return (
+      <div className="results-table-container">
+        <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#ffffff' }}>Saved Searches</h2>
+          </div>
+        </div>
+        <table className="results-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Search Type</th>
+              <th>Business / Trade</th>
+              <th>Location</th>
+              <th>Saved Date/Time</th>
+              <th>Leads</th>
+              <th>Selected</th>
+              <th>Outreach</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {savedSearches.length === 0 ? (
+              <tr>
+                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                  No saved searches found. Every successful search will be automatically saved here.
+                </td>
+              </tr>
+            ) : (
+              savedSearches.map((saved) => {
+                const shortlistedCount = outreachList.filter(item => {
+                  if (item.searchId && (item.searchId === saved.searchId || item.searchId === saved.id)) {
+                    return true;
+                  }
+                  const itemPhrase = cleanSearchPhrase(item.searchPhrase || item.trade || item.businessType || '', item.location).toLowerCase();
+                  const searchPhrase = cleanSearchPhrase(saved.businessType || saved.searchPhrase || '', saved.location).toLowerCase();
+                  const itemLoc = (item.location || '').toLowerCase().trim();
+                  const searchLoc = (saved.location || '').toLowerCase().trim();
+                  if (itemPhrase && searchPhrase && itemPhrase === searchPhrase) {
+                    if (!itemLoc || !searchLoc || itemLoc === searchLoc || itemLoc === 'anywhere' || searchLoc === 'anywhere') {
+                      return true;
+                    }
+                  }
+                  return false;
+                }).length;
+
+                const packsCount = outreachPacks.filter(pack => {
+                  if (pack.searchId && (pack.searchId === saved.searchId || pack.searchId === saved.id)) {
+                    return true;
+                  }
+                  if (Array.isArray(pack.prospects)) {
+                    return pack.prospects.some(p => {
+                      if (p.searchId && (p.searchId === saved.searchId || p.searchId === saved.id)) return true;
+                      const pPhrase = cleanSearchPhrase(p.searchPhrase || p.trade || p.businessType || '', p.location).toLowerCase();
+                      const searchPhrase = cleanSearchPhrase(saved.businessType || saved.searchPhrase || '', saved.location).toLowerCase();
+                      const pLoc = (p.location || '').toLowerCase().trim();
+                      const searchLoc = (saved.location || '').toLowerCase().trim();
+                      return pPhrase && searchPhrase && pPhrase === searchPhrase && (!pLoc || !searchLoc || pLoc === searchLoc || pLoc === 'anywhere' || searchLoc === 'anywhere');
+                    });
+                  }
+                  return false;
+                }).length;
+
+                return (
+                  <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
+                    <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
+                    <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
+                    <td>{saved.businessType || saved.trade || saved.searchPhrase}</td>
+                    <td>{saved.location}</td>
+                    <td>{saved.dateTime}</td>
+                    <td>{saved.count || (saved.data ? saved.data.length : 0)}</td>
+                    <td style={{ fontWeight: 'bold', color: shortlistedCount > 0 ? '#34d399' : '#94a3b8' }}>{shortlistedCount}</td>
+                    <td style={{ fontWeight: 'bold', color: packsCount > 0 ? '#60a5fa' : '#94a3b8' }}>{packsCount}</td>
+                    <td>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLoadSavedSearch(saved);
+                        }} 
+                        className="table-btn"
+                        style={{ marginRight: '0.5rem', backgroundColor: '#2563eb', color: '#ffffff' }}
+                      >
+                        Open Workspace
+                      </button>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSavedSearch(saved.id);
+                        }} 
+                        className="table-btn"
+                        style={{ backgroundColor: '#ef4444' }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="app-container">
@@ -4924,96 +5030,17 @@ function App() {
               )}
             </div>
 
-            {Array.isArray(searchResults) && searchResults.length > 0 && (
+            {Array.isArray(searchResults) && searchResults.length > 0 ? (
               renderOriginalResultsView(searchResults)
+            ) : (
+              renderSavedSearchesTable()
             )}
           </>
         )}
 
         {currentView === 'saved' && (
           !activeSearchId ? (
-            <div className="results-table-container">
-              <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <h2 style={{ margin: 0, color: '#ffffff' }}>Saved Searches</h2>
-                </div>
-              </div>
-              <table className="results-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Search Type</th>
-                    <th>Business Type</th>
-                    <th>Location</th>
-                    <th>Saved Date/Time</th>
-                    <th>Results</th>
-                    <th>Shortlisted</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {savedSearches.length === 0 ? (
-                    <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                        No saved searches found. Every successful search will be automatically saved here.
-                      </td>
-                    </tr>
-                  ) : (
-                    savedSearches.map((saved) => {
-                      const shortlistedCount = outreachList.filter(item => {
-                        if (item.searchId && (item.searchId === saved.searchId || item.searchId === saved.id)) {
-                          return true;
-                        }
-                        const itemPhrase = cleanSearchPhrase(item.searchPhrase || item.trade || item.businessType || '', item.location).toLowerCase();
-                        const searchPhrase = cleanSearchPhrase(saved.businessType || saved.searchPhrase || '', saved.location).toLowerCase();
-                        const itemLoc = (item.location || '').toLowerCase().trim();
-                        const searchLoc = (saved.location || '').toLowerCase().trim();
-                        if (itemPhrase && searchPhrase && itemPhrase === searchPhrase) {
-                          if (!itemLoc || !searchLoc || itemLoc === searchLoc || itemLoc === 'anywhere' || searchLoc === 'anywhere') {
-                            return true;
-                          }
-                        }
-                        return false;
-                      }).length;
-
-                      return (
-                        <tr key={saved.id} style={{ cursor: 'pointer' }} onClick={() => handleLoadSavedSearch(saved)}>
-                          <td><code style={{ color: '#60a5fa', fontWeight: 'bold' }}>{saved.searchId}</code></td>
-                          <td style={{ fontWeight: 'bold', color: saved.searchType === 'Organic' ? '#38bdf8' : '#34d399' }}>{saved.searchType || 'GMB'}</td>
-                          <td>{saved.businessType}</td>
-                          <td>{saved.location}</td>
-                          <td>{saved.dateTime}</td>
-                          <td>{saved.count}</td>
-                          <td style={{ fontWeight: 'bold', color: shortlistedCount > 0 ? '#34d399' : '#94a3b8' }}>{shortlistedCount}</td>
-                          <td>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleLoadSavedSearch(saved);
-                              }} 
-                              className="table-btn"
-                              style={{ marginRight: '0.5rem', backgroundColor: '#2563eb', color: '#ffffff' }}
-                            >
-                              Open Workspace
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteSavedSearch(saved.id);
-                              }} 
-                              className="table-btn"
-                              style={{ backgroundColor: '#ef4444' }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            renderSavedSearchesTable()
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '3rem' }}>
               {/* Workspace Top Header Bar */}
