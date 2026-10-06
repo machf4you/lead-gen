@@ -1326,17 +1326,7 @@ function App() {
     }
   };
 
-  const getActiveEmailOptionKey = () => {
-    if (!activePack) return 'system';
-
-    if (activePack.emailOption === 'system') return 'system';
-    if (activePack.emailOption === 'partnership') return 'partnership';
-    if (activePack.emailOption === 'seo') return 'seo';
-    if (activePack.emailOption === 'honest') return 'honest';
-    if (activePack.emailOption === 'general') return 'general';
-
-    return 'system';
-  };
+  const getActiveEmailOptionKey = () => 'system';
 
   const handleSelectEmailOption = async (optionKey) => {
     if (!activePack) return;
@@ -6406,73 +6396,6 @@ function App() {
                     </div>
                     <div>
                       Sent Status: <span style={{ color: activePack.sentAt ? '#10b981' : '#cbd5e1', fontWeight: activePack.sentAt ? 'bold' : 'normal' }}>{activePack.sentAt ? formatLastAnalysed(activePack.sentAt) : 'Not Sent'}</span>
-                    </div>
-                  </div>
-
-                  {/* Select Email Section */}
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.75rem',
-                    backgroundColor: '#1e293b',
-                    padding: '1.25rem',
-                    borderRadius: '8px',
-                    border: '1px solid #334155'
-                  }}>
-                    <div style={{ color: '#cbd5e1', fontSize: '0.9rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Select Email:
-                    </div>
-
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                      gap: '0.75rem'
-                    }}>
-                      {[
-                        { key: 'system', label: 'System Email', desc: 'Personalised per prospect' },
-                        { key: 'partnership', label: 'Partnership', desc: 'Master Template' },
-                        { key: 'seo', label: 'SEO', desc: 'Master Template' },
-                        { key: 'honest', label: 'Short and Honest', desc: 'Master Template' },
-                        { key: 'general', label: 'General', desc: 'Master Template' }
-                      ].map(option => {
-                        const selectedEmailOptionKey = getActiveEmailOptionKey();
-                        const isSelected = selectedEmailOptionKey === option.key;
-
-                        return (
-                          <div
-                            key={option.key}
-                            onClick={() => handleSelectEmailOption(option.key)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '0.65rem',
-                              padding: '0.75rem 0.9rem',
-                              borderRadius: '6px',
-                              border: isSelected ? '1px solid #38bdf8' : '1px solid #334155',
-                              backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.15)' : '#0f172a',
-                              color: isSelected ? '#ffffff' : '#cbd5e1',
-                              cursor: 'pointer',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <input
-                              type="radio"
-                              name="emailSelectionOption"
-                              checked={isSelected}
-                              onChange={() => {}}
-                              style={{ marginTop: '0.2rem', accentColor: '#38bdf8', cursor: 'pointer' }}
-                            />
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                              <span style={{ fontWeight: isSelected ? 'bold' : '600', fontSize: '0.88rem', color: isSelected ? '#38bdf8' : '#f8fafc' }}>
-                                {option.label}
-                              </span>
-                              <span style={{ fontSize: '0.73rem', color: '#94a3b8' }}>
-                                {option.desc}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
                   </div>
                 </div>
