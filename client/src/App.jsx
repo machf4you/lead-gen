@@ -340,6 +340,41 @@ const isValidEmail = (email) => {
   return true;
 };
 
+const getProspectSystemEmail = (p, senderSettings = null, activeWorkspace = 'tse') => {
+  if (!p) return { subject: null, body: null, isMissing: true };
+
+  let text = (p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || '').trim();
+
+  if (!text) {
+    text = (generateFirstEmail(p, senderSettings, activeWorkspace) || '').trim();
+  }
+
+  if (!text) {
+    return { subject: null, body: null, isMissing: true };
+  }
+
+  let subject = null;
+  let body = null;
+
+  if (text.startsWith('Subject:')) {
+    const lines = text.split('\n');
+    const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
+    if (subjectLine) {
+      subject = subjectLine;
+    }
+    body = lines.slice(1).join('\n').trim();
+  } else {
+    subject = `Quick question about visibility for ${p.domain || 'your website'}`;
+    body = text;
+  }
+
+  if (!subject || !body) {
+    return { subject: null, body: null, isMissing: true };
+  }
+
+  return { subject, body, isMissing: false };
+};
+
 const getGenuineFirstName = (prospect) => {
   if (!prospect) return null;
   const p = typeof prospect === 'object' ? prospect : {};
@@ -1490,35 +1525,18 @@ function App() {
     if (!activePack) return [];
     const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
     const recipients = [];
-    const currentOptionKey = getActiveEmailOptionKey();
 
     selectedProspects.forEach(p => {
-      // If contactEmail is manually entered/saved, use it directly; otherwise look up matching valid email
       const email = p.contactEmail || (p.allFoundEmails?.find(em => isValidEmail(em))) || p.allFoundEmails?.[0] || null;
-      let subject = renderTemplate(activePack.templateSubject, p, email, senderSettings);
-      let body = renderFullEmailBody(activePack.templateBody, p, email, senderSettings);
-
-      if (currentOptionKey === 'system' || p.useSuggestedEmail || p.customEmailBody) {
-        let text = p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || generateFirstEmail(p, senderSettings, currentUser?.workspace);
-        text = String(text).trim();
-        if (text.startsWith('Subject:')) {
-          const lines = text.split('\n');
-          const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
-          if (subjectLine) {
-            subject = subjectLine;
-          }
-          body = lines.slice(1).join('\n').trim();
-        } else {
-          body = text;
-        }
-      }
+      const sysEmail = getProspectSystemEmail(p, senderSettings, currentUser?.workspace);
 
       recipients.push({
         prospect: p,
         domain: p.domain,
         email: email,
-        subject: subject,
-        body: body,
+        subject: sysEmail.subject || `Quick question about visibility for ${p.domain}`,
+        body: sysEmail.body || '',
+        isMissing: sysEmail.isMissing,
         greeting: deriveGreeting(email, p)
       });
     });
@@ -6502,12 +6520,16 @@ function App() {
                         const emailsList = Array.from(new Set([prospect.contactEmail, ...(prospect.allFoundEmails || [])].filter(Boolean)))
                           .filter(em => isValidEmail(em));
 
+                        const sysEmail = getProspectSystemEmail(prospect, senderSettings, currentUser?.workspace);
+
                         // Determine display status text
                         let displayStatus = 'No Email Found';
                         if (prospect.sendStatus === 'Sent') {
                           displayStatus = 'Sent';
                         } else if (prospect.sendStatus === 'Failed') {
                           displayStatus = 'Failed';
+                        } else if (sysEmail.isMissing) {
+                          displayStatus = 'System Email Missing';
                         } else if (emailsList.length > 0 || (prospect.contactEmail && isValidEmail(prospect.contactEmail))) {
                           displayStatus = 'Email Found';
                         }
@@ -6515,6 +6537,7 @@ function App() {
                         const statusStyle = {
                           'Email Found': { color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
                           'No Email Found': { color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' },
+                          'System Email Missing': { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
                           'Sent': { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
                           'Failed': { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' }
                         }[displayStatus] || { color: '#94a3b8', bg: 'rgba(148, 163, 184, 0.15)' };
@@ -8338,7 +8361,13 @@ function App() {
             {isSendConfirmModalOpen && activePack && (() => {
               const selectedProspects = activePack.prospects?.filter(p => selectedProspectIdsInPack.has(p.id || p.domain)) || [];
               let totalRecipients = 0;
+              let hasMissingSystemEmail = false;
+
               selectedProspects.forEach(p => {
+                const sysEmail = getProspectSystemEmail(p, senderSettings, currentUser?.workspace);
+                if (sysEmail.isMissing) {
+                  hasMissingSystemEmail = true;
+                }
                 const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
                   .filter(em => isValidEmail(em));
                 totalRecipients += emails.length;
@@ -8416,10 +8445,7 @@ function App() {
                       <div style={{ color: '#ffffff', wordBreak: 'break-word' }}>
                         {(() => {
                           const recipients = getSelectedRecipientsList();
-                          if (getActiveEmailOptionKey() === 'system' && recipients.length > 0) {
-                            return recipients[0].subject;
-                          }
-                          return activePack.templateSubject || 'Partnership enquiry — The Search Equation';
+                          return recipients[0]?.subject || 'Quick question about visibility';
                         })()}
                       </div>
 
@@ -8468,6 +8494,19 @@ function App() {
                       </div>
                     )}
 
+                    {hasMissingSystemEmail && (
+                      <div style={{
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                        borderRadius: '6px',
+                        padding: '0.75rem 1rem',
+                        color: '#f59e0b',
+                        fontSize: '0.85rem'
+                      }}>
+                        ⚠️ One or more selected prospects are missing System Email subject/body. Sending is blocked.
+                      </div>
+                    )}
+
                     {sendErrorMsg && (
                       <div style={{
                         backgroundColor: 'rgba(239, 68, 68, 0.15)',
@@ -8495,12 +8534,12 @@ function App() {
                       </button>
                       <button
                         onClick={handleSendPack}
-                        disabled={!senderStatus.configured || totalRecipients === 0 || isSendingPack}
+                        disabled={!senderStatus.configured || totalRecipients === 0 || isSendingPack || hasMissingSystemEmail}
                         className="analyse-btn-green"
                         style={{
                           padding: '0.6rem 1.4rem',
-                          opacity: (!senderStatus.configured || totalRecipients === 0 || isSendingPack) ? 0.5 : 1,
-                          cursor: (!senderStatus.configured || totalRecipients === 0 || isSendingPack) ? 'not-allowed' : 'pointer'
+                          opacity: (!senderStatus.configured || totalRecipients === 0 || isSendingPack || hasMissingSystemEmail) ? 0.5 : 1,
+                          cursor: (!senderStatus.configured || totalRecipients === 0 || isSendingPack || hasMissingSystemEmail) ? 'not-allowed' : 'pointer'
                         }}
                       >
                         {isSendingPack ? 'Sending Live Emails...' : 'Confirm Send'}

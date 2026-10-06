@@ -2337,6 +2337,41 @@ function isValidEmail(email, baseDomain) {
   return true;
 }
 
+function getProspectSystemEmail(p, senderSettings = null, workspace = 'tse') {
+  if (!p) return { subject: null, body: null, isMissing: true };
+
+  let text = (p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || '').trim();
+
+  if (!text) {
+    text = (generateFirstEmail(p, senderSettings, workspace) || '').trim();
+  }
+
+  if (!text) {
+    return { subject: null, body: null, isMissing: true };
+  }
+
+  let subject = null;
+  let body = null;
+
+  if (text.startsWith('Subject:')) {
+    const lines = text.split('\n');
+    const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
+    if (subjectLine) {
+      subject = subjectLine;
+    }
+    body = lines.slice(1).join('\n').trim();
+  } else {
+    subject = `Quick question about visibility for ${p.domain || 'your website'}`;
+    body = text;
+  }
+
+  if (!subject || !body) {
+    return { subject: null, body: null, isMissing: true };
+  }
+
+  return { subject, body, isMissing: false };
+}
+
 // Function to find contact emails for a prospect
 async function crawlProspectContactEmails(targetUrl) {
   if (!targetUrl) return { status: 'No Email', contactEmail: null, allFoundEmails: [], emailSource: null };
@@ -3591,6 +3626,14 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
         continue;
       }
 
+      // System Email ONLY — no template fallback allowed
+      const sysEmail = getProspectSystemEmail(p, senderSettings, req.workspace);
+      if (sysEmail.isMissing) {
+        p.sendStatus = 'System Email Missing';
+        sendResults.push({ prospectId: p.id, domain: p.domain, skipped: true, reason: 'System Email Missing' });
+        continue;
+      }
+
       // Check duplicate send protection: if already sent, skip
       if (p.sendStatus === 'Sent') {
         sendResults.push({ prospectId: p.id, domain: p.domain, skipped: true, reason: 'Already sent' });
@@ -3602,37 +3645,8 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
 
       for (const email of emails) {
         try {
-          let renderedSubject = renderTemplate(templateSubject, p, email, senderSettings);
-          let renderedBody = renderFullEmailBody(templateBody, p, email, senderSettings);
-
-          const isSystemEmail = packRow.emailOption === 'system' || p.useSuggestedEmail || p.customEmailBody;
-
-          if (isSystemEmail) {
-            let text = (p.customEmailBody || p.suggestedFirstEmail || p.customSuggestedEmail || p.analysisData?.suggestedFirstEmail || p.analysisData?.customSuggestedEmail || '').trim();
-            if (text.startsWith('Subject:')) {
-              const lines = text.split('\n');
-              const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
-              if (subjectLine) {
-                renderedSubject = subjectLine;
-              }
-              renderedBody = lines.slice(1).join('\n').trim();
-            } else if (text) {
-              renderedBody = text;
-              if (packRow.emailOption === 'system') {
-                renderedSubject = `Quick question about visibility for ${p.domain || 'your website'}`;
-              }
-            } else if (packRow.emailOption === 'system') {
-              const genText = generateFirstEmail(p, senderSettings, req.workspace);
-              if (genText.startsWith('Subject:')) {
-                const lines = genText.split('\n');
-                const subjectLine = lines[0].replace(/^Subject:\s*/i, '').trim();
-                if (subjectLine) {
-                  renderedSubject = subjectLine;
-                }
-                renderedBody = lines.slice(1).join('\n').trim();
-              }
-            }
-          }
+          const renderedSubject = sysEmail.subject;
+          const renderedBody = sysEmail.body;
 
           const mailOptions = {
             from: config.senderMailbox,
