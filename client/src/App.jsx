@@ -315,6 +315,31 @@ const isDomainMatch = (email, prospectDomain) => {
   return false;
 };
 
+const isValidEmail = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  const e = email.toLowerCase().trim();
+  if (e.length < 5 || e.length > 100) return false;
+  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(e)) return false;
+
+  const extBlacklist = /\.(png|jpg|jpeg|gif|svg|webp|css|js|woff|woff2|ttf|eot|pdf|zip|mp4)$/i;
+  if (extBlacklist.test(e)) return false;
+
+  const domainPart = e.split('@')[1];
+  const blockedDomains = [
+    'example.com', 'domain.com', 'yourdomain.com', 'sentry.io', 'wixpress.com',
+    'cloudflare.com', 'wordpress.org', 'gravatar.com', 'schema.org', 'googleapis.com',
+    'google.com', 'facebook.com', 'twitter.com', 'instagram.com', 'tiktok.com',
+    'github.com', 'mysite.com', 'test.com', 'email.com', 'w3.org', 'wufoo.com', 'doe.com'
+  ];
+  if (blockedDomains.some(d => domainPart === d || domainPart.endsWith('.' + d))) return false;
+
+  const localPart = e.split('@')[0];
+  const blockedPrefixes = ['test', 'demo', 'example', 'yourname', 'user', 'name', 'dummy', 'john'];
+  if (blockedPrefixes.includes(localPart)) return false;
+
+  return true;
+};
+
 const getGenuineFirstName = (prospect) => {
   if (!prospect) return null;
   const p = typeof prospect === 'object' ? prospect : {};
@@ -1478,8 +1503,8 @@ function App() {
     const currentOptionKey = getActiveEmailOptionKey();
 
     selectedProspects.forEach(p => {
-      // If contactEmail is manually entered/saved, use it directly; otherwise look up matching domain email
-      const email = p.contactEmail || (p.allFoundEmails?.find(em => isDomainMatch(em, p.domain))) || null;
+      // If contactEmail is manually entered/saved, use it directly; otherwise look up matching valid email
+      const email = p.contactEmail || (p.allFoundEmails?.find(em => isValidEmail(em))) || p.allFoundEmails?.[0] || null;
       let subject = renderTemplate(activePack.templateSubject, p, email, senderSettings);
       let body = renderFullEmailBody(activePack.templateBody, p, email, senderSettings);
 
@@ -6550,9 +6575,9 @@ function App() {
                         const isSelected = selectedProspectIdsInPack.has(prospectKey);
                         const warning = getContactHistoryWarning(prospect.domain, activePack.packId);
 
-                        // Collect all valid unique emails matching prospect's own domain
+                        // Collect all valid unique emails
                         const emailsList = Array.from(new Set([prospect.contactEmail, ...(prospect.allFoundEmails || [])].filter(Boolean)))
-                          .filter(em => isDomainMatch(em, prospect.domain));
+                          .filter(em => isValidEmail(em));
 
                         // Determine display status text
                         let displayStatus = 'No Email Found';
@@ -6560,7 +6585,7 @@ function App() {
                           displayStatus = 'Sent';
                         } else if (prospect.sendStatus === 'Failed') {
                           displayStatus = 'Failed';
-                        } else if (emailsList.length > 0 || (prospect.contactEmail && isDomainMatch(prospect.contactEmail, prospect.domain))) {
+                        } else if (emailsList.length > 0 || (prospect.contactEmail && isValidEmail(prospect.contactEmail))) {
                           displayStatus = 'Email Found';
                         }
 
@@ -8392,7 +8417,7 @@ function App() {
               let totalRecipients = 0;
               selectedProspects.forEach(p => {
                 const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
-                  .filter(em => isDomainMatch(em, p.domain));
+                  .filter(em => isValidEmail(em));
                 totalRecipients += emails.length;
               });
 

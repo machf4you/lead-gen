@@ -2469,33 +2469,31 @@ async function crawlProspectContactEmails(targetUrl) {
     }
   }
 
-  // Filter only emails whose domain matches the prospect's own website domain or legitimate related domain/subdomain
-  const domainFilteredEmails = Array.from(allEmails).filter(e => isDomainMatch(e, baseDomain));
+  // Filter all discovered emails through isValidEmail
+  const validDiscoveredEmails = Array.from(allEmails).filter(e => isValidEmail(e, baseDomain));
 
-  // Pick preferred email: prioritize matching domain with priority prefixes, then any matching domain prefix
+  // Pick preferred email: prioritize matching domain with priority prefixes, then matching domain, then third-party with priority prefix, then first valid email
   const priorityPrefixes = ['hello@', 'info@', 'enquiries@', 'enquiry@', 'contact@', 'sales@', 'office@', 'admin@', 'team@'];
   let preferredEmail = null;
 
-  if (domainFilteredEmails.length > 0) {
+  if (validDiscoveredEmails.length > 0) {
     // 1. Same domain + priority prefix
-    preferredEmail = domainFilteredEmails.find(e => (e.endsWith('@' + baseDomain) || isDomainMatch(e, baseDomain)) && priorityPrefixes.some(p => e.startsWith(p)));
+    preferredEmail = validDiscoveredEmails.find(e => isDomainMatch(e, baseDomain) && priorityPrefixes.some(p => e.startsWith(p)));
     // 2. Same domain any prefix
     if (!preferredEmail) {
-      preferredEmail = domainFilteredEmails.find(e => e.endsWith('@' + baseDomain));
+      preferredEmail = validDiscoveredEmails.find(e => isDomainMatch(e, baseDomain));
     }
-    // 3. First domain-matched email
+    // 3. Third-party domain + priority prefix
     if (!preferredEmail) {
-      preferredEmail = domainFilteredEmails[0];
+      preferredEmail = validDiscoveredEmails.find(e => priorityPrefixes.some(p => e.startsWith(p)));
     }
-  } else if (allEmails.size > 0) {
-    // Fallback: If no strict domain-match, pick valid business email discovered from the website's contact page (e.g. gmail/outlook business accounts)
-    const validCandidates = Array.from(allEmails).filter(e => isValidEmail(e, baseDomain));
-    if (validCandidates.length > 0) {
-      preferredEmail = validCandidates.find(e => priorityPrefixes.some(p => e.startsWith(p))) || validCandidates[0];
+    // 4. First valid discovered email
+    if (!preferredEmail) {
+      preferredEmail = validDiscoveredEmails[0];
     }
   }
 
-  const allFoundList = domainFilteredEmails.length > 0 ? domainFilteredEmails : Array.from(allEmails);
+  const allFoundList = validDiscoveredEmails;
   const emailSource = preferredEmail ? (emailSourcesMap.get(preferredEmail) || primarySource || fetchUrl) : null;
   const status = preferredEmail ? 'Email Found' : 'No Email';
 
@@ -3584,9 +3582,9 @@ app.post('/api/outreach-packs/:packId/send', async (req, res) => {
       const isTarget = targetProspects.some(tp => (tp.id && tp.id === p.id) || tp.domain === p.domain);
       if (!isTarget) continue;
 
-      // Extract all valid domain-matched emails only
+      // Extract all valid emails (including third-party domains like Gmail, Yahoo, Outlook)
       const emails = Array.from(new Set([p.contactEmail, ...(p.allFoundEmails || [])].filter(Boolean)))
-        .filter(email => isDomainMatch(email, p.domain));
+        .filter(email => isValidEmail(email, p.domain));
 
       if (emails.length === 0) {
         p.sendStatus = 'No Email';
