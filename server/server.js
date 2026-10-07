@@ -317,7 +317,7 @@ app.post('/api/search', async (req, res) => {
     if (searchMode === 'organic') {
       const searchPhrase = `${businessType} ${location}`;
       
-      const response = await fetch('https://api.dataforseo.com/v3/serp/google/organic/live/advanced', {
+      const postResponse = await fetch('https://api.dataforseo.com/v3/serp/google/organic/task_post', {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${auth}`,
@@ -328,18 +328,48 @@ app.post('/api/search', async (req, res) => {
             keyword: searchPhrase,
             language_code: "en",
             location_name: "United Kingdom",
-            depth: 100,
-            search_param: "num=100"
+            depth: 100
           }
         ])
       });
 
-      const data = await response.json();
-      const task = data?.tasks?.[0];
+      const postData = await postResponse.json();
+      const task = postData?.tasks?.[0];
+      const taskId = task?.id;
 
-      if (task?.status_code !== 20000) {
+      if (!taskId || task?.status_code !== 20000) {
         return res.status(500).json({
-          error: `Live search query failed: ${task?.status_message || 'Search service error'}`
+          error: `Search task creation failed: ${task?.status_message || 'Task POST error'}`
+        });
+      }
+
+      let items = [];
+      const maxAttempts = 30;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const getResponse = await fetch(`https://api.dataforseo.com/v3/serp/google/organic/task_get/advanced/${taskId}`, {
+          headers: {
+            'Authorization': `Basic ${auth}`
+          }
+        });
+        const getData = await getResponse.json();
+        const getTask = getData?.tasks?.[0];
+
+        if (getTask?.status_code === 20000 && getTask?.result?.[0]?.items?.length > 0) {
+          items = getTask.result[0].items;
+          break;
+        }
+
+        if (getTask?.status_code && getTask?.status_code !== 20000) {
+          return res.status(500).json({
+            error: `Search task execution failed: ${getTask?.status_message || 'Task GET error'}`
+          });
+        }
+      }
+
+      if (items.length === 0) {
+        return res.status(500).json({
+          error: 'Search task timed out waiting for DataForSEO standard queue results.'
         });
       }
 
