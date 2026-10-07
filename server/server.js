@@ -326,10 +326,10 @@ app.post('/api/search', async (req, res) => {
         body: JSON.stringify([
           {
             keyword: searchPhrase,
-            language_name: "English",
+            language_code: "en",
             location_name: "United Kingdom",
             depth: 100,
-            search_param: "&num=100"
+            search_param: "num=100"
           }
         ])
       });
