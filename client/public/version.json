@@ -1,10 +1,10 @@
 {
   "id": "tse_lead_gen",
   "name": "TSE Lead Gen",
-  "commit_hash": "6d9611711d05cdddec0c5ec569331fe27240e137",
+  "commit_hash": "2081c54a06af07a51ac28b96ff21300af53e5b58",
   "version": "1.56",
   "version_tag": "v1.56-sent-email-history",
-  "build_time": "2026-10-06T16:09:17.807Z",
-  "buildTimestamp": 1791302957807,
+  "build_time": "2026-10-07T04:31:31.228Z",
+  "buildTimestamp": 1791347491228,
   "isDeploymentInProgress": false
 }
